@@ -722,7 +722,7 @@ with st.expander("🔮 6. Global Macroeconomic Assumptions & Retirement Sim", ex
 # --- 7. ADVANCED SCENARIOS & TAXES ---
 with st.expander("⚖️ 7. AI Based Advanced Retirement Scenarios", expanded=False):
     st.markdown(
-        '<div class="info-text">💡 Adjust edge-case scenarios here. The simulation integrates Federal Taxes dynamically using 2026 Brackets. Input your effective State Tax here.</div>',
+        '<div class="info-text">💡 Adjust edge-case scenarios here. The simulation integrates Federal Taxes dynamically using 2026 Brackets.</div>',
         unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
@@ -743,10 +743,20 @@ with st.expander("⚖️ 7. AI Based Advanced Retirement Scenarios", expanded=Fa
         st.write("**State Tax / Effective Adjustments**")
         cur_t = st.number_input("Current State Tax Adjustment (%)",
                                 value=float(st.session_state['assumptions'].get('current_tax_rate', 5.0)),
-                                help="Federal taxes are calculated dynamically. Enter your effective State/Local rate here.")
+                                help="ONLY enter your effective State/Local rate here. Do NOT include Federal Tax, as the engine calculates Federal dynamically.")
         ret_t = st.number_input("Retirement State Tax Adjustment (%)",
                                 value=float(st.session_state['assumptions'].get('retire_tax_rate', 0.0)),
                                 help="Are you moving to a tax-free state in retirement? Adjust here.")
+
+        if st.button("✨ Auto-Estimate State Tax (AI)"):
+            with st.spinner("Calculating local state tax rates..."):
+                prompt = f"User in {curr_city}. Total Pre-Tax Income: ${curr_inc_total:,.0f}. Suggest the effective STATE AND LOCAL tax rate ONLY (do not include Federal Tax). Return JSON: {{'current_tax_rate': float, 'retire_tax_rate': float}}"
+                res = call_gemini_json(prompt)
+                if res and isinstance(res, dict):
+                    st.session_state['assumptions']['current_tax_rate'] = res.get('current_tax_rate', cur_t)
+                    st.session_state['assumptions']['retire_tax_rate'] = res.get('retire_tax_rate', ret_t)
+                    st.rerun()
+
     if st.button("💾 Save Profile Snapshot", key="sv_7"):
         save_requested = True
         st.toast("✅ Profile Snapshot Saved!", icon="💾")
@@ -896,7 +906,7 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
             yd = {"Age": age, "Year": year}
             nw_yd = {"Age": age, "Year": year}
 
-            annual_inc, annual_ss, pre_tax_ord, pre_tax_cg = 0, 0, 0, 0
+            annual_inc, annual_ss, pre_tax_ord, pre_tax_cg, earned_income = 0, 0, 0, 0, 0
 
             # Glidepath & Stress Logic
             active_mkt = mkt
@@ -949,6 +959,7 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
                     yd[f"Income: {cat_name}"] = yd.get(f"Income: {cat_name}", 0) + amt
                     if cat_name == "Social Security": annual_ss += amt
                     if cat_name not in ["Employer Match (401k/HSA)", "Social Security"]: pre_tax_ord += amt
+                    if cat_name in ["Base Salary (W-2)", "Bonus / Commission", "Side Gig (1099)"]: earned_income += amt
 
             # SECURE 2.0 RMDs
             rmd_income = 0
@@ -1044,14 +1055,8 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
                             pre_tax_ord += amt
                             yd[f"Income: Milestone ({ev.get('Description')})"] = amt
 
-            # Pre-apply market growth
-            for a in sim_assets:
-                a_growth = active_mkt if a.get('Type') not in ['Checking/Savings', 'HYSA', 'Unallocated Cash'] else a[
-                    'growth']
-                a['bal'] *= (1 + a_growth / 100)
-
-            # Asset Contributions
-            asset_contributions = 0
+            # Asset Waterfall Routing
+            liquid_assets_total, asset_contributions = 0, 0
             if not is_retired:
                 for a in sim_assets:
                     owner = a.get('Owner', 'Me')
@@ -1077,11 +1082,27 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
                             a['bal'] += a['contrib']
                             asset_contributions += a['contrib']
 
+            # Pre-apply market growth
+            for a in sim_assets:
+                a_growth = active_mkt if a.get('Type') not in ['Checking/Savings', 'HYSA', 'Unallocated Cash'] else a[
+                    'growth']
+                a['bal'] *= (1 + a_growth / 100)
+
             # Tax Calculations
             base_fed_tax, marginal_rate = calc_federal_tax(pre_tax_ord, 0, active_mfj, year_offset, infl)
             state_tax_rate = cur_t if not is_retired else ret_t
             state_tax = pre_tax_ord * (state_tax_rate / 100.0)
-            total_tax = base_fed_tax + state_tax
+
+            # FICA Tax (Simplified approximation for earned income)
+            fica_tax = 0
+            if earned_income > 0:
+                ss_wage_base = 168600 * ((1 + infl / 100) ** year_offset)
+                ss_tax = min(earned_income, ss_wage_base) * 0.062
+                med_tax = earned_income * 0.0145
+                addl_med_tax = max(0, earned_income - 250000) * 0.009
+                fica_tax = ss_tax + med_tax + addl_med_tax
+
+            total_tax = base_fed_tax + state_tax + fica_tax
 
             # Robust Shortfall / Withdrawal Math
             cash_outflows = total_exp + asset_contributions + total_tax
@@ -1149,6 +1170,8 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
 
             liquid_assets_total = 0
             for a in sim_assets:
+                # Ensure no floating point math drags balance below absolute zero
+                a['bal'] = max(0, a['bal'])
                 liquid_assets_total += a['bal']
                 nw_yd[f"Asset: {a.get('Account Name', 'Account')}"] = a['bal']
 
@@ -1199,7 +1222,7 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
                             "Avg Annual Income": df_sim['Annual Income'].mean(),
                             "Avg Annual Expenses": df_sim['Annual Expenses'].mean()
                         }
-                        prompt = f"Act as an expert fiduciary financial planner. Review this user's simulation summary: {json.dumps(sim_summary)}. Write a highly detailed, 3-paragraph professional analysis of their financial trajectory. Discuss their sequence of return risks, highlight strengths, and provide specific recommendations (e.g. increase savings, delay retirement, adjust spending). Return ONLY JSON: {{'analysis': 'string containing formatted markdown'}}"
+                        prompt = f"Act as an expert fiduciary financial planner. Review this user's simulation summary: {json.dumps(sim_summary)}. Write a highly detailed, 3-paragraph professional analysis of their financial trajectory. Discuss their sequence of return risks, highlight strengths, and provide specific recommendations (e.g. increase savings, delay retirement, adjust spending). Return ONLY valid JSON exactly like this: {{\"analysis\": \"your markdown text here, using \\n for line breaks\"}}"
                         res = call_gemini_json(prompt)
                         if res and 'analysis' in res:
                             st.session_state['ai_analysis_report'] = res['analysis']
@@ -1210,7 +1233,8 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
                 st.markdown(
                     "<div style='background-color: #f1f5f9; padding: 20px; border-radius: 8px; border-left: 5px solid #4f46e5; margin-bottom: 20px;'>",
                     unsafe_allow_html=True)
-                st.markdown(f"### 🤖 AI Advisory Report\n\n{st.session_state['ai_analysis_report']}")
+                report_content = st.session_state['ai_analysis_report'].replace('\\n', '\n')
+                st.markdown(f"### 🤖 AI Advisory Report\n\n{report_content}")
                 st.markdown("</div>", unsafe_allow_html=True)
 
             if HAS_PLOTLY:
