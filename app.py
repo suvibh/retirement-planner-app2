@@ -3,6 +3,9 @@ import pandas as pd
 import requests
 import json
 import datetime
+import time
+import copy
+import random
 from dateutil.relativedelta import relativedelta
 import warnings
 import re
@@ -67,7 +70,10 @@ except Exception as e:
 
 FIREBASE_WEB_API_KEY = st.secrets.get("FIREBASE_WEB_API_KEY", "")
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
-cookie_manager = stx.CookieManager()
+cookie_manager = stx.CookieManager(key="auth_cookie_manager")
+
+if cookie_manager.get_all() is None:
+    st.stop()
 
 
 def sign_in_with_email_and_password(email, password):
@@ -147,6 +153,7 @@ if 'user_email' not in st.session_state:
                 st.session_state['user_data'] = load_user_data(res['email'])
                 cookie_manager.set("user_email", res['email'],
                                    expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
+                time.sleep(0.2)
                 st.rerun()
             else:
                 st.error("Authentication failed.")
@@ -161,6 +168,7 @@ if 'user_email' not in st.session_state:
                     st.session_state['user_data'] = {}
                     cookie_manager.set("user_email", res['email'],
                                        expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
+                    time.sleep(0.2)
                     st.rerun()
             else:
                 st.warning("Min 6 characters.")
@@ -235,7 +243,8 @@ with c_logout:
         f"<div style='text-align: right; font-size: 0.9rem; color: #64748b; padding-top: 10px;'>Logged in: <b>{st.session_state['user_email']}</b></div>",
         unsafe_allow_html=True)
     if st.button("Log Out", use_container_width=True):
-        if cookie_manager.get("user_email"): cookie_manager.delete("user_email")
+        cookie_manager.delete("user_email")
+        time.sleep(0.2)
         st.session_state.clear()
         st.rerun()
 
@@ -763,11 +772,16 @@ with st.expander("⚖️ 7. AI Based Advanced Retirement Scenarios", expanded=Fa
 
 # --- 8. EXHAUSTIVE DASHBOARD ENGINE & TAX LOGIC ---
 with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=True):
-    st.markdown(
-        '<div class="info-text">💡 <strong>Currency Note:</strong> All future calculations and charts are displayed in <strong>Future (Nominal) Dollars</strong>. This means inflation is actively compounded year over year. A $10,000 expense today will show as a much larger nominal amount in 20 years.</div>',
-        unsafe_allow_html=True)
-
     if my_age > 0:
+
+        c_dash1, c_dash2 = st.columns([3, 1])
+        with c_dash1:
+            st.markdown(
+                '<div class="info-text">💡 <strong>Currency Note:</strong> By default, calculations use <strong>Future (Nominal) Dollars</strong>. This means inflation is actively compounded year over year (e.g. a $10,000 expense today will show as a much larger nominal amount in 20 years).</div>',
+                unsafe_allow_html=True)
+        with c_dash2:
+            view_todays_dollars = st.toggle("💵 View in Today's Dollars", value=False,
+                                            help="Discount all future simulation numbers back to current purchasing power.")
 
         prop_g = float(st.session_state['assumptions'].get('property_growth', 3.0))
         rent_g = float(st.session_state['assumptions'].get('rent_growth', 3.0))
@@ -830,34 +844,35 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
                              109: 3.7, 110: 3.5, 111: 3.4, 112: 3.3, 113: 3.1, 114: 3.0, 115: 2.9, 116: 2.8, 117: 2.7,
                              118: 2.5, 119: 2.3, 120: 2.0}
 
-        # INIT STATE
-        sim_assets = [{"Account Name": a.get("Account Name"), "Type": a.get("Type"), "Owner": a.get("Owner", "Me"),
-                       "bal": safe_num(a.get("Current Balance ($)")),
-                       "contrib": safe_num(a.get("Annual Additions ($/yr)")),
-                       "growth": safe_num(a.get("Est. Annual Growth (%)"), mkt),
-                       "stop_at_ret": a.get("Stop Contrib at Ret.?", True)} for a in edited_ast.to_dict('records') if
-                      a.get("Account Name")]
-        if not sim_assets: sim_assets = [
+        # BASE STATE EXTRACTION (For reusability in Monte Carlo)
+        base_sim_assets = [{"Account Name": a.get("Account Name"), "Type": a.get("Type"), "Owner": a.get("Owner", "Me"),
+                            "bal": safe_num(a.get("Current Balance ($)")),
+                            "contrib": safe_num(a.get("Annual Additions ($/yr)")),
+                            "growth": safe_num(a.get("Est. Annual Growth (%)"), mkt),
+                            "stop_at_ret": a.get("Stop Contrib at Ret.?", True)} for a in edited_ast.to_dict('records')
+                           if a.get("Account Name")]
+        if not base_sim_assets: base_sim_assets = [
             {"Account Name": "Unallocated Cash", "Type": "Checking/Savings", "Owner": "Me", "bal": 0.0, "contrib": 0.0,
              "growth": 0.0, "stop_at_ret": False}]
 
-        sim_debts = [{"bal": safe_num(d.get("Current Balance ($)")), "pmt": safe_num(d.get("Monthly Payment ($)")) * 12,
-                      "rate": safe_num(d.get("Interest Rate (%)")) / 100, "name": d.get("Debt Name")} for d in
-                     edited_debt.to_dict('records') if d.get("Debt Name")]
-        sim_re = [{"val": safe_num(r.get("Market Value ($)")), "debt": safe_num(r.get("Mortgage Balance ($)")),
-                   "pmt": safe_num(r.get("Mortgage Payment ($)")) * 12,
-                   "exp": safe_num(r.get("Monthly Expenses ($)")) * 12,
-                   "rent": safe_num(r.get("Monthly Rent ($)")) * 12,
-                   "v_growth": safe_num(r.get("Override Prop Growth (%)"), prop_g),
-                   "r_growth": safe_num(r.get("Override Rent Growth (%)"), rent_g),
-                   "rate": safe_num(r.get("Interest Rate (%)")) / 100} for r in edited_re.to_dict('records') if
-                  r.get("Property Name")]
-        sim_biz = [{"name": b.get("Business Name"), "val": safe_num(b.get("Total Valuation ($)")),
-                    "own": safe_num(b.get("Your Ownership (%)")) / 100.0,
-                    "dist": safe_num(b.get("Annual Distribution ($)")),
-                    "v_growth": safe_num(b.get("Override Val. Growth (%)"), mkt),
-                    "d_growth": safe_num(b.get("Override Dist. Growth (%)"), inc_g)} for b in
-                   edited_biz.to_dict('records') if b.get("Business Name")]
+        base_sim_debts = [
+            {"bal": safe_num(d.get("Current Balance ($)")), "pmt": safe_num(d.get("Monthly Payment ($)")) * 12,
+             "rate": safe_num(d.get("Interest Rate (%)")) / 100, "name": d.get("Debt Name")} for d in
+            edited_debt.to_dict('records') if d.get("Debt Name")]
+        base_sim_re = [{"val": safe_num(r.get("Market Value ($)")), "debt": safe_num(r.get("Mortgage Balance ($)")),
+                        "pmt": safe_num(r.get("Mortgage Payment ($)")) * 12,
+                        "exp": safe_num(r.get("Monthly Expenses ($)")) * 12,
+                        "rent": safe_num(r.get("Monthly Rent ($)")) * 12,
+                        "v_growth": safe_num(r.get("Override Prop Growth (%)"), prop_g),
+                        "r_growth": safe_num(r.get("Override Rent Growth (%)"), rent_g),
+                        "rate": safe_num(r.get("Interest Rate (%)")) / 100} for r in edited_re.to_dict('records') if
+                       r.get("Property Name")]
+        base_sim_biz = [{"name": b.get("Business Name"), "val": safe_num(b.get("Total Valuation ($)")),
+                         "own": safe_num(b.get("Your Ownership (%)")) / 100.0,
+                         "dist": safe_num(b.get("Annual Distribution ($)")),
+                         "v_growth": safe_num(b.get("Override Val. Growth (%)"), mkt),
+                         "d_growth": safe_num(b.get("Override Dist. Growth (%)"), inc_g)} for b in
+                        edited_biz.to_dict('records') if b.get("Business Name")]
 
         curr_exp_by_cat = {}
         for r in edited_c.to_dict('records'):
@@ -877,324 +892,334 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
                 amt = safe_num(r.get("Amount ($)")) * (12 if r.get("Frequency") == "Monthly" else 1)
                 ret_exp_by_cat[cat] = ret_exp_by_cat.get(cat, 0) + amt
 
-        sim_results, detailed_results, nw_detailed_results = [], [], []
         current_year = datetime.date.today().year
-
         my_life_exp_val = my_life_exp if my_life_exp else 95
         spouse_life_exp_val = spouse_life_exp if has_spouse and spouse_life_exp else 0
-
-        # Calculate absolute simulation bounds
         max_years = max(0, my_life_exp_val - my_age)
-        if has_spouse:
-            max_years = max(max_years, spouse_life_exp_val - spouse_age)
+        if has_spouse: max_years = max(max_years, spouse_life_exp_val - spouse_age)
 
-        # EXHAUSTIVE SIMULATION LOOP
-        for year_offset in range(max_years + 1):
-            year = current_year + year_offset
-            age = my_age + year_offset
-            s_age = spouse_age + year_offset if has_spouse else 0
 
-            is_my_alive = age <= my_life_exp_val
-            is_spouse_alive = has_spouse and (s_age <= spouse_life_exp_val)
+        # --- CORE SIMULATION ENGINE ---
+        def run_simulation(mkt_sequence):
+            sim_assets = copy.deepcopy(base_sim_assets)
+            sim_debts = copy.deepcopy(base_sim_debts)
+            sim_re = copy.deepcopy(base_sim_re)
+            sim_biz = copy.deepcopy(base_sim_biz)
 
-            if not is_my_alive and not is_spouse_alive:
-                break
+            sim_res, det_res, nw_det_res = [], [], []
 
-            is_retired = age >= ret_age
-            is_spouse_retired = has_spouse and s_age >= s_ret_age
+            for year_offset in range(max_years + 1):
+                year = current_year + year_offset
+                age = my_age + year_offset
+                s_age = spouse_age + year_offset if has_spouse else 0
 
-            yd = {"Age": age, "Year": year}
-            nw_yd = {"Age": age, "Year": year}
+                is_my_alive = age <= my_life_exp_val
+                is_spouse_alive = has_spouse and (s_age <= spouse_life_exp_val)
 
-            annual_inc, annual_ss, pre_tax_ord, pre_tax_cg, earned_income = 0, 0, 0, 0, 0
+                if not is_my_alive and not is_spouse_alive: break
 
-            # Glidepath & Stress Logic
-            active_mkt = mkt
-            if glidepath and is_retired:
-                years_retired = age - ret_age
-                active_mkt = max(3.0, mkt - (math.floor(years_retired / 5) * 1.0))
-            if stress_test and is_retired and age < (int(ret_age) + 3): active_mkt = -20.0
+                is_retired = age >= ret_age
+                is_spouse_retired = has_spouse and s_age >= s_ret_age
 
-            # Widow(er) Penalty Logic
-            active_mfj = True if has_spouse and is_my_alive and is_spouse_alive else False
+                yd = {"Age": age, "Year": year}
+                nw_yd = {"Age": age, "Year": year}
 
-            # Income Generation
-            for inc in edited_inc.to_dict('records'):
-                owner = inc.get("Owner", "Me")
-                if owner == "Me" and not is_my_alive: continue
-                if owner == "Spouse" and not is_spouse_alive: continue
-                if owner == "Joint" and not is_my_alive and not is_spouse_alive: continue
+                annual_inc, annual_ss, pre_tax_ord, pre_tax_cg, earned_income = 0, 0, 0, 0, 0
 
-                cat_name = inc.get("Category", "Other")
-                stop_at_ret = inc.get("Stop at Ret.?", False)
+                base_mkt_yr = mkt_sequence[year_offset]
+                active_mkt = base_mkt_yr
+                if glidepath and is_retired:
+                    years_retired = age - ret_age
+                    active_mkt = max(3.0, base_mkt_yr - (math.floor(years_retired / 5) * 1.0))
+                if stress_test and is_retired and age < (int(ret_age) + 3): active_mkt = -20.0
 
-                owner_retired = False
-                if owner == "Me":
-                    owner_retired = is_retired
-                elif owner == "Spouse":
-                    owner_retired = is_spouse_retired if has_spouse else True
-                elif owner == "Joint":
-                    owner_retired = is_retired
+                active_mfj = True if has_spouse and is_my_alive and is_spouse_alive else False
 
-                start_age = safe_num(inc.get('Start Age'), 18)
-                end_age = safe_num(inc.get('End Age'), 100)
+                # Income
+                for inc in edited_inc.to_dict('records'):
+                    owner = inc.get("Owner", "Me")
+                    if owner == "Me" and not is_my_alive: continue
+                    if owner == "Spouse" and not is_spouse_alive: continue
+                    if owner == "Joint" and not is_my_alive and not is_spouse_alive: continue
 
-                if cat_name == "Social Security": stop_at_ret = False
+                    cat_name = inc.get("Category", "Other")
+                    stop_at_ret = inc.get("Stop at Ret.?", False)
 
-                is_active = False
-                if stop_at_ret:
-                    is_active = (age >= start_age) and not owner_retired
-                else:
-                    is_active = (start_age <= age <= end_age)
-
-                if inc.get("Description") and is_active:
-                    g = safe_num(inc.get('Override Growth (%)'), inc_g)
-                    base_amt = safe_num(inc.get('Annual Amount ($)'))
-
-                    if cat_name == "Social Security" and owner == "Me":
-                        base_amt = base_amt * my_ss_multi
-
-                    amt = base_amt * ((1 + g / 100) ** year_offset)
-                    annual_inc += amt
-                    yd[f"Income: {cat_name}"] = yd.get(f"Income: {cat_name}", 0) + amt
-                    if cat_name == "Social Security": annual_ss += amt
-                    if cat_name not in ["Employer Match (401k/HSA)", "Social Security"]: pre_tax_ord += amt
-                    if cat_name in ["Base Salary (W-2)", "Bonus / Commission", "Side Gig (1099)"]: earned_income += amt
-
-            # SECURE 2.0 RMDs
-            rmd_income = 0
-            rmd_target_age = 73 if my_dob.year <= 1959 else 75
-            if age >= rmd_target_age and is_my_alive:
-                factor = irs_uniform_table.get(age, 2.0)
-                for a in sim_assets:
-                    if a.get('Type') == 'Traditional 401k/IRA' and a['bal'] > 0:
-                        rmd_amt = a['bal'] / factor
-                        a['bal'] -= rmd_amt
-                        rmd_income += rmd_amt
-                        pre_tax_ord += rmd_amt
-            if rmd_income > 0:
-                annual_inc += rmd_income
-                yd["Income: RMDs"] = rmd_income
-
-            # Business & Real Estate
-            cur_biz_val, biz_dist_total, re_equity, re_exp_total = 0, 0, 0, 0
-            for b in sim_biz:
-                if year_offset > 0:
-                    b['val'] *= (1 + b['v_growth'] / 100)
-                    b['dist'] *= (1 + b['d_growth'] / 100)
-                cur_biz_val += (b['val'] * b['own'])
-                annual_inc += b['dist']
-                pre_tax_ord += b['dist']
-                yd["Income: Biz Dist"] = b['dist']
-
-            for r in sim_re:
-                if year_offset > 0: r['rent'] *= (1 + r['r_growth'] / 100); r['exp'] *= (1 + infl / 100); r['val'] *= (
-                            1 + r['v_growth'] / 100)
-                annual_inc += r['rent']
-                pre_tax_ord += r['rent']
-                yd["Income: RE Rent"] = r['rent'] if r['rent'] > 0 else 0
-                re_exp_total += r['exp']
-                yd["Expense: RE Upkeep/Tax"] = r['exp'] if r['exp'] > 0 else 0
-                if r['debt'] > 0:
-                    interest = r['debt'] * r['rate']
-                    principal = max(0, r['pmt'] - interest)
-                    r['debt'] = max(0, r['debt'] - principal)
-                    re_exp_total += r['pmt']
-                    yd["Expense: RE Mortgage"] = r['pmt']
-                re_equity += (r['val'] - r['debt'])
-
-            # Core Expenses & Toggles
-            total_exp = re_exp_total
-            active_expense_dict = ret_exp_by_cat if is_retired else curr_exp_by_cat
-            for cat, base_amt in active_expense_dict.items():
-                cat_infl = infl_hc if cat in ["Healthcare", "Insurance"] else (infl_ed if cat == "Education" else infl)
-                inflated_exp = base_amt * ((1 + cat_infl / 100) ** year_offset)
-
-                # Drop expenses significantly if widow(er)
-                if has_spouse and not (is_my_alive and is_spouse_alive): inflated_exp *= 0.6
-
-                # Health Insurance Logic
-                if medicare_gap and is_retired and age < 65 and cat == "Healthcare": inflated_exp += (
-                            15000 * ((1 + infl_hc / 100) ** year_offset))
-                if medicare_cliff and cat == "Healthcare" and age >= 65: inflated_exp *= 0.50
-
-                total_exp += inflated_exp
-                yd[f"Expense: {cat}"] = inflated_exp
-
-            # LTC Shock
-            if ltc_shock and age >= (my_life_exp_val - 2) and is_my_alive:
-                ltc_cost = 100000 * ((1 + infl_hc / 100) ** year_offset)
-                total_exp += ltc_cost
-                yd["Expense: Long Term Care Shock"] = ltc_cost
-
-            # Debt Amortization
-            debt_bal_total = 0
-            for d in sim_debts:
-                if d['bal'] > 0:
-                    interest = d['bal'] * d['rate']
-                    principal = max(0, d['pmt'] - interest)
-                    d['bal'] = max(0, d['bal'] - principal)
-                    total_exp += d['pmt']
-                    yd["Expense: Debt Payments"] = d['pmt']
-                debt_bal_total += d['bal']
-
-            # Milestones
-            for ev in edited_m.to_dict('records'):
-                if ev.get("Description"):
-                    try:
-                        sy = int(str(ev.get('Start Date (MM/YYYY)', '')).split('/')[-1])
-                    except:
-                        sy = 0
-                    if sy == year and sy != 0:
-                        amt = safe_num(ev.get('Amount ($)')) * ((1 + infl / 100) ** year_offset)
-                        if ev.get('Type') == 'Expense':
-                            total_exp += amt
-                            yd[f"Expense: Milestone ({ev.get('Description')})"] = amt
-                        else:
-                            annual_inc += amt
-                            pre_tax_ord += amt
-                            yd[f"Income: Milestone ({ev.get('Description')})"] = amt
-
-            # Asset Waterfall Routing
-            liquid_assets_total, asset_contributions = 0, 0
-            if not is_retired:
-                for a in sim_assets:
-                    owner = a.get('Owner', 'Me')
                     owner_retired = False
-                    if owner == 'Me':
+                    if owner == "Me":
                         owner_retired = is_retired
-                    elif owner == 'Spouse':
+                    elif owner == "Spouse":
                         owner_retired = is_spouse_retired if has_spouse else True
-                    elif owner == 'Joint':
+                    elif owner == "Joint":
                         owner_retired = is_retired
 
-                    is_owner_alive = False
-                    if owner == 'Me':
-                        is_owner_alive = is_my_alive
-                    elif owner == 'Spouse':
-                        is_owner_alive = is_spouse_alive
+                    start_age = safe_num(inc.get('Start Age'), 18)
+                    end_age = safe_num(inc.get('End Age'), 100)
+                    if cat_name == "Social Security": stop_at_ret = False
+
+                    is_active = False
+                    if stop_at_ret:
+                        is_active = (age >= start_age) and not owner_retired
                     else:
-                        is_owner_alive = is_my_alive or is_spouse_alive
+                        is_active = (start_age <= age <= end_age)
 
-                    if is_owner_alive:
-                        stop_contrib = a.get('stop_at_ret', True)
-                        if not (stop_contrib and owner_retired):
-                            a['bal'] += a['contrib']
-                            asset_contributions += a['contrib']
+                    if inc.get("Description") and is_active:
+                        g = safe_num(inc.get('Override Growth (%)'), inc_g)
+                        base_amt = safe_num(inc.get('Annual Amount ($)'))
+                        if cat_name == "Social Security" and owner == "Me": base_amt = base_amt * my_ss_multi
 
-            # Pre-apply market growth
-            for a in sim_assets:
-                a_growth = active_mkt if a.get('Type') not in ['Checking/Savings', 'HYSA', 'Unallocated Cash'] else a[
-                    'growth']
-                a['bal'] *= (1 + a_growth / 100)
+                        amt = base_amt * ((1 + g / 100) ** year_offset)
+                        annual_inc += amt
+                        yd[f"Income: {cat_name}"] = yd.get(f"Income: {cat_name}", 0) + amt
+                        if cat_name == "Social Security": annual_ss += amt
+                        if cat_name not in ["Employer Match (401k/HSA)", "Social Security"]: pre_tax_ord += amt
+                        if cat_name in ["Base Salary (W-2)", "Bonus / Commission",
+                                        "Side Gig (1099)"]: earned_income += amt
 
-            # Tax Calculations
-            base_fed_tax, marginal_rate = calc_federal_tax(pre_tax_ord, 0, active_mfj, year_offset, infl)
-            state_tax_rate = cur_t if not is_retired else ret_t
-            state_tax = pre_tax_ord * (state_tax_rate / 100.0)
+                # RMDs
+                rmd_income = 0
+                rmd_target_age = 73 if my_dob.year <= 1959 else 75
+                if age >= rmd_target_age and is_my_alive:
+                    factor = irs_uniform_table.get(age, 2.0)
+                    for a in sim_assets:
+                        if a.get('Type') == 'Traditional 401k/IRA' and a['bal'] > 0:
+                            rmd_amt = a['bal'] / factor
+                            a['bal'] -= rmd_amt
+                            rmd_income += rmd_amt
+                            pre_tax_ord += rmd_amt
+                if rmd_income > 0:
+                    annual_inc += rmd_income
+                    yd["Income: RMDs"] = rmd_income
 
-            # FICA Tax (Simplified approximation for earned income)
-            fica_tax = 0
-            if earned_income > 0:
-                ss_wage_base = 168600 * ((1 + infl / 100) ** year_offset)
-                ss_tax = min(earned_income, ss_wage_base) * 0.062
-                med_tax = earned_income * 0.0145
-                addl_med_tax = max(0, earned_income - 250000) * 0.009
-                fica_tax = ss_tax + med_tax + addl_med_tax
+                # Business & Real Estate
+                cur_biz_val, biz_dist_total, re_equity, re_exp_total = 0, 0, 0, 0
+                for b in sim_biz:
+                    if year_offset > 0:
+                        b['val'] *= (1 + b['v_growth'] / 100)
+                        b['dist'] *= (1 + b['d_growth'] / 100)
+                    cur_biz_val += (b['val'] * b['own'])
+                    annual_inc += b['dist']
+                    pre_tax_ord += b['dist']
+                    yd["Income: Biz Dist"] = b['dist']
 
-            total_tax = base_fed_tax + state_tax + fica_tax
+                for r in sim_re:
+                    if year_offset > 0: r['rent'] *= (1 + r['r_growth'] / 100); r['exp'] *= (1 + infl / 100); r[
+                        'val'] *= (1 + r['v_growth'] / 100)
+                    annual_inc += r['rent']
+                    pre_tax_ord += r['rent']
+                    yd["Income: RE Rent"] = r['rent'] if r['rent'] > 0 else 0
+                    re_exp_total += r['exp']
+                    yd["Expense: RE Upkeep/Tax"] = r['exp'] if r['exp'] > 0 else 0
+                    if r['debt'] > 0:
+                        interest = r['debt'] * r['rate']
+                        principal = max(0, r['pmt'] - interest)
+                        r['debt'] = max(0, r['debt'] - principal)
+                        re_exp_total += r['pmt']
+                        yd["Expense: RE Mortgage"] = r['pmt']
+                    re_equity += (r['val'] - r['debt'])
 
-            # Robust Shortfall / Withdrawal Math
-            cash_outflows = total_exp + asset_contributions + total_tax
-            net_cash_flow = annual_inc - cash_outflows
+                # Expenses
+                total_exp = re_exp_total
+                active_expense_dict = ret_exp_by_cat if is_retired else curr_exp_by_cat
+                for cat, base_amt in active_expense_dict.items():
+                    cat_infl = infl_hc if cat in ["Healthcare", "Insurance"] else (
+                        infl_ed if cat == "Education" else infl)
+                    inflated_exp = base_amt * ((1 + cat_infl / 100) ** year_offset)
 
-            if net_cash_flow > 0:
-                # Surplus
-                if len(sim_assets) > 0: sim_assets[0]['bal'] += net_cash_flow
-            elif net_cash_flow < 0:
-                shortfall = abs(net_cash_flow)
+                    if has_spouse and not (is_my_alive and is_spouse_alive): inflated_exp *= 0.6
+                    if medicare_gap and is_retired and age < 65 and cat == "Healthcare": inflated_exp += (
+                                15000 * ((1 + infl_hc / 100) ** year_offset))
+                    if medicare_cliff and cat == "Healthcare" and age >= 65: inflated_exp *= 0.50
 
-                # Sequence 1: Taxable Brokerage / Cash
-                for a in sim_assets:
-                    if shortfall <= 0: break
-                    if a.get('Type') in ['Checking/Savings', 'HYSA', 'Brokerage (Taxable)', 'Unallocated Cash']:
-                        if a.get('Type') == 'Brokerage (Taxable)':
-                            req_gross = shortfall / 0.85
-                            if a['bal'] >= req_gross:
-                                a['bal'] -= req_gross
-                                total_tax += (req_gross - shortfall)
-                                shortfall = 0
+                    total_exp += inflated_exp
+                    yd[f"Expense: {cat}"] = inflated_exp
+
+                # LTC Shock
+                if ltc_shock and age >= (my_life_exp_val - 2) and is_my_alive:
+                    ltc_cost = 100000 * ((1 + infl_hc / 100) ** year_offset)
+                    total_exp += ltc_cost
+                    yd["Expense: Long Term Care Shock"] = ltc_cost
+
+                # Debt Amortization
+                debt_bal_total = 0
+                for d in sim_debts:
+                    if d['bal'] > 0:
+                        interest = d['bal'] * d['rate']
+                        principal = max(0, d['pmt'] - interest)
+                        d['bal'] = max(0, d['bal'] - principal)
+                        total_exp += d['pmt']
+                        yd["Expense: Debt Payments"] = d['pmt']
+                    debt_bal_total += d['bal']
+
+                # Milestones
+                for ev in edited_m.to_dict('records'):
+                    if ev.get("Description"):
+                        try:
+                            sy = int(str(ev.get('Start Date (MM/YYYY)', '')).split('/')[-1])
+                        except:
+                            sy = 0
+                        if sy == year and sy != 0:
+                            amt = safe_num(ev.get('Amount ($)')) * ((1 + infl / 100) ** year_offset)
+                            if ev.get('Type') == 'Expense':
+                                total_exp += amt
+                                yd[f"Expense: Milestone ({ev.get('Description')})"] = amt
                             else:
-                                withdrawn = a['bal']
-                                a['bal'] = 0
-                                net_cash = withdrawn * 0.85
-                                total_tax += (withdrawn - net_cash)
-                                shortfall -= net_cash
+                                annual_inc += amt
+                                pre_tax_ord += amt
+                                yd[f"Income: Milestone ({ev.get('Description')})"] = amt
+
+                # Asset Contributions
+                asset_contributions = 0
+                if not is_retired:
+                    for a in sim_assets:
+                        owner = a.get('Owner', 'Me')
+                        owner_retired = False
+                        if owner == 'Me':
+                            owner_retired = is_retired
+                        elif owner == 'Spouse':
+                            owner_retired = is_spouse_retired if has_spouse else True
+                        elif owner == 'Joint':
+                            owner_retired = is_retired
+
+                        is_owner_alive = False
+                        if owner == 'Me':
+                            is_owner_alive = is_my_alive
+                        elif owner == 'Spouse':
+                            is_owner_alive = is_spouse_alive
                         else:
-                            if a['bal'] >= shortfall:
-                                a['bal'] -= shortfall
-                                shortfall = 0
-                            else:
-                                shortfall -= a['bal']
-                                a['bal'] = 0
+                            is_owner_alive = is_my_alive or is_spouse_alive
 
-                # Sequence 2: Tax-Deferred (Traditional 401k)
-                if shortfall > 0:
+                        if is_owner_alive:
+                            stop_contrib = a.get('stop_at_ret', True)
+                            if not (stop_contrib and owner_retired):
+                                a['bal'] += a['contrib']
+                                asset_contributions += a['contrib']
+
+                # Pre-apply market growth
+                for a in sim_assets:
+                    a_growth = active_mkt if a.get('Type') not in ['Checking/Savings', 'HYSA', 'Unallocated Cash'] else \
+                    a['growth']
+                    a['bal'] *= (1 + a_growth / 100)
+
+                # Taxes
+                base_fed_tax, marginal_rate = calc_federal_tax(pre_tax_ord, 0, active_mfj, year_offset, infl)
+                state_tax_rate = cur_t if not is_retired else ret_t
+                state_tax = pre_tax_ord * (state_tax_rate / 100.0)
+
+                fica_tax = 0
+                if earned_income > 0:
+                    ss_wage_base = 168600 * ((1 + infl / 100) ** year_offset)
+                    ss_tax = min(earned_income, ss_wage_base) * 0.062
+                    med_tax = earned_income * 0.0145
+                    addl_med_tax = max(0, earned_income - 250000) * 0.009
+                    fica_tax = ss_tax + med_tax + addl_med_tax
+
+                total_tax = base_fed_tax + state_tax + fica_tax
+
+                # Withdrawals & Shortfall Logic
+                cash_outflows = total_exp + asset_contributions + total_tax
+                net_cash_flow = annual_inc - cash_outflows
+
+                if net_cash_flow > 0:
+                    if len(sim_assets) > 0: sim_assets[0]['bal'] += net_cash_flow
+                elif net_cash_flow < 0:
+                    shortfall = abs(net_cash_flow)
                     for a in sim_assets:
                         if shortfall <= 0: break
-                        if a.get('Type') == 'Traditional 401k/IRA':
-                            eff_tax = min(marginal_rate + (state_tax_rate / 100.0), 0.99)
-                            req_gross = shortfall / (1.0 - eff_tax)
-                            if a['bal'] >= req_gross:
-                                a['bal'] -= req_gross
-                                total_tax += (req_gross - shortfall)
-                                shortfall = 0
+                        if a.get('Type') in ['Checking/Savings', 'HYSA', 'Brokerage (Taxable)', 'Unallocated Cash']:
+                            if a.get('Type') == 'Brokerage (Taxable)':
+                                req_gross = shortfall / 0.85
+                                if a['bal'] >= req_gross:
+                                    a['bal'] -= req_gross
+                                    total_tax += (req_gross - shortfall)
+                                    shortfall = 0
+                                else:
+                                    withdrawn = a['bal']
+                                    a['bal'] = 0
+                                    net_cash = withdrawn * 0.85
+                                    total_tax += (withdrawn - net_cash)
+                                    shortfall -= net_cash
                             else:
-                                withdrawn = a['bal']
-                                a['bal'] = 0
-                                net_cash = withdrawn * (1.0 - eff_tax)
-                                total_tax += (withdrawn - net_cash)
-                                shortfall -= net_cash
+                                if a['bal'] >= shortfall:
+                                    a['bal'] -= shortfall
+                                    shortfall = 0
+                                else:
+                                    shortfall -= a['bal']
+                                    a['bal'] = 0
 
-                # Sequence 3: Tax-Free (Roth/HSA)
-                if shortfall > 0:
-                    for a in sim_assets:
-                        if shortfall <= 0: break
-                        if a.get('Type') in ['Roth 401k/IRA', 'HSA', 'Crypto', '529 Plan', 'Other']:
-                            if a['bal'] >= shortfall:
-                                a['bal'] -= shortfall
-                                shortfall = 0
-                            else:
-                                shortfall -= a['bal']
-                                a['bal'] = 0
+                    if shortfall > 0:
+                        for a in sim_assets:
+                            if shortfall <= 0: break
+                            if a.get('Type') == 'Traditional 401k/IRA':
+                                eff_tax = min(marginal_rate + (state_tax_rate / 100.0), 0.99)
+                                req_gross = shortfall / (1.0 - eff_tax)
+                                if a['bal'] >= req_gross:
+                                    a['bal'] -= req_gross
+                                    total_tax += (req_gross - shortfall)
+                                    shortfall = 0
+                                else:
+                                    withdrawn = a['bal']
+                                    a['bal'] = 0
+                                    net_cash = withdrawn * (1.0 - eff_tax)
+                                    total_tax += (withdrawn - net_cash)
+                                    shortfall -= net_cash
 
-            liquid_assets_total = 0
-            for a in sim_assets:
-                # Ensure no floating point math drags balance below absolute zero
-                a['bal'] = max(0, a['bal'])
-                liquid_assets_total += a['bal']
-                nw_yd[f"Asset: {a.get('Account Name', 'Account')}"] = a['bal']
+                    if shortfall > 0:
+                        for a in sim_assets:
+                            if shortfall <= 0: break
+                            if a.get('Type') in ['Roth 401k/IRA', 'HSA', 'Crypto', '529 Plan', 'Other']:
+                                if a['bal'] >= shortfall:
+                                    a['bal'] -= shortfall
+                                    shortfall = 0
+                                else:
+                                    shortfall -= a['bal']
+                                    a['bal'] = 0
 
-            net_worth = liquid_assets_total + re_equity + cur_biz_val - debt_bal_total
+                liquid_assets_total = 0
+                for a in sim_assets:
+                    a['bal'] = max(0, a['bal'])
+                    liquid_assets_total += a['bal']
+                    nw_yd[f"Asset: {a.get('Account Name', 'Account')}"] = a['bal']
 
-            yd["Expense: Taxes"] = total_tax
-            yd["Net Savings"] = annual_inc - total_exp - total_tax
+                net_worth = liquid_assets_total + re_equity + cur_biz_val - debt_bal_total
 
-            nw_yd["Total Liquid Assets"] = liquid_assets_total
-            nw_yd["Total Real Estate Equity"] = re_equity
-            nw_yd["Total Business Equity"] = cur_biz_val
-            nw_yd["Total Debt Liabilities"] = -debt_bal_total
-            nw_yd["Total Net Worth"] = net_worth
+                yd["Expense: Taxes"] = total_tax
+                yd["Net Savings"] = annual_inc - total_exp - total_tax
 
-            sim_results.append({"Age": age, "Year": year, "Annual Income": annual_inc, "Annual Expenses": total_exp,
+                nw_yd["Total Liquid Assets"] = liquid_assets_total
+                nw_yd["Total Real Estate Equity"] = re_equity
+                nw_yd["Total Business Equity"] = cur_biz_val
+                nw_yd["Total Debt Liabilities"] = -debt_bal_total
+                nw_yd["Total Net Worth"] = net_worth
+
+                sim_res.append({"Age": age, "Year": year, "Annual Income": annual_inc, "Annual Expenses": total_exp,
                                 "Annual Taxes": total_tax, "Annual Net Savings": yd["Net Savings"],
                                 "Liquid Assets": liquid_assets_total,
                                 "Real Estate Equity": re_equity, "Business Equity": cur_biz_val,
                                 "Debt": -debt_bal_total, "Net Worth": net_worth})
-            detailed_results.append(yd)
-            nw_detailed_results.append(nw_yd)
+                det_res.append(yd)
+                nw_det_res.append(nw_yd)
 
-        # UI RENDER
+            return sim_res, det_res, nw_det_res
+
+
+        # --- EXECUTE BASE DETERMINISTIC RUN ---
+        deterministic_seq = [mkt] * (max_years + 1)
+        sim_results, detailed_results, nw_detailed_results = run_simulation(deterministic_seq)
+
+        # APPLY DISCOUNTING IF TOGGLED
+        if view_todays_dollars and len(sim_results) > 0:
+            for i in range(len(sim_results)):
+                discount = (1 + infl / 100) ** i
+                for col in ["Annual Income", "Annual Expenses", "Annual Taxes", "Annual Net Savings", "Liquid Assets",
+                            "Real Estate Equity", "Business Equity", "Debt", "Net Worth"]:
+                    sim_results[i][col] /= discount
+                for k in detailed_results[i].keys():
+                    if k not in ["Age", "Year"]: detailed_results[i][k] /= discount
+                for k in nw_detailed_results[i].keys():
+                    if k not in ["Age", "Year"]: nw_detailed_results[i][k] /= discount
+
+        # --- UI RENDER: DASHBOARD ---
         if len(sim_results) > 0:
             df_sim = pd.DataFrame(sim_results)
             final_nw = df_sim.iloc[-1]['Net Worth']
@@ -1230,16 +1255,9 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
                             st.error("⚠️ AI Analysis failed to generate.")
 
             if 'ai_analysis_report' in st.session_state:
-                report_content = st.session_state['ai_analysis_report'].replace('\\n', '\n')
-                st.markdown(f"""
-<div style="background-color: #f1f5f9; padding: 20px; border-radius: 8px; border-left: 5px solid #4f46e5; margin-bottom: 20px;">
-
-<h3 style="margin-top: 0;">🤖 AI Advisory Report</h3>
-
-{report_content}
-
-</div>
-""", unsafe_allow_html=True)
+                # Escape dollar signs to prevent Streamlit from turning currency into green LaTeX math equations
+                report_content = st.session_state['ai_analysis_report'].replace('\\n', '\n').replace('$', r'\$')
+                st.info(f"### 🤖 AI Advisory Report\n\n{report_content}")
 
             if HAS_PLOTLY:
                 st.write("#### Net Worth Composition (Smart Asset Drawdown)")
@@ -1268,7 +1286,7 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
                                      legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
                 st.plotly_chart(fig_nw, use_container_width=True)
 
-                st.write("#### Annual Cash Flow (Progressive Taxes Modeled)")
+                st.write("#### Annual Cash Flow & Progressive Taxes")
                 fig_cf = go.Figure()
                 fig_cf.add_trace(go.Scatter(x=df_sim["Age"], y=df_sim["Annual Income"], mode='lines', name='Income',
                                             line=dict(color='#4f46e5', width=3)))
@@ -1284,6 +1302,64 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
                                      legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
                 st.plotly_chart(fig_cf, use_container_width=True)
 
+            # --- MONTE CARLO SECTION ---
+            st.divider()
+            st.subheader("🎲 Monte Carlo Risk Analysis")
+            st.markdown(
+                '<div class="info-text">💡 <strong>Stress Test Your Future:</strong> Real markets don\'t go up in a straight line. Run your exact financial profile through 100+ randomized market paths based on historical volatility to find your true Probability of Success.</div>',
+                unsafe_allow_html=True)
+
+            col_mc1, col_mc2, col_mc3 = st.columns([1, 1, 2])
+            mc_vol = col_mc1.number_input("Portfolio Volatility (%)", value=15.0,
+                                          help="Historically, the S&P 500 has a volatility (standard deviation) of around 15%. Bonds have around 5%.")
+            mc_runs = col_mc2.number_input("Number of Simulations", min_value=10, max_value=500, value=100, step=10)
+
+            if col_mc3.button("✨ Run Monte Carlo Simulation", use_container_width=True):
+                with st.spinner(f"Running {mc_runs} parallel market scenarios..."):
+                    success_count = 0
+                    all_nw_paths = []
+
+                    for r in range(mc_runs):
+                        rand_seq = [random.gauss(mkt, mc_vol) for _ in range(max_years + 1)]
+                        res, _, _ = run_simulation(rand_seq)
+
+                        nw_path = [step["Net Worth"] for step in res]
+                        all_nw_paths.append(nw_path)
+
+                        if nw_path[-1] > 0: success_count += 1
+
+                    success_rate = (success_count / mc_runs) * 100
+
+                    path_len = len(all_nw_paths[0])
+                    ages = [df_sim.iloc[i]["Age"] for i in range(path_len)]
+                    p10, p50, p90 = [], [], []
+
+                    for i in range(path_len):
+                        step_vals = sorted([path[i] for path in all_nw_paths])
+                        discount = (1 + infl / 100) ** i if view_todays_dollars else 1.0
+                        p10.append(step_vals[int(mc_runs * 0.10)] / discount)
+                        p50.append(step_vals[int(mc_runs * 0.50)] / discount)
+                        p90.append(step_vals[int(mc_runs * 0.90)] / discount)
+
+                    st.markdown(
+                        f"<h3 style='text-align: center; color: {'#10b981' if success_rate > 80 else '#f59e0b' if success_rate > 50 else '#f43f5e'};'>Probability of Success: {success_rate:.1f}%</h3>",
+                        unsafe_allow_html=True)
+
+                    if HAS_PLOTLY:
+                        fig_mc = go.Figure()
+                        fig_mc.add_trace(go.Scatter(x=ages, y=p90, mode='lines', name='90th Percentile (Great Market)',
+                                                    line=dict(color='#10b981', dash='dot')))
+                        fig_mc.add_trace(go.Scatter(x=ages, y=p50, mode='lines', name='50th Percentile (Median)',
+                                                    line=dict(color='#3b82f6', width=3)))
+                        fig_mc.add_trace(go.Scatter(x=ages, y=p10, mode='lines', name='10th Percentile (Poor Market)',
+                                                    line=dict(color='#f43f5e', dash='dot')))
+                        fig_mc.update_layout(title="Monte Carlo Net Worth Projections", hovermode="x unified",
+                                             yaxis=dict(tickformat="$,.0f"), margin=dict(l=0, r=0, t=40, b=0),
+                                             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right",
+                                                         x=1))
+                        st.plotly_chart(fig_mc, use_container_width=True)
+
+            # --- DATA AUDIT TABLES ---
             st.divider()
             csv = df_sim.to_csv(index=False).encode('utf-8')
             st.download_button(label="📥 Download Full Simulation (.csv)", data=csv,
