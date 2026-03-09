@@ -198,7 +198,9 @@ if 'assumptions' not in st.session_state: st.session_state['assumptions'] = ud.g
                                                                                                    "property_growth": 3.0,
                                                                                                    "rent_growth": 3.0,
                                                                                                    "current_tax_rate": 5.0,
-                                                                                                   "retire_tax_rate": 0.0})
+                                                                                                   "retire_tax_rate": 0.0,
+                                                                                                   "roth_conversions": False,
+                                                                                                   "roth_target": "24%"})
 
 
 def city_autocomplete(label, key_prefix, default_val=""):
@@ -752,7 +754,7 @@ with st.expander("⚖️ 7. AI Based Advanced Retirement Scenarios", expanded=Fa
         st.write("**State Tax / Effective Adjustments**")
         cur_t = st.number_input("Current State Tax Adjustment (%)",
                                 value=float(st.session_state['assumptions'].get('current_tax_rate', 5.0)),
-                                help="Federal taxes are calculated dynamically. Enter your effective State/Local rate here.")
+                                help="ONLY enter your effective State/Local rate here. Do NOT include Federal Tax, as the engine calculates Federal dynamically.")
         ret_t = st.number_input("Retirement State Tax Adjustment (%)",
                                 value=float(st.session_state['assumptions'].get('retire_tax_rate', 0.0)),
                                 help="Are you moving to a tax-free state in retirement? Adjust here.")
@@ -766,22 +768,25 @@ with st.expander("⚖️ 7. AI Based Advanced Retirement Scenarios", expanded=Fa
                     st.session_state['assumptions']['retire_tax_rate'] = res.get('retire_tax_rate', ret_t)
                     st.rerun()
 
+        st.divider()
+        st.write("**Tax Optimization**")
+        roth_conversions = st.toggle("🔄 Enable Roth Conversion Optimizer",
+                                     value=st.session_state['assumptions'].get('roth_conversions', False),
+                                     help="Automatically converts Traditional 401(k) funds to Roth during low-income years to minimize lifetime RMD taxes.")
+        roth_target_idx = ["12%", "22%", "24%", "32%"].index(st.session_state['assumptions'].get('roth_target', "24%"))
+        roth_target = st.selectbox("Target Bracket to Fill", options=["12%", "22%", "24%", "32%"],
+                                   index=roth_target_idx,
+                                   help="The AI will convert just enough Traditional funds each year to reach the very top of this selected tax bracket.")
+
     if st.button("💾 Save Profile Snapshot", key="sv_7"):
         save_requested = True
+        st.session_state['assumptions']['roth_conversions'] = roth_conversions
+        st.session_state['assumptions']['roth_target'] = roth_target
         st.toast("✅ Profile Snapshot Saved!", icon="💾")
 
 # --- 8. EXHAUSTIVE DASHBOARD ENGINE & TAX LOGIC ---
 with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=True):
     if my_age > 0:
-
-        c_dash1, c_dash2 = st.columns([3, 1])
-        with c_dash1:
-            st.markdown(
-                '<div class="info-text">💡 <strong>Currency Note:</strong> By default, calculations use <strong>Future (Nominal) Dollars</strong>. This means inflation is actively compounded year over year (e.g. a $10,000 expense today will show as a much larger nominal amount in 20 years).</div>',
-                unsafe_allow_html=True)
-        with c_dash2:
-            view_todays_dollars = st.toggle("💵 View in Today's Dollars", value=False,
-                                            help="Discount all future simulation numbers back to current purchasing power.")
 
         prop_g = float(st.session_state['assumptions'].get('property_growth', 3.0))
         rent_g = float(st.session_state['assumptions'].get('rent_growth', 3.0))
@@ -1101,6 +1106,53 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
                     a['growth']
                     a['bal'] *= (1 + a_growth / 100)
 
+                # Roth Conversion Optimizer
+                if roth_conversions and is_retired:
+                    infl_factor = (1 + infl / 100) ** year_offset
+                    std_deduction = (29200 if active_mfj else 14600) * infl_factor
+
+                    b_limits_mfj = {"12%": 94300, "22%": 201050, "24%": 383900, "32%": 487450}
+                    b_limits_single = {"12%": 47150, "22%": 100525, "24%": 191950, "32%": 243725}
+
+                    b_limits = b_limits_mfj if active_mfj else b_limits_single
+                    target_limit = b_limits.get(roth_target, 383900) * infl_factor
+                    target_max_income = target_limit + std_deduction
+
+                    conversion_room = max(0, target_max_income - pre_tax_ord)
+                    total_converted = 0
+
+                    if conversion_room > 0:
+                        for a in sim_assets:
+                            if a.get('Type') == 'Traditional 401k/IRA' and a['bal'] > 0:
+                                convert_amt = min(a['bal'], conversion_room - total_converted)
+                                if convert_amt > 0:
+                                    a['bal'] -= convert_amt
+                                    total_converted += convert_amt
+
+                                    roth_found = False
+                                    for roth_a in sim_assets:
+                                        if roth_a.get('Type') == 'Roth 401k/IRA' and roth_a.get('Owner') == a.get(
+                                                'Owner'):
+                                            roth_a['bal'] += convert_amt
+                                            roth_found = True
+                                            break
+                                    if not roth_found:
+                                        sim_assets.append({
+                                            "Account Name": f"Converted Roth ({a.get('Owner')})",
+                                            "Type": "Roth 401k/IRA",
+                                            "Owner": a.get("Owner", "Me"),
+                                            "bal": convert_amt,
+                                            "contrib": 0.0,
+                                            "growth": a.get('growth', mkt),
+                                            "stop_at_ret": True
+                                        })
+                                if total_converted >= conversion_room:
+                                    break
+
+                        if total_converted > 0:
+                            pre_tax_ord += total_converted
+                            yd["Roth Conversion Amount"] = total_converted
+
                 # Taxes
                 base_fed_tax, marginal_rate = calc_federal_tax(pre_tax_ord, 0, active_mfj, year_offset, infl)
                 state_tax_rate = cur_t if not is_retired else ret_t
@@ -1207,23 +1259,11 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
         deterministic_seq = [mkt] * (max_years + 1)
         sim_results, detailed_results, nw_detailed_results = run_simulation(deterministic_seq)
 
-        # APPLY DISCOUNTING IF TOGGLED
-        if view_todays_dollars and len(sim_results) > 0:
-            for i in range(len(sim_results)):
-                discount = (1 + infl / 100) ** i
-                for col in ["Annual Income", "Annual Expenses", "Annual Taxes", "Annual Net Savings", "Liquid Assets",
-                            "Real Estate Equity", "Business Equity", "Debt", "Net Worth"]:
-                    sim_results[i][col] /= discount
-                for k in detailed_results[i].keys():
-                    if k not in ["Age", "Year"]: detailed_results[i][k] /= discount
-                for k in nw_detailed_results[i].keys():
-                    if k not in ["Age", "Year"]: nw_detailed_results[i][k] /= discount
-
         # --- UI RENDER: DASHBOARD ---
         if len(sim_results) > 0:
-            df_sim = pd.DataFrame(sim_results)
-            final_nw = df_sim.iloc[-1]['Net Worth']
-            deplete_age = df_sim[df_sim['Net Worth'] <= 0]['Age'].min()
+            df_sim_nominal = pd.DataFrame(sim_results)
+            final_nw = df_sim_nominal.iloc[-1]['Net Worth']
+            deplete_age = df_sim_nominal[df_sim_nominal['Net Worth'] <= 0]['Age'].min()
 
             c_status, c_ai_btn = st.columns([3, 2])
             with c_status:
@@ -1241,11 +1281,11 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
                     with st.spinner("AI acting as fiduciary advisor..."):
                         sim_summary = {
                             "Current Age": my_age, "Retirement Age": ret_age, "Life Expectancy": my_life_exp_val,
-                            "Current Net Worth": df_sim.iloc[0]['Net Worth'],
-                            "Final Net Worth": df_sim.iloc[-1]['Net Worth'],
+                            "Current Net Worth": df_sim_nominal.iloc[0]['Net Worth'],
+                            "Final Net Worth": df_sim_nominal.iloc[-1]['Net Worth'],
                             "Shortfall Age": str(deplete_age) if not pd.isna(deplete_age) else "None",
-                            "Avg Annual Income": df_sim['Annual Income'].mean(),
-                            "Avg Annual Expenses": df_sim['Annual Expenses'].mean()
+                            "Avg Annual Income": df_sim_nominal['Annual Income'].mean(),
+                            "Avg Annual Expenses": df_sim_nominal['Annual Expenses'].mean()
                         }
                         prompt = f"Act as an expert fiduciary financial planner. Review this user's simulation summary: {json.dumps(sim_summary)}. Write a highly detailed, 3-paragraph professional analysis of their financial trajectory. Discuss their sequence of return risks, highlight strengths, and provide specific recommendations (e.g. increase savings, delay retirement, adjust spending). Return ONLY valid JSON exactly like this: {{\"analysis\": \"your markdown text here, using \\n for line breaks\"}}"
                         res = call_gemini_json(prompt)
@@ -1255,9 +1295,33 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
                             st.error("⚠️ AI Analysis failed to generate.")
 
             if 'ai_analysis_report' in st.session_state:
-                # Escape dollar signs to prevent Streamlit from turning currency into green LaTeX math equations
                 report_content = st.session_state['ai_analysis_report'].replace('\\n', '\n').replace('$', r'\$')
                 st.info(f"### 🤖 AI Advisory Report\n\n{report_content}")
+
+            st.divider()
+            c_dash1, c_dash2 = st.columns([3, 1])
+            with c_dash1:
+                st.markdown(
+                    '<div class="info-text">💡 <strong>Currency Note:</strong> By default, calculations use <strong>Future (Nominal) Dollars</strong>. This means inflation is actively compounded year over year (e.g. a $10,000 expense today will show as a much larger nominal amount in 20 years). Toggle the setting to view numbers discounted to current purchasing power.</div>',
+                    unsafe_allow_html=True)
+            with c_dash2:
+                view_todays_dollars = st.toggle("💵 View in Today's Dollars", value=False,
+                                                help="Discount all future simulation numbers back to current purchasing power.")
+
+            # APPLY DISCOUNTING IF TOGGLED
+            if view_todays_dollars:
+                for i in range(len(sim_results)):
+                    discount = (1 + infl / 100) ** i
+                    for col in ["Annual Income", "Annual Expenses", "Annual Taxes", "Annual Net Savings",
+                                "Liquid Assets", "Real Estate Equity", "Business Equity", "Debt", "Net Worth"]:
+                        sim_results[i][col] /= discount
+                    for k in detailed_results[i].keys():
+                        if k not in ["Age", "Year"]: detailed_results[i][k] /= discount
+                    for k in nw_detailed_results[i].keys():
+                        if k not in ["Age", "Year"] and not isinstance(nw_detailed_results[i][k], str):
+                            nw_detailed_results[i][k] /= discount
+
+            df_sim = pd.DataFrame(sim_results)
 
             if HAS_PLOTLY:
                 st.write("#### Net Worth Composition (Smart Asset Drawdown)")
@@ -1369,7 +1433,7 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
             with t1:
                 st.subheader("Granular Tax & Expense Logs")
                 df_det = pd.DataFrame(detailed_results).fillna(0)
-                inc_c = sorted([c for c in df_det.columns if c.startswith("Income:")])
+                inc_c = sorted([c for c in df_det.columns if c.startswith("Income:") or c.startswith("Roth")])
                 exp_c = sorted([c for c in df_det.columns if c.startswith("Expense:")])
                 ord_det = ["Age", "Year"] + inc_c + exp_c + ["Net Savings"]
                 st.dataframe(df_det[ord_det].set_index("Age").style.format(
@@ -1421,7 +1485,7 @@ if st.button("🚀 Finalize & Save Complete Profile to Secure Cloud", type="prim
             "assumptions": {**st.session_state['assumptions'], "inflation": infl, "inflation_healthcare": infl_hc,
                             "inflation_education": infl_ed, "market_growth": mkt, "income_growth": inc_g,
                             "property_growth": prop_g, "rent_growth": rent_g, "current_tax_rate": cur_t,
-                            "retire_tax_rate": ret_t}
+                            "retire_tax_rate": ret_t, "roth_conversions": roth_conversions, "roth_target": roth_target}
         }
         db.collection('users').document(st.session_state['user_email']).set(user_data, merge=True)
         st.session_state['user_data'] = user_data
