@@ -722,7 +722,7 @@ with st.expander("🔮 6. Global Macroeconomic Assumptions & Retirement Sim", ex
 # --- 7. ADVANCED SCENARIOS & TAXES ---
 with st.expander("⚖️ 7. AI Based Advanced Retirement Scenarios", expanded=False):
     st.markdown(
-        '<div class="info-text">💡 Adjust edge-case scenarios here. The simulation integrates Federal Taxes dynamically using 2026 Brackets.</div>',
+        '<div class="info-text">💡 Adjust edge-case scenarios here. The simulation integrates Federal Taxes dynamically using 2026 Brackets. Input your effective State Tax here.</div>',
         unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
@@ -743,7 +743,7 @@ with st.expander("⚖️ 7. AI Based Advanced Retirement Scenarios", expanded=Fa
         st.write("**State Tax / Effective Adjustments**")
         cur_t = st.number_input("Current State Tax Adjustment (%)",
                                 value=float(st.session_state['assumptions'].get('current_tax_rate', 5.0)),
-                                help="ONLY enter your effective State/Local rate here. Do NOT include Federal Tax, as the engine calculates Federal dynamically.")
+                                help="Federal taxes are calculated dynamically. Enter your effective State/Local rate here.")
         ret_t = st.number_input("Retirement State Tax Adjustment (%)",
                                 value=float(st.session_state['assumptions'].get('retire_tax_rate', 0.0)),
                                 help="Are you moving to a tax-free state in retirement? Adjust here.")
@@ -1230,12 +1230,16 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
                             st.error("⚠️ AI Analysis failed to generate.")
 
             if 'ai_analysis_report' in st.session_state:
-                st.markdown(
-                    "<div style='background-color: #f1f5f9; padding: 20px; border-radius: 8px; border-left: 5px solid #4f46e5; margin-bottom: 20px;'>",
-                    unsafe_allow_html=True)
                 report_content = st.session_state['ai_analysis_report'].replace('\\n', '\n')
-                st.markdown(f"### 🤖 AI Advisory Report\n\n{report_content}")
-                st.markdown("</div>", unsafe_allow_html=True)
+                st.markdown(f"""
+<div style="background-color: #f1f5f9; padding: 20px; border-radius: 8px; border-left: 5px solid #4f46e5; margin-bottom: 20px;">
+
+<h3 style="margin-top: 0;">🤖 AI Advisory Report</h3>
+
+{report_content}
+
+</div>
+""", unsafe_allow_html=True)
 
             if HAS_PLOTLY:
                 st.write("#### Net Worth Composition (Smart Asset Drawdown)")
