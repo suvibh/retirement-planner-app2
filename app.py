@@ -297,10 +297,11 @@ with st.expander("💵 2. Active Annual Income Streams", expanded=False):
     if df_inc.empty:
         df_inc = pd.DataFrame(
             [{"Description": "Base Salary", "Category": "Base Salary (W-2)", "Owner": "Me", "Annual Amount ($)": 0,
-              "Start Age": my_age, "End Age": 65, "Override Growth (%)": None}])
+              "Start Age": my_age, "End Age": 65, "Stop at Ret.?": True, "Override Growth (%)": None}])
     else:
+        if "Stop at Ret.?" not in df_inc.columns: df_inc["Stop at Ret.?"] = False
         df_inc = df_inc.reindex(
-            columns=["Description", "Category", "Owner", "Annual Amount ($)", "Start Age", "End Age",
+            columns=["Description", "Category", "Owner", "Annual Amount ($)", "Start Age", "End Age", "Stop at Ret.?",
                      "Override Growth (%)"])
 
     if st.button("✨ Auto-Estimate Social Security (AI)"):
@@ -317,12 +318,12 @@ with st.expander("💵 2. Active Annual Income Streams", expanded=False):
                     current_inc.append(
                         {"Description": "Estimated Social Security (Me)", "Category": "Social Security", "Owner": "Me",
                          "Annual Amount ($)": res['ss_amount_me'], "Start Age": 67, "End Age": 100,
-                         "Override Growth (%)": None})
+                         "Stop at Ret.?": False, "Override Growth (%)": None})
                 if 'ss_amount_spouse' in res and has_spouse:
                     current_inc.append(
                         {"Description": "Estimated Social Security (Spouse)", "Category": "Social Security",
                          "Owner": "Spouse", "Annual Amount ($)": res['ss_amount_spouse'], "Start Age": 67,
-                         "End Age": 100, "Override Growth (%)": None})
+                         "End Age": 100, "Stop at Ret.?": False, "Override Growth (%)": None})
                 st.session_state['user_data']['income'] = current_inc
                 st.rerun()
 
@@ -339,6 +340,8 @@ with st.expander("💵 2. Active Annual Income Streams", expanded=False):
             "Annual Amount ($)": st.column_config.NumberColumn("Annual Amount ($)", step=1000, format="$%d"),
             "Start Age": st.column_config.NumberColumn("Start Age", min_value=18, max_value=100),
             "End Age": st.column_config.NumberColumn("End Age", min_value=18, max_value=100),
+            "Stop at Ret.?": st.column_config.CheckboxColumn("Stop at Ret.?",
+                                                             help="If checked, this income will automatically halt when the owner reaches their target retirement age, overriding the 'End Age'."),
             "Override Growth (%)": st.column_config.NumberColumn("Override Growth (%)", step=0.1, format="%.1f%%")
         }, num_rows="dynamic", width="stretch", hide_index=True, key="inc_editor"
     )
@@ -388,10 +391,13 @@ with st.expander("🏦 3. Assets, Liabilities & Net Worth", expanded=False):
     df_biz = pd.DataFrame(ud.get('business', []))
     if df_biz.empty:
         df_biz = pd.DataFrame(
-            [{"Business Name": "", "Total Valuation ($)": 0, "Your Ownership (%)": 100, "Annual Distribution ($)": 0}])
+            [{"Business Name": "", "Total Valuation ($)": 0, "Your Ownership (%)": 100, "Annual Distribution ($)": 0,
+              "Override Growth (%)": None}])
     else:
+        if "Override Growth (%)" not in df_biz.columns: df_biz["Override Growth (%)"] = None
         df_biz = df_biz.reindex(
-            columns=["Business Name", "Total Valuation ($)", "Your Ownership (%)", "Annual Distribution ($)"])
+            columns=["Business Name", "Total Valuation ($)", "Your Ownership (%)", "Annual Distribution ($)",
+                     "Override Growth (%)"])
 
     edited_biz = st.data_editor(
         df_biz,
@@ -400,7 +406,8 @@ with st.expander("🏦 3. Assets, Liabilities & Net Worth", expanded=False):
             "Annual Distribution ($)": st.column_config.NumberColumn("Annual Distribution ($)", step=1000,
                                                                      format="$%d"),
             "Your Ownership (%)": st.column_config.NumberColumn("Your Ownership (%)", min_value=0, max_value=100,
-                                                                format="%d%%")
+                                                                format="%d%%"),
+            "Override Growth (%)": st.column_config.NumberColumn("Override Growth (%)", step=0.1, format="%.1f%%")
         }, num_rows="dynamic", width="stretch", hide_index=True, key="biz_editor"
     )
 
@@ -413,13 +420,14 @@ with st.expander("🏦 3. Assets, Liabilities & Net Worth", expanded=False):
     if df_ast.empty:
         df_ast = pd.DataFrame(
             [{"Account Name": "401k", "Type": "Traditional 401k/IRA", "Owner": "Me", "Current Balance ($)": 0,
-              "Annual Contribution ($/yr)": 0, "Est. Annual Growth (%)": 7.0}])
+              "Annual Contribution ($/yr)": 0, "Est. Annual Growth (%)": 7.0, "Stop Contrib at Ret.?": True}])
     else:
         if "Annual Contribution ($)" in df_ast.columns: df_ast.rename(
             columns={'Annual Contribution ($)': 'Annual Contribution ($/yr)'}, inplace=True)
+        if "Stop Contrib at Ret.?" not in df_ast.columns: df_ast["Stop Contrib at Ret.?"] = True
         df_ast = df_ast.reindex(
             columns=["Account Name", "Type", "Owner", "Current Balance ($)", "Annual Contribution ($/yr)",
-                     "Est. Annual Growth (%)"])
+                     "Est. Annual Growth (%)", "Stop Contrib at Ret.?"])
 
     edited_ast = st.data_editor(
         df_ast,
@@ -435,7 +443,9 @@ with st.expander("🏦 3. Assets, Liabilities & Net Worth", expanded=False):
                                                                         help="These additions are deposited every year until you retire."),
             "Est. Annual Growth (%)": st.column_config.NumberColumn("Est. Annual Growth (%)",
                                                                     help="If blank, uses global assumptions.",
-                                                                    format="%.1f%%")
+                                                                    format="%.1f%%"),
+            "Stop Contrib at Ret.?": st.column_config.CheckboxColumn("Stop Contrib at Ret.?",
+                                                                     help="If checked, this annual addition will halt when the specified owner retires.")
         }, num_rows="dynamic", width="stretch", hide_index=True, key="assets_editor"
     )
 
@@ -492,6 +502,9 @@ h_pmt = pd.to_numeric(primary_re["Mortgage Payment ($)"], errors='coerce').filln
 h_exp = pd.to_numeric(primary_re["Monthly Expenses ($)"], errors='coerce').fillna(0).sum()
 owns_home = not primary_re.empty
 
+curr_inc_total = pd.to_numeric(edited_inc['Annual Amount ($)'], errors='coerce').fillna(0).sum()
+liq_ast_total = pd.to_numeric(edited_ast['Current Balance ($)'], errors='coerce').fillna(0).sum()
+
 if owns_home:
     h_ctx = f"Primary housing costs ${h_pmt + h_exp:,.0f}/mo (Already accounted for)."
     ai_exclusion = "STRICT RULE: DO NOT INCLUDE Housing, Rent, Mortgages, Auto Loans, or Debt Payments in this list. They are tracked elsewhere."
@@ -544,7 +557,8 @@ with st.expander("💸 4. Current Expenses & AI Builder", expanded=False):
             valid = edited_c[edited_c["Description"].astype(str) != ""].copy()
             locked = valid[valid["AI Estimate?"] == False].to_dict('records')
             locked_desc = [x['Description'] for x in locked]
-            prompt = f"City: {curr_city}. Family: {k_ctx} Housing: {h_ctx}. Generate 10-15 missing living expenses to create a complete monthly budget. {ai_exclusion} Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (choose from standard budget categories), 'Frequency' (Monthly/Yearly), 'Amount ($)' (number), 'AI Estimate?' (true)."
+            wealth_ctx = f"The household has a current annual pre-tax income of ${curr_inc_total:,.0f} and liquid assets totaling ${liq_ast_total:,.0f}. VERY IMPORTANT: Scale the estimated budget up or down to align with this specific level of wealth and income (e.g. higher income means higher discretionary spending, nicer cars, more travel)."
+            prompt = f"City: {curr_city}. Family: {k_ctx} Housing: {h_ctx}. {wealth_ctx} Generate 10-15 missing living expenses to create a complete monthly budget. {ai_exclusion} Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (choose from standard budget categories), 'Frequency' (Monthly/Yearly), 'Amount ($)' (number), 'AI Estimate?' (true)."
             res = call_gemini_json(prompt)
             if res and isinstance(res, list) and len(res) > 0:
                 st.session_state['current_expenses'] = locked + res
@@ -687,7 +701,8 @@ with st.expander("🔮 6. Global Macroeconomic Assumptions & Retirement Sim", ex
             valid = edited_r[edited_r["Description"].astype(str) != ""].copy()
             locked = valid[valid["AI Estimate?"] == False].to_dict('records')
             locked_desc = [x['Description'] for x in locked]
-            prompt = f"Retirement context: {ret_city}. Household size drops to {1 + (1 if has_spouse else 0)}. Generate 10-15 missing living expenses to create a complete retirement budget. {ai_exclusion} Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category', 'Frequency', 'Amount ($)', 'AI Estimate?' (true)."
+            wealth_ctx = f"The household will have a projected Net Worth built from a current income of ${curr_inc_total:,.0f} and current liquid assets of ${liq_ast_total:,.0f}. Assume a proportional retirement lifestyle based on these wealth figures."
+            prompt = f"Retirement context: {ret_city}. Household size drops to {1 + (1 if has_spouse else 0)}. {wealth_ctx} Generate 10-15 missing living expenses to create a complete retirement budget. {ai_exclusion} Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category', 'Frequency', 'Amount ($)', 'AI Estimate?' (true)."
             res = call_gemini_json(prompt)
             if res and isinstance(res, list) and len(res) > 0:
                 st.session_state['retire_expenses'] = locked + res
@@ -799,11 +814,12 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
         sim_assets = [{"Account Name": a.get("Account Name"), "Type": a.get("Type"), "Owner": a.get("Owner", "Me"),
                        "bal": safe_num(a.get("Current Balance ($)")),
                        "contrib": safe_num(a.get("Annual Additions ($/yr)")),
-                       "growth": safe_num(a.get("Est. Annual Growth (%)"), mkt)} for a in edited_ast.to_dict('records')
-                      if a.get("Account Name")]
+                       "growth": safe_num(a.get("Est. Annual Growth (%)"), mkt),
+                       "stop_at_ret": a.get("Stop Contrib at Ret.?", True)} for a in edited_ast.to_dict('records') if
+                      a.get("Account Name")]
         if not sim_assets: sim_assets = [
             {"Account Name": "Unallocated Cash", "Type": "Checking/Savings", "Owner": "Me", "bal": 0.0, "contrib": 0.0,
-             "growth": 0.0}]
+             "growth": 0.0, "stop_at_ret": False}]
 
         sim_debts = [{"bal": safe_num(d.get("Current Balance ($)")), "pmt": safe_num(d.get("Monthly Payment ($)")) * 12,
                       "rate": safe_num(d.get("Interest Rate (%)")) / 100} for d in edited_debt.to_dict('records') if
@@ -818,7 +834,8 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
                   r.get("Property Name")]
         sim_biz = [{"name": b.get("Business Name"), "val": safe_num(b.get("Total Valuation ($)")),
                     "own": safe_num(b.get("Your Ownership (%)")) / 100.0,
-                    "dist": safe_num(b.get("Annual Distribution ($)"))} for b in edited_biz.to_dict('records') if
+                    "dist": safe_num(b.get("Annual Distribution ($)")),
+                    "growth": safe_num(b.get("Override Growth (%)"), inc_g)} for b in edited_biz.to_dict('records') if
                    b.get("Business Name")]
 
         # Correctly aggregate current and retirement expenses, excluding Housing and Debt Payments to prevent double counting
@@ -885,19 +902,36 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
                 if owner == "Spouse" and not is_spouse_alive: continue
                 if owner == "Joint" and not is_my_alive and not is_spouse_alive: continue
 
-                # Default logic uses primary age/start limits for now
-                if inc.get("Description") and safe_num(inc.get('Start Age'), 18) <= age <= safe_num(inc.get('End Age'),
-                                                                                                    100):
+                cat_name = inc.get("Category", "Other")
+                stop_at_ret = inc.get("Stop at Ret.?", False)
+
+                owner_retired = False
+                if owner == "Me":
+                    owner_retired = is_retired
+                elif owner == "Spouse":
+                    owner_retired = is_spouse_retired if has_spouse else True
+                elif owner == "Joint":
+                    owner_retired = is_retired
+
+                start_age = safe_num(inc.get('Start Age'), 18)
+                end_age = safe_num(inc.get('End Age'), 100)
+
+                if cat_name == "Social Security":
+                    stop_at_ret = False
+
+                is_active = False
+                if stop_at_ret:
+                    is_active = (age >= start_age) and not owner_retired
+                else:
+                    is_active = (start_age <= age <= end_age)
+
+                if inc.get("Description") and is_active:
                     g = safe_num(inc.get('Override Growth (%)'), inc_g)
                     base_amt = safe_num(inc.get('Annual Amount ($)'))
-                    cat_name = inc.get("Category", "Other")
 
                     if cat_name == "Social Security":
-                        # Basic assumption: SS starts at 'ret_age' and is scaled.
-                        if is_retired:
-                            base_amt = base_amt * my_ss_multi
-                        else:
-                            base_amt = 0
+                        # Apply FRA multiplier to Social Security specifically if owner is primary
+                        if owner == "Me": base_amt = base_amt * my_ss_multi
 
                     amt = base_amt * ((1 + g / 100) ** year_offset)
                     annual_inc += amt
@@ -923,7 +957,9 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
             # Business & Real Estate
             cur_biz_val, biz_dist_total, re_equity, re_exp_total = 0, 0, 0, 0
             for b in sim_biz:
-                if year_offset > 0: b['val'] *= (1 + active_mkt / 100); b['dist'] *= (1 + inc_g / 100)
+                if year_offset > 0:
+                    b['val'] *= (1 + active_mkt / 100)
+                    b['dist'] *= (1 + b['growth'] / 100)
                 cur_biz_val += (b['val'] * b['own'])
                 annual_inc += b['dist']
                 pre_tax_ord += b['dist']
@@ -999,10 +1035,29 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
 
             # Asset Waterfall Routing
             liquid_assets_total, asset_contributions = 0, 0
-            if not is_retired:
-                for a in sim_assets:
-                    a['bal'] += a['contrib']
-                    asset_contributions += a['contrib']
+            for a in sim_assets:
+                owner = a.get('Owner', 'Me')
+                owner_retired = False
+                if owner == 'Me':
+                    owner_retired = is_retired
+                elif owner == 'Spouse':
+                    owner_retired = is_spouse_retired if has_spouse else True
+                elif owner == 'Joint':
+                    owner_retired = is_retired
+
+                is_owner_alive = False
+                if owner == 'Me':
+                    is_owner_alive = is_my_alive
+                elif owner == 'Spouse':
+                    is_owner_alive = is_spouse_alive
+                else:
+                    is_owner_alive = is_my_alive or is_spouse_alive
+
+                if is_owner_alive:
+                    stop_contrib = a.get('stop_at_ret', True)
+                    if not (stop_contrib and owner_retired):
+                        a['bal'] += a['contrib']
+                        asset_contributions += a['contrib']
 
             # Pre-apply market growth
             for a in sim_assets:
