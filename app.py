@@ -608,14 +608,20 @@ with st.expander("📈 9. Advanced Simulation & Analytics Dashboard", expanded=T
                     "dist": safe_num(b.get("Annual Distribution ($)"))} for b in edited_biz.to_dict('records') if
                    b.get("Business Name")]
 
-        curr_exp_by_cat = {r.get("Category", "Other"): curr_exp_by_cat.get(r.get("Category", "Other"), 0) + (
-                    safe_num(r.get("Amount ($)")) * (12 if r.get("Frequency") == "Monthly" else 1)) for r in
-                           edited_c.to_dict('records') if
-                           r.get("Description") and r.get("Category") not in ["Housing", "Debt Payments"]}
-        ret_exp_by_cat = {r.get("Category", "Other"): ret_exp_by_cat.get(r.get("Category", "Other"), 0) + (
-                    safe_num(r.get("Amount ($)")) * (12 if r.get("Frequency") == "Monthly" else 1)) for r in
-                          edited_r.to_dict('records') if
-                          r.get("Description") and r.get("Category") not in ["Housing", "Debt Payments"]}
+        # Correctly aggregate current and retirement expenses
+        curr_exp_by_cat = {}
+        for r in edited_c.to_dict('records'):
+            if r.get("Description") and r.get("Category") not in ["Housing", "Debt Payments"]:
+                cat = r.get("Category", "Other")
+                amt = safe_num(r.get("Amount ($)")) * (12 if r.get("Frequency") == "Monthly" else 1)
+                curr_exp_by_cat[cat] = curr_exp_by_cat.get(cat, 0) + amt
+
+        ret_exp_by_cat = {}
+        for r in edited_r.to_dict('records'):
+            if r.get("Description") and r.get("Category") not in ["Housing", "Debt Payments"]:
+                cat = r.get("Category", "Other")
+                amt = safe_num(r.get("Amount ($)")) * (12 if r.get("Frequency") == "Monthly" else 1)
+                ret_exp_by_cat[cat] = ret_exp_by_cat.get(cat, 0) + amt
 
         sim_results, detailed_results = [], []
         current_year = datetime.date.today().year
