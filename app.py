@@ -3,7 +3,6 @@ import pandas as pd
 import requests
 import json
 import datetime
-from dateutil.relativedelta import relativedelta
 import warnings
 import re
 import firebase_admin
@@ -32,7 +31,6 @@ st.markdown("""
     div[data-testid="column"]:has(button:contains("✨")) button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px 0 rgba(79, 70, 229, 0.39) !important; }
     [data-testid="stMetricValue"] { font-size: 1.8rem !important; font-weight: 700 !important; color: #4f46e5 !important; }
     .info-text { font-size: 0.9rem; color: #64748b; margin-bottom: 15px; border-left: 4px solid #3b82f6; padding-left: 10px; background-color: #eff6ff; padding: 10px; border-radius: 0 8px 8px 0;}
-    .tooltip-icon { color: #3b82f6; cursor: help; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -104,6 +102,13 @@ def call_gemini_json(prompt):
         return None
 
 
+def subtract_years(dt, years):
+    try:
+        return dt.replace(year=dt.year - years)
+    except ValueError:
+        return dt.replace(year=dt.year - years, day=28)
+
+
 # --- AUTH LAYER ---
 if 'user_email' not in st.session_state:
     saved_email = cookie_manager.get(cookie="user_email")
@@ -168,17 +173,22 @@ p_info = ud.get('personal_info', {})
 if 'current_expenses' not in st.session_state: st.session_state['current_expenses'] = ud.get('current_expenses', [])
 if 'retire_expenses' not in st.session_state: st.session_state['retire_expenses'] = ud.get('retire_expenses', [])
 if 'one_time_events' not in st.session_state: st.session_state['one_time_events'] = ud.get('one_time_events', [])
-if 'assumptions' not in st.session_state: st.session_state['assumptions'] = ud.get('assumptions', {
-    "inflation": 3.0, "inflation_healthcare": 5.5, "inflation_education": 4.5,
-    "market_growth": 7.0, "income_growth": 3.0, "current_tax_rate": 5.0, "retire_tax_rate": 0.0
-})
+if 'assumptions' not in st.session_state: st.session_state['assumptions'] = ud.get('assumptions', {"inflation": 3.0,
+                                                                                                   "inflation_healthcare": 5.5,
+                                                                                                   "inflation_education": 4.5,
+                                                                                                   "market_growth": 7.0,
+                                                                                                   "income_growth": 3.0,
+                                                                                                   "property_growth": 3.0,
+                                                                                                   "rent_growth": 3.0,
+                                                                                                   "current_tax_rate": 5.0,
+                                                                                                   "retire_tax_rate": 0.0})
 
 
 def city_autocomplete(label, key_prefix, default_val=""):
     input_key = f"{key_prefix}_input"
     if input_key not in st.session_state: st.session_state[input_key] = default_val
     current_val = st.text_input(label, key=input_key,
-                                help="Type a major city. The AI uses this to fetch hyper-localized cost-of-living data, real estate averages, and local state tax trends.")
+                                help="Type a major city. The AI uses this to fetch hyper-localized cost-of-living data.")
     if current_val and len(current_val) > 2 and current_val != default_val:
         try:
             api_key = st.secrets.get("GOOGLE_MAPS_API_KEY", "")
@@ -209,19 +219,18 @@ save_requested = False
 # --- 1. PERSONAL INFO ---
 with st.expander("👨‍👩‍👧‍👦 1. Your Profile & Family Context", expanded=True):
     st.markdown(
-        '<div class="info-text">💡 <strong>Why Date of Birth?</strong> Precision matters. Your exact birth year dictates your SECURE 2.0 RMD age (73 vs 75), IRS Catch-Up Contribution limits, and Social Security Full Retirement Age (FRA). Selecting "Include Spouse" activates the Married Filing Jointly (MFJ) Standard Deduction ($29,200) and wider tax brackets.</div>',
+        '<div class="info-text">💡 <strong>Why Date of Birth?</strong> Precision matters. Your exact birth year dictates your SECURE 2.0 RMD age (73 vs 75) and Social Security Full Retirement Age (FRA). Selecting "Include Spouse" activates the Married Filing Jointly (MFJ) Standard Deduction ($29,200) and wider tax brackets.</div>',
         unsafe_allow_html=True)
 
     c1, c2 = st.columns(2)
     my_name = c1.text_input("Preferred Name", value=p_info.get('name', ''))
 
     saved_dob = p_info.get('dob')
-    default_dob = datetime.datetime.strptime(saved_dob,
-                                             "%Y-%m-%d").date() if saved_dob else datetime.date.today() - relativedelta(
-        years=int(p_info.get('age', 40)))
+    default_dob = datetime.datetime.strptime(saved_dob, "%Y-%m-%d").date() if saved_dob else subtract_years(
+        datetime.date.today(), int(p_info.get('age', 40)))
     my_dob = c2.date_input("Your Date of Birth", value=default_dob, min_value=datetime.date(1920, 1, 1),
                            max_value=datetime.date.today())
-    my_age = relativedelta(datetime.date.today(), my_dob).years
+    my_age = (datetime.date.today() - my_dob).days // 365
 
     curr_city = city_autocomplete("Current City of Residence", "curr_city", default_val=p_info.get('current_city', ''))
 
@@ -232,12 +241,11 @@ with st.expander("👨‍👩‍👧‍👦 1. Your Profile & Family Context", e
         sc1, sc2 = st.columns(2)
         spouse_name = sc1.text_input("Spouse Name", value=p_info.get('spouse_name', ''))
         s_saved_dob = p_info.get('spouse_dob')
-        s_default_dob = datetime.datetime.strptime(s_saved_dob,
-                                                   "%Y-%m-%d").date() if s_saved_dob else datetime.date.today() - relativedelta(
-            years=int(p_info.get('spouse_age', 40)))
+        s_default_dob = datetime.datetime.strptime(s_saved_dob, "%Y-%m-%d").date() if s_saved_dob else subtract_years(
+            datetime.date.today(), int(p_info.get('spouse_age', 40)))
         spouse_dob = sc2.date_input("Spouse Date of Birth", value=s_default_dob, min_value=datetime.date(1920, 1, 1),
                                     max_value=datetime.date.today())
-        spouse_age = relativedelta(datetime.date.today(), spouse_dob).years
+        spouse_age = (datetime.date.today() - spouse_dob).days // 365
 
     st.divider()
     saved_kids = p_info.get('kids', [])
@@ -283,7 +291,7 @@ with st.expander("💵 2. Active Annual Income Streams", expanded=False):
     )
     render_total("Aggregate Pre-Tax Income", f"${edited_inc['Annual Amount ($)'].sum():,.0f}")
 
-# --- 3. REAL ESTATE & BIZ ---
+# --- 3. REAL ESTATE ---
 with st.expander("🏢 3. Real Estate & Private Assets", expanded=False):
     st.markdown(
         '<div class="info-text">💡 <strong>Dynamic Amortization:</strong> The engine tracks exact mortgage payoff dates based on your balance and payments. Once paid off, the "Mortgage P&I" cost vanishes from your expenses.</div>',
@@ -337,7 +345,7 @@ with st.expander("🏦 4. Market Portfolios & Liabilities", expanded=False):
             "Annual Contribution ($)": st.column_config.NumberColumn("Annual Contribution ($)", step=1000,
                                                                      format="$%d"),
             "Est. Annual Growth (%)": st.column_config.NumberColumn("Est. Annual Growth (%)",
-                                                                    help="If blank, uses global assumptions. The Glidepath toggle will slowly reduce this return as you age.")
+                                                                    help="If blank, uses global assumptions.")
         }, num_rows="dynamic", width="stretch", hide_index=True, key="assets_editor"
     )
 
@@ -376,8 +384,7 @@ with st.expander("💸 5. AI Smart Budget Builder (Current)", expanded=False):
                                                                   "Insurance", "Healthcare", "Entertainment",
                                                                   "Education", "Debt Payments", "Other"]),
             "Frequency": st.column_config.SelectboxColumn("Frequency", options=["Monthly", "Yearly"]),
-            "AI Estimate?": st.column_config.CheckboxColumn("🤖 AI Estimate?",
-                                                            help="If checked, AI can overwrite this value during auto-estimation.")
+            "AI Estimate?": st.column_config.CheckboxColumn("🤖 AI Estimate?")
         }, num_rows="dynamic", width="stretch", hide_index=True, key="cur_ed"
     )
 
@@ -454,6 +461,12 @@ with st.expander("🔮 7. Global Macroeconomic Assumptions", expanded=False):
     mkt = c7.number_input("Market Growth (%)", value=float(st.session_state['assumptions'].get('market_growth', 7.0)))
     inc_g = c8.number_input("Income Growth (%)", value=float(st.session_state['assumptions'].get('income_growth', 3.0)))
 
+    # Force sync these values into session state so Part 3 doesn't crash when this tab is closed
+    st.session_state['assumptions']['property_growth'] = st.number_input("Property Growth (%)", value=float(
+        st.session_state['assumptions'].get('property_growth', 3.0)))
+    st.session_state['assumptions']['rent_growth'] = st.number_input("Rent Growth (%)", value=float(
+        st.session_state['assumptions'].get('rent_growth', 3.0)))
+
     st.divider()
     df_r = pd.DataFrame(st.session_state['retire_expenses'])
     if df_r.empty: df_r = pd.DataFrame(
@@ -492,8 +505,12 @@ with st.expander("⚖️ 8. AI Strategy & Scenario Controls", expanded=False):
         st.write("**Simulation Stressors**")
         medicare_gap = st.toggle("🏥 Model Pre-Medicare Gap", value=True,
                                  help="If retiring before 65, adds a significant Private Health Insurance expense until Medicare eligibility.")
+        medicare_cliff = st.toggle("🏥 Apply Medicare Cliff (Drop Healthcare at 65)", value=True,
+                                   help="Automatically reduces 'Healthcare' budget line items by 50% when you turn 65 to simulate Medicare kicking in.")
         glidepath = st.toggle("📉 Apply Investment Glidepath", value=True,
                               help="Reduces the Market Growth rate by 1% for every 5 years you are into retirement, simulating a shift to bonds.")
+        stress_test = st.toggle("📉 Apply 20% Market Crash at Retirement", value=False,
+                                help="Simulates 'Sequence of Returns Risk' by dropping your portfolio by 20% in the first 3 years of retirement.")
         ltc_shock = st.toggle("🛏️ Long-Term Care (LTC) Shock", value=False,
                               help="Injects a massive $100k/yr medical expense into the final 3 years of your simulated life expectancy.")
 
@@ -516,20 +533,16 @@ with st.expander("📈 9. Advanced Simulation & Analytics Dashboard", expanded=T
                 return default
 
 
-        # Safely fetch Property and Rent growth assumptions from state
-        # (Fixes NameError if they are hidden in the Part 2 UI)
         prop_g = float(st.session_state['assumptions'].get('property_growth', 3.0))
         rent_g = float(st.session_state['assumptions'].get('rent_growth', 3.0))
 
 
         # --- PROGRESSIVE IRS FEDERAL TAX CALCULATOR ---
         def calc_federal_tax(ordinary_income, cap_gains, is_mfj, year_offset, inflation_rate):
-            # Inflate brackets and standard deduction dynamically over time
             infl_factor = (1 + inflation_rate / 100) ** year_offset
             std_deduction = (29200 if is_mfj else 14600) * infl_factor
             taxable_ordinary = max(0, ordinary_income - std_deduction)
 
-            # 2026 Approximate Base Marginal Brackets
             b_mfj = [(23200, 0.10), (94300, 0.12), (201050, 0.22), (383900, 0.24), (487450, 0.32), (731200, 0.35),
                      (float('inf'), 0.37)]
             b_single = [(11600, 0.10), (47150, 0.12), (100525, 0.22), (191950, 0.24), (243725, 0.32), (609350, 0.35),
@@ -545,7 +558,6 @@ with st.expander("📈 9. Advanced Simulation & Analytics Dashboard", expanded=T
                     ord_tax += taxable_in_bracket * rate
                 prev_limit = adj_limit
 
-            # Get Marginal Rate for 401k withdrawal gross-ups
             marginal_rate = 0.10
             for limit, rate in brackets:
                 if taxable_ordinary < limit * infl_factor:
@@ -553,7 +565,6 @@ with st.expander("📈 9. Advanced Simulation & Analytics Dashboard", expanded=T
                     break
             if taxable_ordinary > brackets[-1][0] * infl_factor: marginal_rate = 0.37
 
-            # Capital Gains (Simplified 15% rate if income > 94k MFJ / 47k Single)
             cg_tax = 0
             if cap_gains > 0:
                 cg_threshold = 94000 * infl_factor if is_mfj else 47000 * infl_factor
@@ -608,7 +619,7 @@ with st.expander("📈 9. Advanced Simulation & Analytics Dashboard", expanded=T
                     "dist": safe_num(b.get("Annual Distribution ($)"))} for b in edited_biz.to_dict('records') if
                    b.get("Business Name")]
 
-        # Correctly aggregate current and retirement expenses
+        # Correctly aggregate current and retirement expenses safely
         curr_exp_by_cat = {}
         for r in edited_c.to_dict('records'):
             if r.get("Description") and r.get("Category") not in ["Housing", "Debt Payments"]:
@@ -653,7 +664,7 @@ with st.expander("📈 9. Advanced Simulation & Analytics Dashboard", expanded=T
                     cat_name = inc.get("Category", "Other")
 
                     if cat_name == "Social Security" and age >= ret_age:
-                        base_amt = base_amt * ss_multiplier  # Apply FRA scaling
+                        base_amt = base_amt * ss_multiplier
 
                     amt = base_amt * ((1 + g / 100) ** (age - my_age))
                     annual_inc += amt
@@ -921,7 +932,8 @@ if st.button("🚀 Finalize & Save Complete Profile to Secure Cloud", type="prim
             "retire_expenses": clean(edited_r, "Description"),
             "assumptions": {**st.session_state['assumptions'], "inflation": infl, "inflation_healthcare": infl_hc,
                             "inflation_education": infl_ed, "market_growth": mkt, "income_growth": inc_g,
-                            "current_tax_rate": cur_t, "retire_tax_rate": ret_t}
+                            "property_growth": prop_g, "rent_growth": rent_g, "current_tax_rate": cur_t,
+                            "retire_tax_rate": ret_t}
         }
         db.collection('users').document(st.session_state['user_email']).set(user_data, merge=True)
         st.session_state['user_data'] = user_data
