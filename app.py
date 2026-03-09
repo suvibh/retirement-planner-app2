@@ -516,6 +516,12 @@ with st.expander("📈 9. Advanced Simulation & Analytics Dashboard", expanded=T
                 return default
 
 
+        # Safely fetch Property and Rent growth assumptions from state
+        # (Fixes NameError if they are hidden in the Part 2 UI)
+        prop_g = float(st.session_state['assumptions'].get('property_growth', 3.0))
+        rent_g = float(st.session_state['assumptions'].get('rent_growth', 3.0))
+
+
         # --- PROGRESSIVE IRS FEDERAL TAX CALCULATOR ---
         def calc_federal_tax(ordinary_income, cap_gains, is_mfj, year_offset, inflation_rate):
             # Inflate brackets and standard deduction dynamically over time
