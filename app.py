@@ -561,8 +561,9 @@ with st.expander("💸 4. Current Expenses & AI Builder", expanded=False):
             valid = edited_c[edited_c["Description"].astype(str) != ""].copy()
             locked = valid[valid["AI Estimate?"] == False].to_dict('records')
             locked_desc = [x['Description'] for x in locked]
-            wealth_ctx = f"The household has a current annual pre-tax income of ${curr_inc_total:,.0f} and liquid assets totaling ${liq_ast_total:,.0f}. VERY IMPORTANT: Scale the estimated budget up or down to align with this specific level of wealth and income (e.g. higher income means higher discretionary spending, nicer cars, more travel)."
-            prompt = f"City: {curr_city}. Family: {k_ctx} Housing: {h_ctx}. {wealth_ctx} Generate 10-15 missing living expenses to create a complete monthly budget. {ai_exclusion} Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (choose from standard budget categories), 'Frequency' (Monthly/Yearly), 'Amount ($)' (number), 'AI Estimate?' (true)."
+            wealth_ctx = f"The household has a current annual pre-tax income of ${curr_inc_total:,.0f} and liquid assets totaling ${liq_ast_total:,.0f}. VERY IMPORTANT: While you should scale the budget to reflect this wealth, assume these users are savvy spenders and aggressive savers (comfortable but smart with money), so avoid over-inflating lifestyle costs unnecessarily."
+            allowed_cats = ", ".join(budget_categories)
+            prompt = f"City: {curr_city}. Family: {k_ctx} Housing: {h_ctx}. {wealth_ctx} Generate 10-15 missing living expenses to create a complete monthly budget. {ai_exclusion} Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (MUST be exactly one of: {allowed_cats}. If unsure, default to 'Other'), 'Frequency' (Monthly/Yearly), 'Amount ($)' (number), 'AI Estimate?' (true)."
             res = call_gemini_json(prompt)
             if res and isinstance(res, list) and len(res) > 0:
                 st.session_state['current_expenses'] = locked + res
@@ -705,8 +706,9 @@ with st.expander("🔮 6. Global Macroeconomic Assumptions & Retirement Sim", ex
             valid = edited_r[edited_r["Description"].astype(str) != ""].copy()
             locked = valid[valid["AI Estimate?"] == False].to_dict('records')
             locked_desc = [x['Description'] for x in locked]
-            wealth_ctx = f"The household will have a projected Net Worth built from a current income of ${curr_inc_total:,.0f} and current liquid assets of ${liq_ast_total:,.0f}. Assume a proportional retirement lifestyle based on these wealth figures."
-            prompt = f"Retirement context: {ret_city}. Household size drops to {1 + (1 if has_spouse else 0)}. {wealth_ctx} Generate 10-15 missing living expenses to create a complete retirement budget. {ai_exclusion} Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category', 'Frequency', 'Amount ($)', 'AI Estimate?' (true)."
+            wealth_ctx = f"The household will have a projected Net Worth built from a current income of ${curr_inc_total:,.0f} and current liquid assets of ${liq_ast_total:,.0f}. Assume a comfortable but smart, savvy-saver retirement lifestyle. Do not estimate overly extravagant expenses."
+            allowed_cats = ", ".join(budget_categories)
+            prompt = f"Retirement context: {ret_city}. Household size drops to {1 + (1 if has_spouse else 0)}. {wealth_ctx} Generate 10-15 missing living expenses to create a complete retirement budget. {ai_exclusion} Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (MUST be exactly one of: {allowed_cats}. If unsure, default to 'Other'), 'Frequency' (Monthly/Yearly), 'Amount ($)' (number), 'AI Estimate?' (true)."
             res = call_gemini_json(prompt)
             if res and isinstance(res, list) and len(res) > 0:
                 st.session_state['retire_expenses'] = locked + res
@@ -843,7 +845,7 @@ with st.expander("📈 8. Advanced Simulation & Analytics Dashboard", expanded=T
         sim_biz = [{"name": b.get("Business Name"), "val": safe_num(b.get("Total Valuation ($)")),
                     "own": safe_num(b.get("Your Ownership (%)")) / 100.0,
                     "dist": safe_num(b.get("Annual Distribution ($)")),
-                    "v_growth": safe_num(b.get("Override Val. Growth (%)"), active_mkt),
+                    "v_growth": safe_num(b.get("Override Val. Growth (%)"), mkt),
                     "d_growth": safe_num(b.get("Override Dist. Growth (%)"), inc_g)} for b in
                    edited_biz.to_dict('records') if b.get("Business Name")]
 
