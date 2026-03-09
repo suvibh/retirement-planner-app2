@@ -85,7 +85,7 @@ def call_gemini_json(prompt):
     if not GEMINI_API_KEY:
         st.error("⚠️ GEMINI_API_KEY is missing in Streamlit Secrets. AI features cannot run.")
         return None
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={GEMINI_API_KEY}"
     payload = {"contents": [{"parts": [{"text": prompt}]}],
                "generationConfig": {"responseMimeType": "application/json"}}
     try:
@@ -110,6 +110,13 @@ def subtract_years(dt, years):
         return dt.replace(year=dt.year - years)
     except ValueError:
         return dt.replace(year=dt.year - years, day=28)
+
+
+def safe_num(val, default=0.0):
+    try:
+        return float(val) if val is not None and not pd.isna(val) else default
+    except:
+        return default
 
 
 # --- AUTH LAYER ---
@@ -296,11 +303,12 @@ with st.expander("💵 2. Active Annual Income Streams", expanded=False):
         }, num_rows="dynamic", width="stretch", hide_index=True, key="inc_editor"
     )
     render_total("Aggregate Pre-Tax Income", f"${edited_inc['Annual Amount ($)'].sum():,.0f}")
+    if st.button("💾 Save Profile Snapshot", key="sv_2"): save_requested = True
 
 # --- 3. REAL ESTATE ---
 with st.expander("🏢 3. Real Estate & Private Assets", expanded=False):
     st.markdown(
-        '<div class="info-text">💡 <strong>Dynamic Amortization:</strong> The engine tracks exact mortgage payoff dates based on your balance and payments. Once paid off, the "Mortgage P&I" cost vanishes from your expenses.</div>',
+        '<div class="info-text">💡 <strong>Dynamic Amortization:</strong> You do NOT need to input a remaining loan term! By providing your Current Balance, Interest Rate, and P&amp;I Payment, the mathematical engine calculates the exact date the mortgage hits zero and automatically drops the expense from your long-term simulation.</div>',
         unsafe_allow_html=True)
     df_re = pd.DataFrame(ud.get('real_estate', []))
     if df_re.empty:
@@ -351,6 +359,7 @@ with st.expander("🏢 3. Real Estate & Private Assets", expanded=False):
                                                                 format="%d%%")
         }, num_rows="dynamic", width="stretch", hide_index=True, key="biz_editor"
     )
+    if st.button("💾 Save Profile Snapshot", key="sv_3"): save_requested = True
 
 # --- 4. LIQUID ASSETS & DEBT ---
 with st.expander("🏦 4. Market Portfolios & Liabilities", expanded=False):
@@ -387,6 +396,9 @@ with st.expander("🏦 4. Market Portfolios & Liabilities", expanded=False):
     )
 
     st.divider()
+    st.markdown(
+        '<div class="info-text">💡 Just like your mortgage, simply provide the Current Balance, Rate, and Payment. The engine dynamically amortizes this debt to zero over time.</div>',
+        unsafe_allow_html=True)
     df_debt = pd.DataFrame(ud.get('liabilities', []))
     if df_debt.empty:
         df_debt = pd.DataFrame(
@@ -404,6 +416,7 @@ with st.expander("🏦 4. Market Portfolios & Liabilities", expanded=False):
             "Monthly Payment ($)": st.column_config.NumberColumn("Monthly Payment ($)", step=100, format="$%d")
         }, num_rows="dynamic", width="stretch", hide_index=True, key="debt_editor"
     )
+    if st.button("💾 Save Profile Snapshot", key="sv_4"): save_requested = True
 
 # --- AI CONTEXT PREP ---
 k_ctx = f"{len(kids_data)} children ages {', '.join([str(k['age']) for k in kids_data])}."
@@ -440,6 +453,18 @@ with st.expander("💸 5. AI Smart Budget Builder (Current)", expanded=False):
         }, num_rows="dynamic", width="stretch", hide_index=True, key="cur_ed"
     )
 
+    cur_m_total, cur_y_total = 0, 0
+    for r in edited_c.to_dict('records'):
+        if str(r.get("Description", "")).strip() != "":
+            amt = safe_num(r.get("Amount ($)"))
+            if r.get("Frequency") == "Monthly":
+                cur_m_total += amt
+                cur_y_total += amt * 12
+            else:
+                cur_y_total += amt
+                cur_m_total += amt / 12
+    render_total("Est. Total Baseline Budget", f"${cur_m_total:,.0f} / mo  |  ${cur_y_total:,.0f} / yr")
+
     if st.button("✨ Auto-Estimate Budget for " + (curr_city if curr_city else "Your Area") + " (AI)"):
         with st.spinner("Analyzing localized CPI data and family needs..."):
             valid = edited_c[edited_c["Description"].astype(str) != ""].copy()
@@ -449,8 +474,7 @@ with st.expander("💸 5. AI Smart Budget Builder (Current)", expanded=False):
             if res:
                 st.session_state['current_expenses'] = locked + res;
                 st.rerun()
-            else:
-                st.warning("⚠️ AI API request failed or timed out. Check API Key.")
+    if st.button("💾 Save Profile Snapshot", key="sv_5"): save_requested = True
 
 # --- 6. MILESTONES ---
 with st.expander("🎉 6. AI Life Milestone Forecaster", expanded=False):
@@ -491,8 +515,7 @@ with st.expander("🎉 6. AI Life Milestone Forecaster", expanded=False):
             if res:
                 st.session_state['one_time_events'] = res;
                 st.rerun()
-            else:
-                st.warning("⚠️ AI API request failed or timed out. Check API Key.")
+    if st.button("💾 Save Profile Snapshot", key="sv_6"): save_requested = True
 
 # --- 7. RETIREMENT SCENARIO & ASSUMPTIONS ---
 with st.expander("🔮 7. Global Macroeconomic Assumptions", expanded=False):
@@ -500,17 +523,19 @@ with st.expander("🔮 7. Global Macroeconomic Assumptions", expanded=False):
         '<div class="info-text">💡 <strong>Global Overrides:</strong> Any specific growth percentages you typed into the Income, Real Estate, or Assets tables above will automatically override these global default rates.</div>',
         unsafe_allow_html=True)
 
-    c1, c2, c3 = st.columns(3)
-    ret_age = c1.slider("Retirement Age", int(my_age), 100, int(p_info.get('retire_age', 65)))
-    s_ret_age = c2.slider("Spouse Retire Age", int(spouse_age), 100,
-                          int(p_info.get('spouse_retire_age', 65))) if has_spouse else None
+    c1, c2 = st.columns(2)
+    with c1:
+        st.write("**Your Timeline**")
+        ret_age = st.slider("Retirement Age", int(my_age), 100, int(p_info.get('retire_age', 65)))
+        my_life_exp = st.slider("Your Life Expectancy", 70, 115, int(p_info.get('my_life_exp', 95)))
 
-    # Dual Life Expectancy Handlers
-    my_life_exp = c3.slider("Your Life Expectancy", 70, 115, int(p_info.get('my_life_exp', 95)))
+    s_ret_age = None
     spouse_life_exp = 0
-    if has_spouse:
-        c1b, c2b, c3b = st.columns(3)
-        spouse_life_exp = c3b.slider("Spouse Life Expectancy", 70, 115, int(p_info.get('spouse_life_exp', 95)))
+    with c2:
+        if has_spouse:
+            st.write("**Spouse Timeline**")
+            s_ret_age = st.slider("Spouse Retire Age", int(spouse_age), 100, int(p_info.get('spouse_retire_age', 65)))
+            spouse_life_exp = st.slider("Spouse Life Expectancy", 70, 115, int(p_info.get('spouse_life_exp', 95)))
 
     ret_city = city_autocomplete("Where will you retire? (Search any city globally)", "retire_city",
                                  default_val=ud.get('retire_city', curr_city))
@@ -522,8 +547,6 @@ with st.expander("🔮 7. Global Macroeconomic Assumptions", expanded=False):
             if res:
                 st.session_state['assumptions'].update(res);
                 st.rerun()
-            else:
-                st.warning("⚠️ AI API request failed or timed out. Check API Key.")
 
     c4, c5, c6 = st.columns(3)
     infl = c4.number_input("General CPI Inflation (%)",
@@ -570,6 +593,18 @@ with st.expander("🔮 7. Global Macroeconomic Assumptions", expanded=False):
         }, num_rows="dynamic", width="stretch", hide_index=True, key="ret_exp_ed"
     )
 
+    ret_m_total, ret_y_total = 0, 0
+    for r in edited_r.to_dict('records'):
+        if str(r.get("Description", "")).strip() != "":
+            amt = safe_num(r.get("Amount ($)"))
+            if r.get("Frequency") == "Monthly":
+                ret_m_total += amt
+                ret_y_total += amt * 12
+            else:
+                ret_y_total += amt
+                ret_m_total += amt / 12
+    render_total("Est. Total Retirement Budget", f"${ret_m_total:,.0f} / mo  |  ${ret_y_total:,.0f} / yr")
+
     if st.button("✨ Simulate Realistic Lifestyle Costs in " + (ret_city if ret_city else "Retirement") + " (AI)"):
         with st.spinner(f"Modelling specific living costs for {ret_city}..."):
             user_rows = edited_r[edited_r["Description"].astype(str) != ""].to_dict('records')
@@ -578,8 +613,7 @@ with st.expander("🔮 7. Global Macroeconomic Assumptions", expanded=False):
             if res:
                 st.session_state['retire_expenses'] = res;
                 st.rerun()
-            else:
-                st.warning("⚠️ AI API request failed or timed out. Check API Key.")
+    if st.button("💾 Save Profile Snapshot", key="sv_7"): save_requested = True
 
 # --- 8. ADVANCED SCENARIOS & TAXES ---
 with st.expander("⚖️ 8. AI Strategy & Scenario Controls", expanded=False):
@@ -609,16 +643,11 @@ with st.expander("⚖️ 8. AI Strategy & Scenario Controls", expanded=False):
         ret_t = st.number_input("Retirement State Tax Adjustment (%)",
                                 value=float(st.session_state['assumptions'].get('retire_tax_rate', 0.0)),
                                 help="Are you moving to a tax-free state in retirement? Adjust here.")
+    if st.button("💾 Save Profile Snapshot", key="sv_8"): save_requested = True
 
 # --- 9. EXHAUSTIVE DASHBOARD ENGINE & TAX LOGIC ---
 with st.expander("📈 9. Advanced Simulation & Analytics Dashboard", expanded=True):
     if my_age > 0:
-        def safe_num(val, default=0.0):
-            try:
-                return float(val) if val is not None and not pd.isna(val) else default
-            except:
-                return default
-
 
         prop_g = float(st.session_state['assumptions'].get('property_growth', 3.0))
         rent_g = float(st.session_state['assumptions'].get('rent_growth', 3.0))
