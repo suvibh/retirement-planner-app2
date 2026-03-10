@@ -249,7 +249,7 @@ if 'user_email' not in st.session_state:
                 st.warning("Password must be at least 6 characters long.")
 
     st.divider()
-    if st.button("🚀 Try the Demo (Guest Mode)", use_container_width=True):
+    if st.button("🚀 Try the Demo (Guest Mode)", width="stretch"):
         st.session_state['user_email'] = "guest_demo"
         st.session_state['user_data'] = {}
         st.rerun()
@@ -318,7 +318,7 @@ with c_logout:
     st.markdown(
         f"<div style='text-align: right; font-size: 0.9rem; color: #64748b; padding-top: 10px;'>Logged in as: <b>{st.session_state['user_email']}</b></div>",
         unsafe_allow_html=True)
-    if st.button("Log Out", use_container_width=True):
+    if st.button("Log Out", width="stretch"):
         cookie_manager.delete("user_email")
         time.sleep(0.2)
         st.session_state.clear()
@@ -425,7 +425,7 @@ with st.expander("💵 2. Your Income Streams", expanded=False):
     col_ai_inc, col_sv_inc = st.columns([3, 1])
     with col_ai_inc:
         st.markdown('<div class="ai-btn-marker"></div>', unsafe_allow_html=True)
-        if st.button("✨ Auto-Estimate My Social Security (AI)", use_container_width=True):
+        if st.button("✨ Auto-Estimate My Social Security (AI)", width="stretch"):
             with st.spinner("Asking AI to estimate your Social Security benefits based on your age and income..."):
                 curr_inc = sum([safe_num(x.get('Annual Amount ($)', 0)) for x in ud.get('income', [])])
                 if has_spouse:
@@ -451,7 +451,7 @@ with st.expander("💵 2. Your Income Streams", expanded=False):
                     st.rerun()
     with col_sv_inc:
         st.markdown('<div class="save-btn-marker"></div>', unsafe_allow_html=True)
-        if st.button("💾 Save Income", key="sv_2", use_container_width=True):
+        if st.button("💾 Save Income", key="sv_2", width="stretch"):
             save_requested = True
             st.toast("✅ Income Saved!", icon="💾")
 
@@ -599,7 +599,7 @@ with st.expander("🏦 3. Assets, Debts & Net Worth", expanded=False):
         unsafe_allow_html=True)
 
     st.markdown('<div class="save-btn-marker"></div>', unsafe_allow_html=True)
-    if st.button("💾 Save Assets & Debts", key="sv_3", use_container_width=True):
+    if st.button("💾 Save Assets & Debts", key="sv_3", width="stretch"):
         save_requested = True
         st.toast("✅ Assets & Debts Saved!", icon="💾")
 
@@ -701,7 +701,7 @@ with st.expander("💸 4. Lifetime Cash Flows (Budgets & Milestones)", expanded=
     with col_ai_cb:
         st.markdown('<div class="ai-btn-marker"></div>', unsafe_allow_html=True)
         if st.button("✨ Auto-Estimate Budget & Milestones for selected current and future locations (AI)",
-                     use_container_width=True):
+                     width="stretch"):
             with st.spinner("Analyzing localized CPI data, timelines, and family needs..."):
                 valid = edited_exp[edited_exp["Description"].astype(str) != ""].copy()
                 locked = valid[valid["AI Estimate?"] == False].to_dict('records')
@@ -717,7 +717,7 @@ with st.expander("💸 4. Lifetime Cash Flows (Budgets & Milestones)", expanded=
                     st.error("⚠️ AI returned an invalid format. Please try again.")
     with col_sv_cb:
         st.markdown('<div class="save-btn-marker"></div>', unsafe_allow_html=True)
-        if st.button("💾 Save Cash Flows", key="sv_4", use_container_width=True):
+        if st.button("💾 Save Cash Flows", key="sv_4", width="stretch"):
             save_requested = True
             st.session_state['lifetime_expenses'] = edited_exp.to_dict('records')
             st.toast("✅ Cash Flows Saved!", icon="💾")
@@ -756,8 +756,7 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                 sub_c2.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
                 sub_c2.markdown('<div class="ai-btn-marker"></div>', unsafe_allow_html=True)
 
-                if sub_c2.button("✨ AI", key=f"btn_{state_key}", help=f"AI Estimate for {label}",
-                                 use_container_width=True):
+                if sub_c2.button("✨ AI", key=f"btn_{state_key}", help=f"AI Estimate for {label}", width="stretch"):
                     with st.spinner("AI estimating..."):
                         enhanced_prompt = prompt + " CRITICAL INSTRUCTION: You MUST return the value as a percentage number between 0 and 100 (e.g., return 5.5 for 5.5%, DO NOT return 0.055)."
                         res = call_gemini_json(enhanced_prompt)
@@ -1984,7 +1983,7 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                 fig_nw.update_layout(hovermode="x unified", yaxis=dict(tickformat="$,.0f"),
                                      margin=dict(l=0, r=0, t=30, b=0),
                                      legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-                st.plotly_chart(fig_nw, use_container_width=True)
+                st.plotly_chart(fig_nw, width="stretch")
 
                 st.write("#### Annual Cash Flow & Progressive Taxes")
                 fig_cf = go.Figure()
@@ -2019,7 +2018,7 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                 fig_cf.update_layout(hovermode="x unified", yaxis=dict(tickformat="$,.0f"),
                                      margin=dict(l=0, r=0, t=30, b=0),
                                      legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-                st.plotly_chart(fig_cf, use_container_width=True)
+                st.plotly_chart(fig_cf, width="stretch")
 
                 # --- SANKEY DIAGRAM ---
                 st.divider()
@@ -2086,13 +2085,15 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                             'rgba(16, 185, 129, 0.4)' if k == 'Net Savings & Investments' else 'rgba(244, 63, 94, 0.4)')
 
                     fig_sankey = go.Figure(data=[go.Sankey(
+                        arrangement="snap",
                         node=dict(
-                            pad=20,
+                            pad=35,
                             thickness=30,
                             line=dict(color="black", width=0.5),
                             label=labels,
                             color=node_colors
                         ),
+                        textfont=dict(color="black", size=12),
                         link=dict(
                             source=source,
                             target=target,
@@ -2100,8 +2101,8 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                             color=link_colors
                         )
                     )])
-                    fig_sankey.update_layout(height=550, margin=dict(l=0, r=0, t=30, b=0), font=dict(size=12))
-                    st.plotly_chart(fig_sankey, use_container_width=True)
+                    fig_sankey.update_layout(height=750, margin=dict(l=0, r=0, t=30, b=0), font=dict(size=12))
+                    st.plotly_chart(fig_sankey, width="stretch")
 
             # --- DATA AUDIT TABLES ---
             st.divider()
@@ -2117,7 +2118,7 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                 ord_det = ["Year", "Age (Primary)"] + inc_c + exp_c + ["Net Savings"]
                 st.dataframe(df_det[ord_det].set_index("Year").style.format(
                     {c: "${:,.0f}" for c in ord_det if c not in ["Age (Primary)", "Year"]} | {
-                        "Age (Primary)": "{:.0f}"}), use_container_width=True)
+                        "Age (Primary)": "{:.0f}"}), width="stretch")
 
             with t2:
                 st.subheader("Detailed Net Worth Log")
@@ -2129,7 +2130,7 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                                                               "Total Net Worth"]
                 st.dataframe(df_nw[ord_nw].set_index("Year").style.format(
                     {c: "${:,.0f}" for c in ord_nw if c not in ["Age (Primary)", "Year"]} | {
-                        "Age (Primary)": "{:.0f}"}), use_container_width=True)
+                        "Age (Primary)": "{:.0f}"}), width="stretch")
 
 # --- AI FIDUCIARY REPORT (BOTTOM ANCHORED) ---
 st.markdown("---")
@@ -2140,7 +2141,7 @@ st.markdown(
 c_ai_rep, _ = st.columns([1, 2])
 with c_ai_rep:
     st.markdown('<div class="ai-btn-marker"></div>', unsafe_allow_html=True)
-    if st.button("✨ Generate Comprehensive AI Report", use_container_width=True):
+    if st.button("✨ Generate Comprehensive AI Report", width="stretch"):
         with st.spinner("AI extracting timeseries data and acting as fiduciary advisor..."):
             if 'sim_results' in locals() and len(sim_results) > 0:
                 sim_summary = {
@@ -2185,8 +2186,7 @@ if 'ai_analysis_report' in st.session_state:
 # --- FINAL SAVE CORE ---
 st.markdown("---")
 st.markdown('<div class="main-save-btn-marker"></div>', unsafe_allow_html=True)
-if st.button("🚀 Save Full Profile to Cloud Server", type="primary", use_container_width=True,
-             key="save_main") or save_requested:
+if st.button("🚀 Save Full Profile to Cloud Server", type="primary", width="stretch", key="save_main") or save_requested:
     if st.session_state['user_email'] == "guest_demo":
         st.error("Persistent configurations disabled within the demonstration environment.")
     else:
