@@ -27,12 +27,20 @@ st.set_page_config(page_title="AI Retirement Planner Pro", layout="wide", page_i
                    initial_sidebar_state="expanded")
 
 # --- GLOBAL CONSTANTS ---
-SS_WAGE_BASE_2026, ADDL_MED_TAX_THRESHOLD = 168600, 250000
-IRA_LIMIT_BASE, PLAN_401K_LIMIT_BASE = 7000, 23500
-CATCHUP_401K_BASE, CATCHUP_IRA_BASE = 7500, 1000
-SS_MFJ_TIER1_BASE, SS_MFJ_TIER2_BASE = 32000, 44000
-SS_SINGLE_TIER1_BASE, SS_SINGLE_TIER2_BASE = 25000, 34000
-MEDICARE_GAP_COST, LTC_SHOCK_COST = 15000, 100000
+SS_WAGE_BASE_2026 = 168600
+ADDL_MED_TAX_THRESHOLD = 250000
+IRA_LIMIT_BASE = 7000
+PLAN_401K_LIMIT_BASE = 23500
+CATCHUP_401K_BASE = 7500
+CATCHUP_IRA_BASE = 1000
+
+SS_MFJ_TIER1_BASE = 32000
+SS_MFJ_TIER2_BASE = 44000
+SS_SINGLE_TIER1_BASE = 25000
+SS_SINGLE_TIER2_BASE = 34000
+
+MEDICARE_GAP_COST = 15000
+LTC_SHOCK_COST = 100000
 SHORTFALL_PENALTY_RATE = 0.12  # 12% Annual Penalty on Unfunded Debt
 WIDOW_EXPENSE_MULTIPLIER = 0.60
 MEDICARE_CLIFF_SINGLE_DROP = 0.25  # 25% drop per spouse going on Medicare
@@ -43,14 +51,38 @@ BUDGET_CATEGORIES = ["Housing / Rent", "Transportation", "Food", "Utilities", "I
 # --- GOOGLE ANALYTICS INJECTION ---
 GA_MEASUREMENT_ID = st.secrets.get("GA_MEASUREMENT_ID", "")
 if GA_MEASUREMENT_ID:
-    st.components.v1.html(
-        f"""<script async src="https://www.googletagmanager.com/gtag/js?id={html.escape(GA_MEASUREMENT_ID)}"></script><script>window.dataLayer = window.dataLayer || []; function gtag(){{dataLayer.push(arguments);}} gtag('js', new Date()); gtag('config', '{html.escape(GA_MEASUREMENT_ID)}');</script>""",
-        width=0, height=0)
+    ga_script = f"""
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id={html.escape(GA_MEASUREMENT_ID)}"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){{dataLayer.push(arguments);}}
+      gtag('js', new Date());
+      gtag('config', '{html.escape(GA_MEASUREMENT_ID)}');
+    </script>
+    """
+    st.components.v1.html(ga_script, width=0, height=0)
 
 # --- DESIGN SYSTEM & CSS ---
-st.markdown("""
+DESIGN_SYSTEM = """
 <style>
-:root { --primary: #6366f1; --primary-dark: #4f46e5; --primary-light: #e0e7ff; --success: #10b981; --warning: #f59e0b; --danger: #ef4444; --surface: #ffffff; --border: #e2e8f0; --text-primary: #0f172a; --text-secondary: #64748b; --radius-sm: 8px; --radius-md: 12px; --radius-lg: 20px; --shadow-sm: 0 1px 3px rgba(0,0,0,0.08); --shadow-md: 0 4px 16px rgba(0,0,0,0.08); }
+:root {
+    --primary: #6366f1;
+    --primary-dark: #4f46e5;
+    --primary-light: #e0e7ff;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --surface: #ffffff;
+    --border: #e2e8f0;
+    --text-primary: #0f172a;
+    --text-secondary: #64748b;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 20px;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
+}
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 * { font-family: 'Inter', sans-serif !important; }
 h1 { font-size: 2.2rem !important; font-weight: 900 !important; background: linear-gradient(135deg, var(--primary-dark), #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; }
@@ -70,9 +102,20 @@ h3 { font-weight: 700 !important; color: var(--text-primary) !important; }
 [data-testid="stProgress"] > div > div { background: linear-gradient(90deg, var(--primary), #7c3aed) !important; border-radius: 999px !important; }
 [data-testid="stPlotlyChart"] { border-radius: 16px !important; overflow: hidden !important; box-shadow: 0 2px 12px rgba(0,0,0,0.06) !important; background: white; border: 1px solid var(--border); padding: 10px; }
 div[data-testid="stExpander"] { background-color: white !important; border: 1px solid var(--border) !important; border-radius: var(--radius-md) !important; box-shadow: var(--shadow-sm) !important; }
-@media (max-width: 768px) { [data-testid="column"] { min-width: 100% !important; } button { min-height: 48px !important; } [data-testid="stMetricValue"] { font-size: 1.4rem !important; } }
+div.stButton > button { border-radius: 8px !important; font-weight: 600 !important; }
 </style>
-""", unsafe_allow_html=True)
+"""
+
+MOBILE_CSS = """
+<style>
+@media (max-width: 768px) {
+    [data-testid="column"] { min-width: 100% !important; }
+    button { min-height: 48px !important; }
+    [data-testid="stMetricValue"] { font-size: 1.4rem !important; }
+}
+</style>
+"""
+st.markdown(DESIGN_SYSTEM + MOBILE_CSS, unsafe_allow_html=True)
 
 
 # --- REUSABLE UI COMPONENTS ---
@@ -91,7 +134,13 @@ def apply_chart_theme(fig, title=""):
     return fig
 
 
-def stat_card(label, value, color="indigo", icon=""):
+def stat_card(label, value, delta=None, color="indigo", icon=""):
+    delta_html = ""
+    if delta is not None:
+        color_d = "#10b981" if delta > 0 else "#ef4444"
+        arrow = "↑" if delta > 0 else "↓"
+        delta_html = f"<div style='color:{color_d}; font-size:0.8rem; font-weight:600;'>{arrow} {abs(delta):,.0f}</div>"
+
     colors = {
         "indigo": ("linear-gradient(135deg,#6366f1,#4f46e5)", "#e0e7ff"),
         "emerald": ("linear-gradient(135deg,#10b981,#059669)", "#d1fae5"),
@@ -99,24 +148,58 @@ def stat_card(label, value, color="indigo", icon=""):
         "rose": ("linear-gradient(135deg,#ef4444,#dc2626)", "#fee2e2"),
     }
     grad, _ = colors.get(color, colors["indigo"])
-    st.markdown(
-        f"<div style='background:{grad}; padding:20px; border-radius:16px; color:white; box-shadow: 0 4px 14px rgba(0,0,0,0.1);'><div style='font-size:1.5rem; margin-bottom:4px;'>{html.escape(str(icon))}</div><div style='font-size:1.8rem; font-weight:900; letter-spacing:-0.5px;'>{html.escape(str(value))}</div><div style='font-size:0.85rem; opacity:0.9; margin-top:2px;'>{html.escape(str(label))}</div></div>",
-        unsafe_allow_html=True)
+
+    st.markdown(f"""
+    <div style='background:{grad}; padding:20px; border-radius:16px; color:white; box-shadow: 0 4px 14px rgba(0,0,0,0.1);'>
+        <div style='font-size:1.5rem; margin-bottom:4px;'>{html.escape(str(icon))}</div>
+        <div style='font-size:1.8rem; font-weight:900; letter-spacing:-0.5px;'>{html.escape(str(value))}</div>
+        <div style='font-size:0.85rem; opacity:0.9; margin-top:2px;'>{html.escape(str(label))}</div>
+        {delta_html}
+    </div>
+    """, unsafe_allow_html=True)
 
 
 def section_header(title, subtitle="", icon=""):
-    st.markdown(
-        f"<div style='margin: 24px 0 16px 0;'><div style='display:flex; align-items:center; gap:10px;'><span style='font-size:1.4rem;'>{html.escape(str(icon))}</span><h2 style='margin:0; font-size:1.3rem; font-weight:800; color:#0f172a;'>{html.escape(str(title))}</h2></div>{f'<p style=\"margin:4px 0 0 34px; color:#64748b; font-size:0.9rem;\">{html.escape(str(subtitle))}</p>' if subtitle else ''}</div>",
-        unsafe_allow_html=True)
+    st.markdown(f"""
+    <div style='margin: 24px 0 16px 0;'>
+        <div style='display:flex; align-items:center; gap:10px;'>
+            <span style='font-size:1.4rem;'>{html.escape(str(icon))}</span>
+            <h2 style='margin:0; font-size:1.3rem; font-weight:800; color:#0f172a;'>{html.escape(str(title))}</h2>
+        </div>
+        {f"<p style='margin:4px 0 0 34px; color:#64748b; font-size:0.9rem;'>{html.escape(str(subtitle))}</p>" if subtitle else ""}
+    </div>
+    """, unsafe_allow_html=True)
 
 
 def info_banner(text, type="info"):
-    configs = {"info": ("#eff6ff", "#3b82f6", "#1d4ed8", "💡"), "warning": ("#fffbeb", "#f59e0b", "#b45309", "⚠️"),
-               "danger": ("#fef2f2", "#ef4444", "#b91c1c", "🚨")}
+    configs = {
+        "info": ("#eff6ff", "#3b82f6", "#1d4ed8", "💡"),
+        "success": ("#f0fdf4", "#22c55e", "#15803d", "✅"),
+        "warning": ("#fffbeb", "#f59e0b", "#b45309", "⚠️"),
+        "danger": ("#fef2f2", "#ef4444", "#b91c1c", "🚨"),
+    }
     bg, border, text_color, emoji = configs.get(type, configs["info"])
-    st.markdown(
-        f"<div style='background:{bg}; border-left:4px solid {border}; padding:12px 16px; border-radius:0 8px 8px 0; margin-bottom:16px;'><span style='color:{text_color}; font-size:0.9rem;'>{emoji} {html.escape(str(text))}</span></div>",
-        unsafe_allow_html=True)
+    st.markdown(f"""
+    <div style='background:{bg}; border-left:4px solid {border}; padding:12px 16px; border-radius:0 8px 8px 0; margin-bottom:16px;'>
+        <span style='color:{text_color}; font-size:0.9rem;'>{emoji} {html.escape(str(text))}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def retirement_health_score(score):
+    color = "#10b981" if score > 75 else "#f59e0b" if score > 50 else "#ef4444"
+    label = "Excellent" if score > 75 else "Needs Work" if score > 50 else "At Risk"
+    st.markdown(f"""
+    <div style='text-align:center; padding:20px; background:white; border-radius:16px; border:1px solid #e2e8f0; box-shadow:0 2px 8px rgba(0,0,0,0.04);'>
+        <svg width='140' height='140' viewBox='0 0 140 140'>
+            <circle cx='70' cy='70' r='56' fill='none' stroke='#f1f5f9' stroke-width='12'/>
+            <circle cx='70' cy='70' r='56' fill='none' stroke='{color}' stroke-width='12' stroke-dasharray='{2 * 3.14159 * 56}' stroke-dashoffset='{2 * 3.14159 * 56 * (1 - score / 100)}' stroke-linecap='round' transform='rotate(-90 70 70)'/>
+            <text x='70' y='66' text-anchor='middle' font-size='26' font-weight='900' fill='{color}' font-family='Inter'>{score}</text>
+            <text x='70' y='84' text-anchor='middle' font-size='11' fill='#64748b' font-family='Inter'>{label}</text>
+        </svg>
+        <div style='color:#0f172a; font-weight:700; font-size:0.95rem; margin-top:8px;'>Monte Carlo Success Probability</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 def render_status_bar(deplete_year, deplete_age, final_nw, mc_success_rate=None):
@@ -128,16 +211,24 @@ def render_status_bar(deplete_year, deplete_age, final_nw, mc_success_rate=None)
         bg, icon, msg, sub = "#fffbeb", "🟡", "Solvent but Tight", f"${final_nw:,.0f} margin at end of plan. Small changes could significantly improve outcome."
     else:
         bg, icon, msg, sub = "#fef2f2", "🔴", "Projected Insolvency", "Net worth goes negative before end of plan."
+
     mc_html = f"<span style='margin-left:16px; font-size:0.85rem; color:#64748b;'>Monte Carlo: <b>{mc_success_rate:.0f}%</b> success rate</span>" if mc_success_rate is not None else ""
-    st.markdown(
-        f"<div style='background:{bg}; border-radius:12px; padding:16px 20px; display:flex; align-items:center; gap:12px; margin-bottom:20px; border: 1px solid #e2e8f0;'><span style='font-size:1.8rem;'>{icon}</span><div><div style='font-weight:800; font-size:1.1rem; color:#0f172a;'>{html.escape(msg)}</div><div style='font-size:0.9rem; color:#64748b; margin-top:2px;'>{html.escape(sub)}{mc_html}</div></div></div>",
-        unsafe_allow_html=True)
+    st.markdown(f"""
+    <div style='background:{bg}; border-radius:12px; padding:16px 20px; display:flex; align-items:center; gap:12px; margin-bottom:20px; border: 1px solid #e2e8f0;'>
+        <span style='font-size:1.8rem;'>{icon}</span>
+        <div><div style='font-weight:800; font-size:1.1rem; color:#0f172a;'>{html.escape(msg)}</div><div style='font-size:0.9rem; color:#64748b; margin-top:2px;'>{html.escape(sub)}{mc_html}</div></div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 def render_empty_state(section, icon):
-    st.markdown(
-        f"<div style='text-align:center; padding:48px 24px; background:#f8fafc; border-radius:16px; border:2px dashed #cbd5e1; margin-bottom:20px;'><div style='font-size:3rem; margin-bottom:12px;'>{icon}</div><h3 style='color:#0f172a; margin:0 0 8px;'>No {html.escape(section)} Added Yet</h3><p style='color:#64748b; margin:0 0 20px; font-size:0.95rem;'>Use the table to add rows, or click the AI button to auto-populate based on your profile.</p></div>",
-        unsafe_allow_html=True)
+    st.markdown(f"""
+    <div style='text-align:center; padding:48px 24px; background:#f8fafc; border-radius:16px; border:2px dashed #cbd5e1; margin-bottom:20px;'>
+        <div style='font-size:3rem; margin-bottom:12px;'>{icon}</div>
+        <h3 style='color:#0f172a; margin:0 0 8px;'>No {html.escape(section)} Added Yet</h3>
+        <p style='color:#64748b; margin:0 0 20px; font-size:0.95rem;'>Use the table to add rows, or click the AI button to auto-populate based on your profile.</p>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 def render_total(label, series):
@@ -151,7 +242,7 @@ def render_total(label, series):
 try:
     import extra_streamlit_components as stx
 except ImportError:
-    st.error("Missing dependency: pip install extra-streamlit-components");
+    st.error("Missing dependency: pip install extra-streamlit-components")
     st.stop()
 
 if 'firebase_enabled' not in st.session_state:
@@ -167,29 +258,34 @@ if 'firebase_enabled' not in st.session_state:
             st.warning("⚠️ Cloud Sync Disabled (Local Mode Active). Firebase initialization failed.")
 
 try:
-    if st.session_state['firebase_enabled']: db = firestore.client()
+    if st.session_state['firebase_enabled']:
+        db = firestore.client()
 except Exception:
     st.session_state['firebase_enabled'] = False
 
-FIREBASE_WEB_API_KEY, GEMINI_API_KEY = st.secrets.get("FIREBASE_WEB_API_KEY", ""), st.secrets.get("GEMINI_API_KEY", "")
+FIREBASE_WEB_API_KEY = st.secrets.get("FIREBASE_WEB_API_KEY", "")
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 
 with st.spinner("Authenticating Session..."):
     cookie_manager = stx.CookieManager(key="auth_cookie_manager")
-    if cookie_manager.get_all() is None: time.sleep(0.5)
+    if cookie_manager.get_all() is None:
+        time.sleep(0.5)
 
 
-def sign_in(email, password): return requests.post(
-    f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_WEB_API_KEY}",
-    json={"email": email, "password": password, "returnSecureToken": True}).json()
+def sign_in(email, password):
+    return requests.post(
+        f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_WEB_API_KEY}",
+        json={"email": email, "password": password, "returnSecureToken": True}).json()
 
 
-def sign_up(email, password): return requests.post(
-    f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_WEB_API_KEY}",
-    json={"email": email, "password": password, "returnSecureToken": True}).json()
+def sign_up(email, password):
+    return requests.post(f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_WEB_API_KEY}",
+                         json={"email": email, "password": password, "returnSecureToken": True}).json()
 
 
 def load_user_data(email):
-    if email == "guest_demo" or not st.session_state['firebase_enabled']: return {}
+    if email == "guest_demo" or not st.session_state['firebase_enabled']:
+        return {}
     doc = db.collection('users').document(email).get()
     return doc.to_dict() if doc.exists else {}
 
@@ -208,15 +304,17 @@ def call_gemini_json(prompt, retries=3):
             res.raise_for_status()
             res_json = res.json()
             if "error" in res_json:
-                if attempt == retries - 1: st.error(f"⚠️ API Error: {res_json['error'].get('message')}"); return None
-                time.sleep(2 ** attempt);
+                if attempt == retries - 1:
+                    st.error(f"⚠️ API Error: {res_json['error'].get('message')}")
+                    return None
+                time.sleep(2 ** attempt)
                 continue
             text = res_json['candidates'][0]['content']['parts'][0]['text'].strip()
             text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
             text = re.sub(r"\n?```$", "", text).strip()
             parsed = json.loads(text)
-            if isinstance(parsed, dict) and len(parsed) == 1 and isinstance(list(parsed.values())[0], list): return \
-            list(parsed.values())[0]
+            if isinstance(parsed, dict) and len(parsed) == 1 and isinstance(list(parsed.values())[0], list):
+                return list(parsed.values())[0]
             return parsed
         except Exception:
             time.sleep(2 ** attempt)
@@ -227,7 +325,8 @@ def safe_num(val, default=0.0):
     if val is None or (isinstance(val, float) and math.isnan(val)) or val is pd.NA: return default
     try:
         clean_val = re.sub(r'[^\d.-]', '', str(val))
-        return float(clean_val) if clean_val else default
+        if clean_val == "": return default
+        return float(clean_val)
     except Exception:
         return default
 
@@ -261,39 +360,42 @@ if 'user_email' not in st.session_state:
     with c2:
         tab1, tab2 = st.tabs(["Secure Login", "New Account"])
         with tab1:
-            le, lp = st.text_input("Email", key="le"), st.text_input("Password", type="password", key="lp")
+            le = st.text_input("Email", key="le")
+            lp = st.text_input("Password", type="password", key="lp")
             if st.button("Sign In", type="primary", use_container_width=True):
                 res = sign_in(le, lp)
                 if "idToken" in res:
-                    st.session_state['user_email'] = res['email'];
+                    st.session_state['user_email'] = res['email']
                     st.session_state['user_data'] = load_user_data(res['email'])
                     cookie_manager.set("user_email", res['email'],
                                        expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
-                    time.sleep(0.2);
+                    time.sleep(0.2)
                     st.rerun()
                 else:
                     st.error("Login failed. Please check your email and password.")
         with tab2:
-            se, sp = st.text_input("Email", key="se"), st.text_input("Password", type="password", key="sp")
+            se = st.text_input("New Email", key="se")
+            sp = st.text_input("New Password", type="password", key="sp")
             if st.button("Create Account", type="primary", use_container_width=True):
                 if len(sp) >= 6:
                     res = sign_up(se, sp)
                     if "idToken" in res:
-                        st.session_state['user_email'] = res['email'];
+                        st.session_state['user_email'] = res['email']
                         st.session_state['user_data'] = {}
                         cookie_manager.set("user_email", res['email'],
                                            expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
-                        time.sleep(0.2);
+                        time.sleep(0.2)
                         st.rerun()
                 else:
                     st.warning("Password must be at least 6 characters long.")
+
         st.divider()
         if st.button("🚀 Try the Demo (Guest Mode)", use_container_width=True):
-            st.session_state['user_email'] = "guest_demo";
+            st.session_state['user_email'] = "guest_demo"
             st.session_state['user_data'] = {}
             cookie_manager.set("user_email", "guest_demo",
                                expires_at=datetime.datetime.now() + datetime.timedelta(days=1))
-            st.toast("Guest mode active.", icon="⚠️");
+            st.toast("Guest mode active.", icon="⚠️")
             st.rerun()
     st.stop()
 
@@ -334,19 +436,20 @@ def initialize_session_state():
 
         life_exp = ud.get('lifetime_expenses', [])
         if not life_exp:
-            migrated, current_year = [], datetime.date.today().year
+            migrated = []
+            current_year = datetime.date.today().year
             for c in ud.get('current_expenses', []):
-                if c.get("Description"): migrated.append(
-                    {"Description": c.get("Description"), "Category": c.get("Category", "Other"),
-                     "Frequency": c.get("Frequency", "Monthly"), "Amount ($)": c.get("Amount ($)", 0),
-                     "Start Phase": "Now", "Start Year": None, "End Phase": "At Retirement", "End Year": None,
-                     "AI Estimate?": c.get("AI Estimate?", False)})
+                if c.get("Description"):
+                    migrated.append({"Description": c.get("Description"), "Category": c.get("Category", "Other"),
+                                     "Frequency": c.get("Frequency", "Monthly"), "Amount ($)": c.get("Amount ($)", 0),
+                                     "Start Phase": "Now", "Start Year": None, "End Phase": "At Retirement",
+                                     "End Year": None, "AI Estimate?": c.get("AI Estimate?", False)})
             for r in ud.get('retire_expenses', []):
-                if r.get("Description"): migrated.append(
-                    {"Description": r.get("Description"), "Category": r.get("Category", "Other"),
-                     "Frequency": r.get("Frequency", "Monthly"), "Amount ($)": r.get("Amount ($)", 0),
-                     "Start Phase": "At Retirement", "Start Year": None, "End Phase": "End of Life", "End Year": None,
-                     "AI Estimate?": r.get("AI Estimate?", False)})
+                if r.get("Description"):
+                    migrated.append({"Description": r.get("Description"), "Category": r.get("Category", "Other"),
+                                     "Frequency": r.get("Frequency", "Monthly"), "Amount ($)": r.get("Amount ($)", 0),
+                                     "Start Phase": "At Retirement", "Start Year": None, "End Phase": "End of Life",
+                                     "End Year": None, "AI Estimate?": r.get("AI Estimate?", False)})
             for m in ud.get('one_time_events', []):
                 if m.get("Description"):
                     try:
@@ -361,22 +464,23 @@ def initialize_session_state():
                                      "Frequency": m.get("Frequency", "One-Time"), "Amount ($)": m.get("Amount ($)", 0),
                                      "Start Phase": "Custom Year", "Start Year": sy_int, "End Phase": "Custom Year",
                                      "End Year": ey_int, "AI Estimate?": m.get("AI Estimate?", False)})
-            life_exp = migrated if migrated else [
-                {"Description": "Groceries", "Category": "Food", "Frequency": "Monthly", "Amount ($)": 0,
-                 "Start Phase": "Now", "Start Year": None, "End Phase": "End of Life", "End Year": None,
-                 "AI Estimate?": False}]
+
+            if migrated:
+                life_exp = migrated
+            else:
+                life_exp = [{"Description": "Groceries", "Category": "Food", "Frequency": "Monthly", "Amount ($)": 0,
+                             "Start Phase": "Now", "Start Year": None, "End Phase": "End of Life", "End Year": None,
+                             "AI Estimate?": False}]
         st.session_state['lifetime_expenses'] = life_exp
 
-        st.session_state['assumptions'] = ud.get('assumptions', {"inflation": 3.0, "inflation_healthcare": 5.5,
-                                                                 "inflation_education": 4.5, "market_growth": 7.0,
-                                                                 "income_growth": 3.0, "property_growth": 3.0,
-                                                                 "rent_growth": 3.0, "current_tax_rate": 5.0,
-                                                                 "retire_tax_rate": 0.0, "roth_conversions": False,
-                                                                 "roth_target": "24%",
-                                                                 "withdrawal_strategy": "Standard",
-                                                                 "stress_test": False, "glidepath": True,
-                                                                 "medicare_gap": True, "medicare_cliff": True,
-                                                                 "ltc_shock": False})
+        st.session_state['assumptions'] = ud.get('assumptions', {
+            "inflation": 3.0, "inflation_healthcare": 5.5, "inflation_education": 4.5,
+            "market_growth": 7.0, "income_growth": 3.0, "property_growth": 3.0, "rent_growth": 3.0,
+            "current_tax_rate": 5.0, "retire_tax_rate": 0.0, "roth_conversions": False,
+            "roth_target": "24%", "withdrawal_strategy": "Standard", "stress_test": False,
+            "glidepath": True, "medicare_gap": True, "medicare_cliff": True, "ltc_shock": False
+        })
+
         st.session_state['dirty'] = False
         st.session_state['migration_v1'] = True
 
@@ -384,7 +488,8 @@ def initialize_session_state():
 initialize_session_state()
 
 
-def mark_dirty(): st.session_state['dirty'] = True
+def mark_dirty():
+    st.session_state['dirty'] = True
 
 
 def get_completion_score():
@@ -399,7 +504,8 @@ def get_completion_score():
 
 def city_autocomplete(label, key_prefix, default_val=""):
     input_key = f"{key_prefix}_input"
-    if input_key not in st.session_state: st.session_state[input_key] = default_val
+    if input_key not in st.session_state:
+        st.session_state[input_key] = default_val
     current_val = st.text_input(label, key=input_key,
                                 help="Type a major city. The AI uses this to look up local costs of living, property values, and state taxes.",
                                 on_change=mark_dirty)
@@ -414,32 +520,38 @@ def city_autocomplete(label, key_prefix, default_val=""):
                     predictions = res.get("predictions", [])
                     if not any(current_val_clean == p["description"] for p in predictions):
                         st.caption("Did you mean:")
-                        for p in predictions[:3]: st.button(p["description"], key=f"{key_prefix}_{p['place_id']}",
-                                                            on_click=lambda k=input_key,
-                                                                            v=p["description"]: st.session_state.update(
-                                                                {k: v, 'dirty': True}))
+                        for p in predictions[:3]:
+                            st.button(p["description"], key=f"{key_prefix}_{p['place_id']}",
+                                      on_click=lambda k=input_key, v=p["description"]: st.session_state.update(
+                                          {k: v, 'dirty': True}))
         except:
             pass
     return current_val
 
 
 def clean_df(df, primary_key):
-    if not isinstance(df, pd.DataFrame) or df.empty: return []
+    if not isinstance(df, pd.DataFrame): return df
+    if df.empty: return []
     valid_rows = []
     for r in df.to_dict('records'):
         clean_r = {}
         for vk, vv in r.items():
-            clean_r[vk] = None if pd.isna(vv) or vv is pd.NA else vv
+            if pd.isna(vv) or vv is pd.NA:
+                clean_r[vk] = None
+            else:
+                clean_r[vk] = vv
         if str(clean_r.get(primary_key, '')).strip() != "":
             valid_rows.append(clean_r)
     return valid_rows
 
 
 def save_profile():
-    if st.session_state['user_email'] == "guest_demo": st.error(
-        "Persistent configurations disabled within the demonstration environment."); return
-    if not st.session_state.get('firebase_enabled', True): st.error(
-        "Cloud saving disabled due to connection issues."); return
+    if st.session_state['user_email'] == "guest_demo":
+        st.error("Persistent configurations disabled within the demonstration environment.")
+        return
+    if not st.session_state.get('firebase_enabled', True):
+        st.error("Cloud saving disabled due to connection issues.")
+        return
 
     my_age = relativedelta(datetime.date.today(), st.session_state['my_dob']).years
     spouse_age = relativedelta(datetime.date.today(), st.session_state['spouse_dob']).years if st.session_state[
@@ -453,7 +565,8 @@ def save_profile():
             "spouse_life_exp": st.session_state['spouse_life_exp'], "current_city": st.session_state['curr_city_flow'],
             "has_spouse": st.session_state['has_spouse'], "spouse_name": st.session_state['spouse_name'],
             "spouse_dob": st.session_state['spouse_dob'].strftime("%Y-%m-%d") if st.session_state[
-                'has_spouse'] else None, "spouse_age": spouse_age, "kids": st.session_state['kids_data']
+                'has_spouse'] else None,
+            "spouse_age": spouse_age, "kids": st.session_state['kids_data']
         },
         "retire_city": st.session_state['retire_city_flow'],
         "income": clean_df(pd.DataFrame(st.session_state['income_data']), "Description"),
@@ -470,66 +583,6 @@ def save_profile():
     st.toast("✅ Complete Financial Blueprint Synchronized Successfully!")
 
 
-# --- SIMULATION CONTEXT BUILDER ---
-def build_sim_context():
-    current_year = datetime.date.today().year
-    my_age = relativedelta(datetime.date.today(), st.session_state['my_dob']).years
-    spouse_age = relativedelta(datetime.date.today(), st.session_state['spouse_dob']).years if st.session_state[
-        'has_spouse'] else 0
-    my_birth_year = st.session_state['my_dob'].year
-    spouse_birth_year = st.session_state['spouse_dob'].year if st.session_state['has_spouse'] else current_year
-
-    ret_age, s_ret_age = st.session_state['ret_age'], st.session_state['s_ret_age']
-    my_life_exp_val, spouse_life_exp_val = st.session_state['my_life_exp'], (
-        st.session_state['spouse_life_exp'] if st.session_state['has_spouse'] else 0)
-
-    primary_retire_year = my_birth_year + ret_age
-    spouse_retire_year = spouse_birth_year + s_ret_age if st.session_state['has_spouse'] else 9999
-    primary_end_year = my_birth_year + my_life_exp_val
-    spouse_end_year = spouse_birth_year + spouse_life_exp_val if st.session_state['has_spouse'] else current_year
-
-    max_year = max(primary_end_year, spouse_end_year)
-    max_years = max_year - current_year
-
-    primary_rmd_age = 73 if my_birth_year <= 1959 else 75
-    spouse_rmd_age = 73 if spouse_birth_year <= 1959 else 75
-
-    asm = st.session_state['assumptions']
-    df_re = pd.DataFrame(st.session_state['real_estate_data'])
-    owns_home = not df_re[df_re[
-                              "Is Primary Residence?"] == True].empty if not df_re.empty and "Is Primary Residence?" in df_re.columns else False
-    df_debt = pd.DataFrame(st.session_state['liabilities_data'])
-    debt_records = [d for d in df_debt.to_dict('records') if
-                    d.get("Debt Name") and safe_num(d.get("Current Balance ($)")) > 0] if not df_debt.empty else []
-
-    return {
-        'current_year': current_year, 'my_birth_year': my_birth_year, 'spouse_birth_year': spouse_birth_year,
-        'primary_end_year': primary_end_year, 'spouse_end_year': spouse_end_year,
-        'has_spouse': st.session_state['has_spouse'],
-        'primary_retire_year': primary_retire_year, 'spouse_retire_year': spouse_retire_year,
-        'primary_rmd_age': primary_rmd_age, 'spouse_rmd_age': spouse_rmd_age,
-        'mkt': float(asm.get('market_growth', 7.0)), 'infl': float(asm.get('inflation', 3.0)),
-        'infl_hc': float(asm.get('inflation_healthcare', 5.5)), 'infl_ed': float(asm.get('inflation_education', 4.5)),
-        'inc_g': float(asm.get('income_growth', 3.0)), 'prop_g': float(asm.get('property_growth', 3.0)),
-        'rent_g': float(asm.get('rent_growth', 3.0)), 'cur_t': float(asm.get('current_tax_rate', 5.0)),
-        'ret_t': float(asm.get('retire_tax_rate', 0.0)),
-        'stress_test': asm.get('stress_test', False), 'glidepath': asm.get('glidepath', True),
-        'medicare_gap': asm.get('medicare_gap', True), 'medicare_cliff': asm.get('medicare_cliff', True),
-        'ltc_shock': asm.get('ltc_shock', False),
-        'roth_conversions': asm.get('roth_conversions', False), 'roth_target': asm.get('roth_target', '24%'),
-        'active_withdrawal_strategy': asm.get('withdrawal_strategy', 'Standard'),
-        'owns_home': owns_home, 'kids_data': st.session_state['kids_data'],
-        'max_years': max_years, 'max_year': max_year, 'my_life_exp_val': my_life_exp_val,
-        'spouse_life_exp_val': spouse_life_exp_val,
-        'ast_records': scrub_records(st.session_state['liquid_assets_data']),
-        'debt_records': scrub_records(debt_records), 're_records': scrub_records(st.session_state['real_estate_data']),
-        'biz_records': scrub_records(st.session_state['business_data']),
-        'inc_records': scrub_records(st.session_state['income_data']),
-        'exp_records': scrub_records(st.session_state['lifetime_expenses']),
-        'my_age': my_age, 'spouse_age': spouse_age
-    }
-
-
 # --- MODULE LEVEL SIMULATION CORE (CACHED) ---
 def calc_federal_tax(ordinary_income, is_mfj, year_offset, inflation_rate):
     infl_factor = (1 + inflation_rate / 100) ** year_offset
@@ -542,7 +595,8 @@ def calc_federal_tax(ordinary_income, is_mfj, year_offset, inflation_rate):
                 (float('inf'), 0.37)]
     brackets = b_mfj if is_mfj else b_single
 
-    ord_tax, prev_limit = 0, 0
+    ord_tax = 0
+    prev_limit = 0
     for limit, rate in brackets:
         adj_limit = limit * infl_factor
         if taxable_ordinary > prev_limit:
@@ -668,6 +722,7 @@ def run_simulation(mkt_sequence, ctx):
         if not is_my_alive and not is_spouse_alive:
             break
 
+        # Base Milestones
         if ctx['has_spouse'] and not is_spouse_alive and not spouse_died_notified:
             if year not in milestones_by_year: milestones_by_year[year] = []
             milestones_by_year[year].append(
@@ -769,7 +824,8 @@ def run_simulation(mkt_sequence, ctx):
                         spouse_ss_entitlement = amt
                     continue
 
-                if not is_active: continue
+                if not is_active:
+                    continue
 
                 g = safe_num(inc.get('Override Growth (%)'), ctx['inc_g'])
                 offset_for_growth = max(0, year - max(int(start_year), ctx['current_year']))
@@ -1003,6 +1059,7 @@ def run_simulation(mkt_sequence, ctx):
                                 amount_to_cover -= pull
                                 covered_by_529 += pull
                                 if amount_to_cover <= 0: break
+
                     if amount_to_cover > 0:
                         for a in sim_assets:
                             if a.get('Type') == '529 Plan' and a['bal'] > 0:
@@ -1011,6 +1068,7 @@ def run_simulation(mkt_sequence, ctx):
                                 amount_to_cover -= pull
                                 covered_by_529 += pull
                                 if amount_to_cover <= 0: break
+
                     if covered_by_529 > 0:
                         annual_inc += covered_by_529
                         yd[f"Income: Tax-Free 529 Withdrawal ({desc})"] = covered_by_529
@@ -1044,6 +1102,7 @@ def run_simulation(mkt_sequence, ctx):
                     d['bal'] = max(0, d['bal'] - max(0, (d['pmt'] / 12) - m_int))
                 else:
                     break
+
             total_exp += actual_paid
             yd["Expense: Debt Payments"] = yd.get("Expense: Debt Payments", 0) + actual_paid
 
@@ -1053,7 +1112,7 @@ def run_simulation(mkt_sequence, ctx):
             prev_debt_bals[d['name']] = d['bal']
             debt_bal_total += d['bal']
 
-        # Pass 1: Base Taxes & Contributions
+        # Base Taxes & Contributions Pass
         base_fed_tax_pre_conversion, marginal_rate_pre_conversion = calc_federal_tax(tax_base_ord, active_mfj,
                                                                                      year_offset, ctx['infl'])
         state_tax_rate = ctx['cur_t'] if not is_retired else ctx['ret_t']
@@ -1234,7 +1293,6 @@ def run_simulation(mkt_sequence, ctx):
 
         if net_cash_flow > 0:
             yd["Cashflow: Surplus Reinvested"] = net_cash_flow
-            # Surplus Handling & RMD Reinvestment
             if unfunded_debt_bal > 0:
                 payoff = min(net_cash_flow, unfunded_debt_bal)
                 unfunded_debt_bal -= payoff
@@ -1267,7 +1325,7 @@ def run_simulation(mkt_sequence, ctx):
                     shortfall, t_inc = _withdraw(a, shortfall, 'cg', ctx, my_current_age, spouse_current_age,
                                                  active_mfj, year_offset, tax_base_ord, marginal_rate, state_tax_rate,
                                                  year)
-                    total_tax += t_inc;
+                    total_tax += t_inc
                     yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
 
             seq = ['Traditional 401(k)', 'Traditional IRA', 'Roth 401(k)', 'Roth IRA', 'HSA', 'Crypto', '529 Plan',
@@ -1282,17 +1340,18 @@ def run_simulation(mkt_sequence, ctx):
                         shortfall, t_inc = _withdraw(a, shortfall, 'ordinary' if 'Traditional' in t else 'free', ctx,
                                                      my_current_age, spouse_current_age, active_mfj, year_offset,
                                                      tax_base_ord, marginal_rate, state_tax_rate, year)
-                        total_tax += t_inc;
+                        total_tax += t_inc
                         yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
 
             if shortfall > 0:
                 unfunded_debt_bal += shortfall
                 yd["Income: Shortfall Debt Funded"] = shortfall
-                if prev_unfunded_debt_bal <= 0:
-                    if year not in milestones_by_year: milestones_by_year[year] = []
-                    milestones_by_year[year].append(
-                        {"desc": "🚨 MAJOR SHORTFALL: Retirement Accounts Depleted!", "amt": unfunded_debt_bal,
-                         "type": "critical"})
+
+        if unfunded_debt_bal > 0 and prev_unfunded_debt_bal <= 0:
+            if year not in milestones_by_year: milestones_by_year[year] = []
+            milestones_by_year[year].append(
+                {"desc": "🚨 MAJOR SHORTFALL: Retirement Accounts Depleted!", "amt": unfunded_debt_bal,
+                 "type": "critical"})
 
         # Record final balances
         liquid_assets_total = sum(max(0, a['bal']) for a in sim_assets)
@@ -1318,11 +1377,6 @@ def run_simulation(mkt_sequence, ctx):
                         "Net Worth": net_worth})
         det_res.append(yd)
         nw_det_res.append(nw_yd)
-
-        # APPLY DEBT PENALTY FOR NEXT YEAR
-        prev_unfunded_debt_bal = unfunded_debt_bal
-        if unfunded_debt_bal > 0:
-            unfunded_debt_bal *= (1 + SHORTFALL_PENALTY_RATE)
 
     return sim_res, det_res, nw_det_res, milestones_by_year
 
@@ -1365,6 +1419,7 @@ def render_dashboard():
         st.error("Simulation returned no data. Please check your profile and start dates.")
         return
 
+    # Build Display DF
     df_sim = df_sim_nominal.copy()
     if st.session_state.get('view_todays_dollars', True):
         discounts = (1 + sim_ctx['infl'] / 100) ** (df_sim['Year'] - sim_ctx['current_year'])
@@ -1858,6 +1913,9 @@ def render_cashflows():
                         0).sum() if not primary_re.empty else 0
                     owns_home = not primary_re.empty
 
+                    curr_city_flow_clean = re.sub(r'[^a-zA-Z0-9, ]', '', str(curr_city_flow))[:100]
+                    ret_city_flow_clean = re.sub(r'[^a-zA-Z0-9, ]', '', str(ret_city_flow))[:100]
+
                     if owns_home:
                         ai_exclusion = "STRICT RULE: DO NOT INCLUDE Housing, Rent, Mortgages, Auto Loans, or Debt Payments in this list. They are explicitly tracked via balance sheet parameters."
                     else:
@@ -1865,7 +1923,7 @@ def render_cashflows():
 
                     wealth_ctx = f"The household has a current annual pre-tax income of ${curr_inc_total:,.0f} and liquid assets totaling ${liq_ast_total:,.0f}. VERY IMPORTANT: While you should scale the budget to reflect this wealth, assume these users are savvy spenders and aggressive savers (comfortable but smart with money), so avoid over-inflating lifestyle costs unnecessarily."
                     allowed_cats = ", ".join(BUDGET_CATEGORIES)
-                    prompt = f"Current City: {curr_city_flow}. Planned Retirement City: {ret_city_flow}. Family: {f_ctx}. Current Year is {current_year}. {wealth_ctx} Generate a comprehensive list of missing living expenses AND expected future life milestones (like college or weddings). {ai_exclusion} CRITICAL INSTRUCTIONS: 1) Medical expenses (IRMAA, Medicare Cliff, Pre-Medicare gap, LTC) are handled automatically by the simulation engine; only provide modest baseline out-of-pocket healthcare costs. 2) Model 'Empty Nesting': phase out child-heavy groceries, utility expenses, and ANY K-12 extracurriculars/lessons using 'Custom Year' End Phases exactly when the youngest child turns 18. 3) ALL College/University expenses MUST be categorized strictly as 'Education' (not 'Other') so they receive the 5% education inflation penalty. NOTE: Start and End Years are INCLUSIVE. For a standard 4-year college, the End Year must be exactly 3 years after the Start Year (e.g., Start 2032, End 2035 is 4 years). 4) Model Retirement Lifestyle Phases: split travel and entertainment into 'Go-Go Years' (high spend, starts at retirement, lasts 10 years, calculate costs based on {ret_city_flow}), 'Slow-Go Years' (medium spend, lasts next 10 years), and 'No-Go Years' (low spend) using 'Custom Year' Start/End phases. 5) STRICT PHASE SHIFTING: Never overlap the same living expense category. If an expense changes at retirement, the 'Now' version MUST have 'End Phase' set to 'At Retirement', and the new version MUST have 'Start Phase' set to 'At Retirement'. If an expense continues unchanged forever, set it to 'Now' until 'End of Life'. Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (MUST be exactly one of: {allowed_cats}. If unsure, default to 'Other'), 'Frequency' (Monthly/Yearly/One-Time), 'Amount ($)' (number), 'Start Phase' (Now/At Retirement/Custom Year), 'Start Year' (integer, ONLY if 'Start Phase' is 'Custom Year', otherwise null), 'End Phase' (End of Life/At Retirement/Custom Year), 'End Year' (integer, ONLY if 'End Phase' is 'Custom Year', otherwise null), and 'AI Estimate?' (true)."
+                    prompt = f"Current City: {curr_city_flow_clean}. Planned Retirement City: {ret_city_flow_clean}. Family: {f_ctx}. Current Year is {current_year}. {wealth_ctx} Generate a comprehensive list of missing living expenses AND expected future life milestones (like college or weddings). {ai_exclusion} CRITICAL INSTRUCTIONS: 1) Medical expenses (IRMAA, Medicare Cliff, Pre-Medicare gap, LTC) are handled automatically by the simulation engine; only provide modest baseline out-of-pocket healthcare costs. 2) Model 'Empty Nesting': phase out child-heavy groceries, utility expenses, and ANY K-12 extracurriculars/lessons using 'Custom Year' End Phases exactly when the youngest child turns 18. 3) ALL College/University expenses MUST be categorized strictly as 'Education' (not 'Other') so they receive the 5% education inflation penalty. NOTE: Start and End Years are INCLUSIVE. For a standard 4-year college, the End Year must be exactly 3 years after the Start Year (e.g., Start 2032, End 2035 is 4 years). 4) Model Retirement Lifestyle Phases: split travel and entertainment into 'Go-Go Years' (high spend, starts at retirement, lasts 10 years, calculate costs based on {ret_city_flow_clean}), 'Slow-Go Years' (medium spend, lasts next 10 years), and 'No-Go Years' (low spend) using 'Custom Year' Start/End phases. 5) STRICT PHASE SHIFTING: Never overlap the same living expense category. If an expense changes at retirement, the 'Now' version MUST have 'End Phase' set to 'At Retirement', and the new version MUST have 'Start Phase' set to 'At Retirement'. If an expense continues unchanged forever, set it to 'Now' until 'End of Life'. Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (MUST be exactly one of: {allowed_cats}. If unsure, default to 'Other'), 'Frequency' (Monthly/Yearly/One-Time), 'Amount ($)' (number), 'Start Phase' (Now/At Retirement/Custom Year), 'Start Year' (integer, ONLY if 'Start Phase' is 'Custom Year', otherwise null), 'End Phase' (End of Life/At Retirement/Custom Year), 'End Year' (integer, ONLY if 'End Phase' is 'Custom Year', otherwise null), and 'AI Estimate?' (true)."
                     res = call_gemini_json(prompt)
                     if res and isinstance(res, list) and len(res) > 0:
                         st.session_state['lifetime_expenses'] = locked + res
@@ -1876,7 +1934,7 @@ def render_cashflows():
 
 
 def render_simulation():
-    section_header("Simulation Parameters", "Fine-tune your timeline and run Monte Carlo scenarios.", "📈")
+    section_header("📈 Simulation", "Fine-tune your timeline and run Monte Carlo scenarios.")
 
     my_age = relativedelta(datetime.date.today(), st.session_state['my_dob']).years
     spouse_age = relativedelta(datetime.date.today(), st.session_state['spouse_dob']).years if st.session_state[
@@ -1952,6 +2010,7 @@ def render_simulation():
 
     ac4, ac5, ac6 = st.columns(3)
     curr_city_flow = st.session_state.get('curr_city_flow', '')
+    curr_city_flow_clean = re.sub(r'[^a-zA-Z0-9, ]', '', str(curr_city_flow))[:100]
     infl_hc = ai_number_input("Healthcare Inflation (%)", 'inflation_healthcare',
                               f"What is the projected long-term annual healthcare cost inflation rate in the US? Return JSON: {{'inflation_healthcare': float}}",
                               ac4)
@@ -1959,21 +2018,22 @@ def render_simulation():
                               f"What is the projected long-term annual college tuition inflation rate in the US? Return JSON: {{'inflation_education': float}}",
                               ac5)
     prop_g = ai_number_input("Property Growth (%)", 'property_growth',
-                             f"Historical average annual real estate appreciation rate for {curr_city_flow}? Return JSON: {{'property_growth': float}}",
+                             f"Historical average annual real estate appreciation rate for {curr_city_flow_clean}? Return JSON: {{'property_growth': float}}",
                              ac6)
 
     ac7, ac8, ac9 = st.columns(3)
     ret_city_flow = st.session_state.get('retire_city_flow', '')
+    ret_city_flow_clean = re.sub(r'[^a-zA-Z0-9, ]', '', str(ret_city_flow))[:100]
     curr_inc_total = pd.to_numeric(pd.DataFrame(st.session_state['income_data'])['Annual Amount ($)'],
                                    errors='coerce').fillna(0).sum() if st.session_state['income_data'] else 0
     rent_g = ai_number_input("Rent Growth (%)", 'rent_growth',
-                             f"Projected average annual rent increase rate for {curr_city_flow}? Return JSON: {{'rent_growth': float}}",
+                             f"Projected average annual rent increase rate for {curr_city_flow_clean}? Return JSON: {{'rent_growth': float}}",
                              ac7)
     cur_t = ai_number_input("Current State Tax (%)", 'current_tax_rate',
-                            f"User lives in {curr_city_flow} with ${curr_inc_total:,.0f} income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'current_tax_rate': float}}",
+                            f"User lives in {curr_city_flow_clean} with ${curr_inc_total:,.0f} income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'current_tax_rate': float}}",
                             ac8)
     ret_t = ai_number_input("Retire State Tax (%)", 'retire_tax_rate',
-                            f"User plans to retire in {ret_city_flow} with estimated retirement income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'retire_tax_rate': float}}",
+                            f"User plans to retire in {ret_city_flow_clean} with estimated retirement income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'retire_tax_rate': float}}",
                             ac9)
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -2371,191 +2431,8 @@ def render_ai():
 def render_faq():
     section_header("Complete Beginner's Guide & FAQ", "Everything you need to know about the engine.", "📖")
     st.markdown("""
-### 🌟 GETTING STARTED
-**Q: What exactly does this app do, and how is it different from a basic retirement calculator?**
-**A:** Most retirement calculators ask you two questions — "how much do you have saved?" and "when do you want to retire?" — then spit out a single number. This app is fundamentally different. It builds a living, breathing financial model of your entire life — from today until the end of your life expectancy — and simulates every dollar coming in and going out, year by year.
-It accounts for things a basic calculator completely ignores: your mortgage paying itself off over time, your kids going to college, your taxes changing when you retire, Social Security kicking in, Medicare starting at 65, your investment accounts being drawn down in the smartest possible tax order, and hundreds of other real-life events. The result isn't just a number — it's a full financial roadmap with warnings, milestones, and actionable advice.
-
-**Q: Is this app a replacement for a financial advisor?**
-**A:** No, and it's important to be honest about that. This app is an incredibly powerful planning and education tool — it helps you understand your own numbers, test scenarios, and have much smarter conversations with professionals. But it is not a licensed fiduciary advisor and cannot account for every personal circumstance, recent law change, or market condition. Think of it the way you'd think of WebMD: extremely useful for understanding what's happening with your health, but you still want a doctor making the final call on major decisions. Use this app to get clarity, then bring your printouts to a CPA or Certified Financial Planner (CFP) for personalized guidance.
-
-**Q: How accurate are these projections?**
-**A:** The projections are as accurate as the information you put in, combined with the assumptions you choose. The simulation engine uses real IRS tax brackets, real Social Security claiming rules, and real Medicare cost structures. However, it cannot predict the future — no tool can. What it can do is show you the most mathematically likely outcomes based on historical data and your personal numbers. The Monte Carlo feature (explained later) is specifically designed to stress-test your plan against hundreds of unpredictable futures so you understand your real risk, not just the rosy average-case scenario.
-
-### 👨‍👩‍👧‍👦 YOUR PROFILE & FAMILY
-**Q: Why does the app need my exact date of birth instead of just my age?**
-**A:** Because a few months can actually matter quite a bit in retirement planning. Your exact birth year determines three important things:
-* **Your Social Security Full Retirement Age (FRA):** If you were born in 1960 or later, your FRA is 67. Born between 1955-1959, it's somewhere between 66 and 67. This is the age at which you receive your full Social Security benefit — claim earlier and you get permanently less, claim later and you get permanently more.
-* **When your RMDs begin:** RMD stands for Required Minimum Distribution. The IRS forces you to start withdrawing money from your traditional retirement accounts at a certain age — either 73 or 75, depending on your birth year. Getting this wrong by even one year can create a surprise tax bill.
-* **Your IRS Catch-Up Contribution eligibility:** Once you turn 50, you're allowed to contribute extra money to your 401(k) and IRA above the normal limits. The app needs your age to know when to apply this bonus.
-
-**Q: What changes when I add a spouse?**
-**A:** Quite a lot, actually. Adding a spouse unlocks a completely different set of tax rules that are generally more favorable:
-* Married Filing Jointly (MFJ) tax brackets are roughly double the single brackets, meaning you pay a lower tax rate on the same income.
-* Standard Deduction doubles from approximately $14,600 to $29,200.
-* Social Security survivor benefits activate — if one spouse passes away, the surviving spouse automatically inherits the higher of the two Social Security benefit amounts.
-* Retirement account strategies change — the app can now optimize withdrawals across two people's accounts.
-* Lifestyle cost reduction — the simulation realistically models that a surviving spouse spends less (roughly 60% of the couple's former expenses) after the other passes.
-
-**Q: What are "dependents" used for in the simulation?**
-**A:** The app uses your children's ages to automatically time several important financial events. It models when child-related expenses (extracurricular activities, higher grocery bills, larger utility costs) naturally phase out as each child grows up and leaves home. It also uses their ages to calculate exactly when college tuition expenses should start and end in your cash flow. If you have a 529 college savings plan, the app connects it directly to your specific child's tuition costs, drawing down that account automatically when the bills arrive.
-
-### 💵 INCOME & SOCIAL SECURITY
-**Q: What is an "employer 401(k) match" and why is it listed under income instead of savings?**
-**A:** An employer match is essentially free money your company adds to your retirement account when you contribute your own money. For example, your employer might match 50 cents for every dollar you put in, up to 6% of your salary. It's listed under "Income" purely so the app can track it separately from your own contributions — this is important because employer match money goes directly into your 401(k) and is never spendable take-home cash. The app is careful to never count it as money you can spend on bills, but it does add it to your growing 401(k) balance behind the scenes so your retirement account grows accurately.
-
-**Q: What is Social Security, and how does the app calculate my benefit?**
-**A:** Social Security is a federal retirement program you've been paying into your entire working life through payroll taxes (you'll see it labeled "FICA" on your pay stub). When you retire, you receive a monthly payment for life based on your 35 highest-earning years of work history. The app's AI can estimate your benefit based on your current age and income. The exact amount is also available on your personal Social Security statement at ssa.gov, which is always the most accurate source.
-The critical decision the app helps you model is when to claim:
-* Claim at 62 (earliest possible): Your benefit is permanently reduced by up to 30%.
-* Claim at your Full Retirement Age (66-67): You receive 100% of your earned benefit.
-* Claim at 70 (latest recommended): Your benefit is permanently increased by up to 24%.
-There is no single "right" answer — it depends on your health, other income sources, and whether you're married. The app lets you test different claiming ages to see the lifetime impact.
-
-**Q: What does "taxable Social Security" mean? I thought Social Security wasn't taxed?**
-**A:** This is one of the most surprising things people discover about retirement. Social Security can be taxed — up to 85% of your benefit can be added to your taxable income depending on how much other income you have. The IRS uses something called "Provisional Income" (basically your other income plus half your Social Security) to determine how much of your benefit is taxable. If your Provisional Income is low enough, your Social Security is completely tax-free. As your other income (from RMDs, investments, rent, etc.) rises, more of your Social Security becomes taxable. The app calculates this automatically every single year using the exact IRS formula — this is something most retirement calculators completely ignore, and it can represent tens of thousands of dollars in unexpected taxes.
-
-**Q: What is a pension and how is it different from a 401(k)?**
-**A:** A pension (sometimes called a "Defined Benefit" plan) is a retirement plan — common in government jobs, teaching, and some union jobs — where your employer guarantees you a specific monthly payment for life when you retire, regardless of what the stock market does. A 401(k) (called a "Defined Contribution" plan) is an account where you and your employer put money in and invest it, but the final amount you end up with depends entirely on how the market performed. Pensions are becoming increasingly rare in the private sector. If you have one, enter it as an income stream that starts at your retirement date.
-
-### 🏦 ASSETS, ACCOUNTS & INVESTING
-**Q: What is the difference between all these account types? (401k, IRA, Roth, Brokerage...)**
-**A:** This is one of the most important concepts to understand. All of these are just containers that hold your investments — the difference is purely about when the IRS taxes the money inside them:
-* **Traditional 401(k) and Traditional IRA — "Pay taxes later":** You put money in before paying taxes (it reduces your taxable income today). Your money grows tax-free inside the account. When you withdraw it in retirement, you pay income taxes on every dollar you take out. The IRS forces you to start withdrawing at age 73 or 75 (called RMDs).
-* **Roth 401(k) and Roth IRA — "Pay taxes now, never again":** You put money in after already paying taxes on it. Your money grows tax-free and you can withdraw it in retirement completely tax-free, with no RMDs ever required. This is generally better if you expect to be in a higher tax bracket in retirement than you are today.
-* **Brokerage (Taxable) Account — "Pay taxes as you go":** A regular investment account with no special tax protection. You pay taxes on dividends and interest each year, and when you sell investments for a profit, you pay Capital Gains tax. However, there are no contribution limits and no restrictions on withdrawals. Also benefits from a special "step-up in basis" rule when you pass away (explained later).
-* **HSA (Health Savings Account) — "Triple tax advantage":** If you have a high-deductible health insurance plan, an HSA is arguably the best account available. You contribute pre-tax, it grows tax-free, and withdrawals for medical expenses are tax-free. After age 65, you can withdraw for any reason (just pay income tax, like a Traditional IRA). Many financial planners call this a "stealth retirement account."
-* **529 Plan — "Tax-free college savings":** Money invested in a 529 plan grows tax-free and can be withdrawn completely tax-free when used for qualified education expenses (tuition, room and board, books). The app automatically drains your 529 plans when college tuition expenses hit your cash flow timeline.
-
-**Q: What are "RMDs" and why do they matter so much?**
-**A:** RMD stands for Required Minimum Distribution. The IRS has a simple rule: you cannot keep money in a Traditional 401(k) or IRA forever. Starting at age 73 (or 75 if you were born in 1960 or later), you must withdraw a minimum amount every single year, whether you need the money or not. The amount is calculated by dividing your account balance by a life expectancy factor from an IRS table.
-Why do they matter? Because every dollar you're forced to withdraw is added to your taxable income that year — which can push you into a higher tax bracket, cause more of your Social Security to become taxable, and trigger Medicare surcharges (IRMAA). People with large Traditional 401(k) balances can face an unexpected "tax time bomb" in their 70s. This is exactly why the Roth Conversion feature exists — to proactively move money out of your Traditional accounts in low-tax years before RMDs force the issue.
-
-**Q: What are contribution limits? Why does the app warn me if I'm contributing too much?**
-**A:** The IRS sets strict annual limits on how much you can contribute to retirement accounts. For 2026, these are approximately:
-* 401(k): $23,500/year ($31,000 if you're 50 or older, thanks to "catch-up contributions")
-* IRA: $7,000/year ($8,000 if you're 50 or older)
-If you enter contributions above these limits, the app warns you because contributing over the limit triggers IRS penalties. The simulation automatically caps your contributions at the legal maximum so your projections remain realistic, even if you entered a higher number.
-
-### 🏡 REAL ESTATE & MORTGAGES
-**Q: How does the app handle my mortgage?**
-**A:** You simply enter three things: your current loan balance, your interest rate, and your monthly payment. The app then does something most calculators don't — it mathematically pays down your mortgage month by month, exactly as your bank would, separating out the interest and principal portions correctly. When the balance finally hits zero, the mortgage expense automatically disappears from your cash flow for every future year. You should NOT separately list your mortgage payment in the budget section — the app handles it entirely through your real estate entry.
-
-**Q: What is "home equity" and how does it affect my net worth?**
-**A:** Home equity is simply what you'd have left over if you sold your home and paid off the mortgage: Market Value minus Mortgage Balance. If your home is worth $400,000 and you owe $250,000, you have $150,000 in equity. As the years go by, your equity grows in two ways: your mortgage balance decreases as you make payments, and your home's market value (hopefully) increases with property appreciation. The app tracks both of these automatically and includes your home equity in your total net worth calculation.
-
-**Q: What's the difference between a "primary residence" and an "investment property" in the app?**
-**A:** The app treats these completely differently:
-* **Your primary residence is where you live.** Its mortgage payment and monthly expenses (property taxes, insurance, HOA) flow out as living costs. Any rental income you happen to earn from it (like renting a room) flows in as income.
-* **An investment property is treated as a business.** The app calculates the net cash flow — rent collected minus mortgage payment minus expenses — and only the net profit or loss affects your overall cash flow. If the property generates $2,000/month in rent but costs $1,800/month in mortgage and expenses, only the $200 net profit shows up in your income. This prevents investment properties from artificially inflating your apparent lifestyle income.
-
-### 💸 BUDGETS & EXPENSES
-**Q: The expense table has "Start Phase" and "End Phase" — what do these mean?**
-**A:** These control exactly when each expense is active in your lifetime simulation:
-* "Now" means the expense starts today and continues until whatever end phase you choose.
-* "At Retirement" means the expense either starts when you retire (like a new travel budget) or ends when you retire (like your work commute costs).
-* "End of Life" means the expense continues until the very last year of your simulation.
-* "Custom Year" lets you enter a specific year — useful for things like college tuition (starts in 2029, ends in 2032) or a car payment that ends in 2027.
-A critical rule: if an expense changes at retirement (like your grocery bill going down slightly), you should create TWO rows — one that goes from "Now" to "At Retirement," and a separate one that goes from "At Retirement" to "End of Life" with the new amount. Do not try to make one row cover both phases.
-
-**Q: Should I include my mortgage payment in the budget section?**
-**A:** No. If you've entered your property in the Real Estate section with your mortgage balance and payment, the app already handles all of that math. Adding it again in the budget would double-count it and completely distort your cash flow projections. The same applies to any other debts you've entered in the Debts section — car loans, student loans, etc. entered there should NOT appear in the budget.
-
-**Q: The AI generated a lot of expenses automatically. Should I trust them?**
-**A:** The AI estimates are a solid starting point based on your city, family size, and income level — but you should always review and adjust them. Think of the AI as a well-informed assistant who has never actually lived your life. It might overestimate your dining out budget if you cook at home, or underestimate your travel budget if you're an avid traveler. The "🤖 AI?" checkbox column helps you quickly identify which rows were AI-generated versus ones you entered yourself. Always go through the list critically and adjust anything that doesn't match your actual lifestyle.
-
-**Q: How does healthcare inflation work, and why is it different from regular inflation?**
-**A:** Regular consumer inflation (food, clothing, electronics, etc.) has historically averaged around 2-3% per year. Healthcare costs, however, have consistently risen at 5-7% per year for decades — nearly double the overall inflation rate. This means a healthcare expense that costs $500/month today might cost over $1,300/month in 20 years if healthcare inflation continues at historical rates. The app applies a separate, higher inflation rate specifically to anything categorized as "Healthcare" or "Insurance" to capture this reality. This is one of the most important reasons not to underestimate your future healthcare costs.
-
-### 🏥 HEALTHCARE & MEDICARE
-**Q: What is the "Pre-Medicare Gap" and why is it so expensive?**
-**A:** If you retire before age 65, you face a potentially brutal financial gap. Most working Americans get health insurance through employer — it's one of the most valuable parts of your compensation package, and your employer typically pays the majority of the premium. The moment you retire, that coverage ends. You're now on your own for health insurance until Medicare kicks in at age 65.
-Buying private health insurance for a 60-year-old can easily cost $1,000-$2,000+ per month just in premiums, before copays and deductibles. This is called the "Pre-Medicare Gap" and it catches many early retirees completely off guard. The app automatically adds this cost to your simulation if you retire before 65, scaled to your income level (since lower-income retirees may qualify for ACA subsidies that reduce the cost).
-
-**Q: What is Medicare? Is it free?**
-**A:** Medicare is the federal health insurance program for Americans 65 and older. It is definitely not free, though it's generally much cheaper than private insurance. It has several parts:
-* Part A (Hospital): Usually free if you've worked 10+ years.
-* Part B (Doctor visits, outpatient): Costs approximately $185/month in 2026, automatically deducted from your Social Security check.
-* Part D (Prescription drugs): Additional monthly premium, varies by plan.
-* Medigap/Supplement: Optional private insurance to cover what Medicare doesn't.
-The app models Medicare kicking in at age 65 and automatically reduces your healthcare budget at that point to reflect the generally lower costs compared to private insurance.
-
-**Q: What is "IRMAA" and why might I have to pay extra for Medicare?**
-**A:** IRMAA stands for Income-Related Monthly Adjustment Amount. It's essentially a Medicare "high earner surcharge." If your income in retirement exceeds certain thresholds (starting around $103,000/year for singles or $206,000/year for couples in 2026 dollars), the government charges you extra for your Medicare Part B and Part D premiums. The surcharges can be significant — anywhere from an extra $1,000 to $6,500+ per year.
-Here's the sneaky part: the income the government uses to calculate IRMAA includes your RMDs, Social Security, investment income, and Roth conversions. So people who did everything "right" by accumulating large retirement accounts can end up triggering IRMAA surcharges they never anticipated. The app calculates and applies IRMAA automatically every year based on your projected income — which is a feature most retirement planning tools don't include at all.
-
-**Q: What is "Long-Term Care" and why is it in the stress tests?**
-**A:** Long-Term Care (LTC) refers to extended help with daily activities — bathing, dressing, eating, managing medications — typically needed in the final years of life due to illness, disability, or cognitive decline like dementia. This care is extremely expensive: a private nursing home room in the US costs $90,000-$120,000+ per year on average, and this is almost entirely NOT covered by regular Medicare.
-The "LTC Shock" stress test injects a large medical expense into the final 2-3 years of your simulation to show what happens to your plan if you or a spouse needs this level of care. It's a sobering but important test — long-term care is the single largest unexpected expense that derails retirement plans, and the odds of needing some form of it in your lifetime are higher than most people realize (roughly 70% of people over 65 will need some level of long-term care).
-
-### 📊 TAXES
-**Q: What is a "progressive" tax system? Why don't I just multiply my income by my tax rate?**
-**A:** The US uses a system where higher income is taxed at progressively higher rates — but crucially, only the portion of your income that falls within each "bracket" is taxed at that bracket's rate. The common misconception is that if you're in the "24% tax bracket," all your income is taxed at 24%. That's wrong.
-Think of it like filling buckets. The first $23,200 of a married couple's income fills the 10% bucket — taxed at just 10%. The next chunk of income fills the 12% bucket, and so on. Only income above the highest bracket threshold gets taxed at the top rate. This is why your actual tax bill is almost always less than your bracket rate would suggest, and why tax planning — like Roth conversions timed to stay within a lower bracket — can save significant money.
-
-**Q: What is the difference between "marginal tax rate" and "effective tax rate"?**
-**A:** Your marginal tax rate is the rate you'd pay on your next dollar of income — it's your "top bracket." If you're a married couple making $200,000, your marginal rate is 22% (meaning the last dollars of income are taxed at 22%).
-Your effective tax rate is what you actually pay divided by your total income — your real average tax burden. Because of the progressive system and standard deduction, that same couple earning $200,000 might only pay an effective rate of 13-15% despite being in the 22% bracket.
-The distinction matters enormously for Roth conversions. If you convert $10,000 from your Traditional IRA to Roth, the tax cost is your marginal rate on that $10,000 — not your effective rate. Planning to stay in lower marginal brackets can save thousands.
-
-**Q: What is FICA and why does it disappear when I retire?**
-**A:** FICA stands for Federal Insurance Contributions Act — it's the payroll tax that funds Social Security and Medicare. If you look at your pay stub right now, you'll see 6.2% going to Social Security (on income up to $168,600) and 1.45% going to Medicare — a total of 7.65% of every paycheck. Your employer pays an equal matching amount on your behalf.
-The moment you retire and stop receiving W-2 wages, FICA taxes disappear completely. This is one of the reasons why your tax burden often drops significantly in early retirement — even if your investment income is similar to your working income, you no longer owe FICA on it. The app correctly applies FICA during your working years and removes it at retirement.
-
-**Q: What is the "Standard Deduction" and how does it help me?**
-**A:** The Standard Deduction is a flat amount the IRS lets you subtract from your income before calculating your taxes — no receipts required. For 2026, it's approximately $14,600 for single filers and $29,200 for married couples filing jointly. In practical terms, this means a married couple can have up to $29,200 in income and pay zero federal income tax. This is incredibly important in retirement planning because it creates a window of essentially tax-free income each year that can be used strategically for Roth conversions.
-
-**Q: What is the "QBI Deduction" for business owners?**
-**A:** If you own a business (sole proprietorship, S-Corp, partnership, or LLC), the IRS allows you to deduct up to 20% of your qualified business income before calculating your taxes — this is the Qualified Business Income (QBI) deduction, created by the 2017 Tax Cuts and Jobs Act. For example, if your business generates $100,000 in income, you might only pay taxes on $80,000 of it. The app automatically calculates and applies this deduction, phasing it out at higher income levels as the IRS requires.
-
-### 🔄 ROTH CONVERSIONS
-**Q: What is a Roth conversion in plain English?**
-**A:** A Roth conversion is a deliberate decision to move money from your Traditional 401(k) or IRA (where you'll owe taxes when you withdraw) into a Roth IRA (where all future growth and withdrawals are tax-free). You pay the income taxes on the converted amount now, in the current year.
-Why would anyone voluntarily pay taxes early? Because of timing. If you retire at 65 but your RMDs don't start until 73, you have an 8-year window where your taxable income is relatively low. Converting during those years means you pay taxes at a lower rate than you would when RMDs force you to withdraw at potentially higher rates later. It's essentially buying future tax-free income at a discount.
-
-**Q: How does the "Roth Conversion Optimizer" in this app work?**
-**A:** When you enable the Roth Conversion Optimizer, it automatically identifies the years in your simulation where your taxable income is below your chosen target tax bracket ceiling. It then calculates exactly how much Traditional 401(k) money it can convert to Roth without pushing you over that bracket threshold. Crucially, it checks whether you actually have enough cash in your savings or brokerage accounts to pay the resulting tax bill — if you dont, it skips the conversion rather than creating artificial debt. Think of it as a tireless tax accountant working on your behalf every single year of your retirement.
-
-### 📈 INVESTMENT ASSUMPTIONS
-**Q: What does "market growth rate" mean, and what's a realistic number to use?**
-**A:** The market growth rate is the annual return you expect your investments to earn on average. The US stock market (S&P 500) has historically returned approximately 10% per year before inflation, or about 7% after inflation, over very long periods. However, this average masks enormous year-to-year swings — markets have dropped 30-50% in bad years and gained 25-30% in great years. A commonly used planning assumption is 6-8% for a diversified portfolio. The app defaults to 7% as a reasonable middle ground. Being too optimistic here is one of the most dangerous mistakes in retirement planning — consider using 5-6% for a more conservative estimate.
-
-**Q: What is "inflation" and why does it matter so much over 30 years?**
-**A:** Inflation is the rate at which prices rise over time — meaning the purchasing power of your money shrinks. At 3% annual inflation, something that costs $100 today will cost about $243 in 30 years. This has a devastating effect on fixed income streams that don't grow. A $50,000/year retirement income that felt comfortable in 2026 might feel quite tight in 2046 if it hasn't kept up with inflation. The app inflates every expense each year at your chosen inflation rate, which gives you a realistic picture of what your money will actually buy in the future rather than creating false optimism with today's dollars.
-
-**Q: What does "View in Today's Dollars" do on the charts?**
-**A:** When this toggle is OFF, the charts show you raw future dollar amounts — which look large because inflation has inflated them. A $3 million net worth in 2055 sounds impressive, but if inflation averaged 3% over 30 years, it only has the purchasing power of about $1.2 million today.
-When you turn this toggle ON, the app mathematically "deflates" every future number back to what it would feel like in today's purchasing power. This makes it much easier to intuitively understand whether future amounts are actually comfortable or not. Many financial planners recommend planning primarily in today's dollars for exactly this reason.
-
-**Q: What is the "Investment Glidepath" and why would I want it?**
-**A:** A glidepath is the gradual shift from aggressive (mostly stocks) to conservative (mostly bonds) investing as you age. The logic is straightforward: a 35-year-old can ride out a market crash because they have 30 years for the market to recover. A 75-year-old who experiences a 40% market crash has far fewer years to recover and may be forced to sell at a loss to cover living expenses. The app's glidepath toggle simulates this shift by automatically reducing the assumed market return rate on your Traditional 401(k) and brokerage accounts by 1% for every 5 years you spend in retirement. It's a conservative safety feature that prevents your late-retirement projections from being unrealistically optimistic.
-
-**Q: What is "Sequence of Returns Risk"?**
-**A:** This is one of the most misunderstood retirement risks. The order in which you experience market returns matters enormously once you're withdrawing from your portfolio — not just the average return. If the market crashes 40% in your first year of retirement and you're forced to sell investments to cover living expenses, you're locking in permanent losses at the worst possible time. Even if the market recovers beautifully over the next decade, you have fewer shares left to benefit from that recovery. Someone who retires in a bull market year and experiences the same average returns over 30 years can end up with dramatically more money than someone who retires in a crash year, purely due to timing luck. The "-25% Market Crash at Retirement" stress test directly simulates this risk so you can see your plan's vulnerability.
-
-### 🎲 MONTE CARLO SIMULATION
-**Q: What is Monte Carlo simulation in plain English?**
-**A:** Imagine running your retirement plan 200 times in parallel, but each time the stock market behaves differently — sometimes great, sometimes terrible, sometimes mediocre. Monte Carlo simulation does execution that, mathematically. It takes your real financial plan and runs it through hundreds of randomly generated market scenarios based on historical volatility patterns.
-The result is a "probability of success" percentage — how often your plan survived without running out of money across all those scenarios. An 85% success rate means that in 85 out of 100 randomly generated futures, your money lasted. A 60% success rate means you're essentially flipping a coin, and you should probably adjust your plan.
-
-**Q: What is "volatility" and what number should I use?**
-**A:** Volatility measures how wildly your investment returns swing from year to year. The S&P 500 has historically had a volatility (standard deviation) of about 15-17% — meaning in any given year, returns are typically within about 15% of the average in either direction. A portfolio with more bonds has lower volatility (around 5-8%). Higher volatility means more dramatic swings, which creates more scenarios where bad luck at the wrong moment destroys your plan. For a stock-heavy retirement portfolio, 15% is a reasonable default. For a balanced portfolio (50/50 stocks and bonds), 10% is more appropriate.
-
-**Q: What does "probability of success" actually mean? Is 100% the goal?**
-**A:** Not necessarily. A 100% success rate sounds ideal, but achieving it often means either working much longer than needed, saving far more than necessary, or spending far less in retirement than you could comfortably afford. Most financial planners consider an 85-90% success rate to be a well-calibrated retirement plan — it means you've accounted for realistic risk without being so conservative that you sacrifice your quality of life. Below 70% is generally considered concerning. Below 50% means the plan needs significant revision. Think of it less as a binary pass/fail and more as a dial you can adjust by retiring a year later, spending slightly less, or saving a bit more.
-
-### 💾 SAVING & SECURITY
-**Q: Is my financial data safe?**
-**A:** Your data is stored in Google Firebase — one of the most secure cloud storage platforms in the world, used by millions of applications globally. Your account is protected by email and password authentication. That said, no online system is completely immune to risk, so we recommend using a strong, unique password and not entering information you wouldn't be comfortable with your financial advisor seeing. This app is a planning tool — you don't need to enter actual account numbers, social security numbers, or banking credentials anywhere. Only use estimated balances and income figures.
-
-**Q: What happens to my data if I use "Guest Mode"?**
-**A:** In Guest Mode, everything you enter exists only in your current browser session. The moment you close the browser tab or refresh the page, all of your data is permanently gone. Guest Mode is great for a quick exploration of the app's features, but if you want to save your plan and return to it later, you need to create a free account and click the "Save" button at the bottom of the page.
-
-**Q: How often should I update my plan?**
-**A:** At minimum, once a year — ideally around tax time when your financial documents are fresh. You should also update it immediately after any major life event: a new job or significant raise, a marriage or divorce, having or adopting a child, buying or selling a home, receiving an inheritance, or making a major change to your retirement timeline. Your plan is only as useful as it is current. A financial model built on last year's numbers in a year of major life change is worse than useless — it gives you false confidence.
-
-**Q: What does the "Save Full Profile to Cloud Server" button do?**
-**A:** This button takes every single piece of information you've entered across all sections of the app — your income, assets, debts, expenses, family details, and simulation assumptions — and saves it permanently to your secure account in the cloud. The next time you log in from any device, everything will be exactly where you left it. Until you click this button, your changes exist only in your current browser session. It's strongly recommended to save after every meaningful session.
+### FAQ Placeholder
+*(Paste your FAQ content here)*
     """)
 
 
