@@ -1847,9 +1847,28 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
 
         # --- UI RENDER: DASHBOARD ---
         if len(sim_results) > 0:
+            # Create Dataframes before any charting logic
             df_sim_nominal = pd.DataFrame(sim_results)
-            final_nw = df_sim_nominal.iloc[-1]['Net Worth']
 
+            # APPLY DISCOUNTING IF TOGGLED (Inline directly on data structs)
+            if view_todays_dollars:
+                for i in range(len(sim_results)):
+                    discount = (1 + infl / 100) ** i
+                    for col in ["Annual Income", "Annual Expenses", "Annual Taxes", "Annual Net Savings",
+                                "Liquid Assets", "Real Estate Equity", "Business Equity", "Debt", "Unfunded Debt",
+                                "Net Worth"]:
+                        sim_results[i][col] /= discount
+                    for k in detailed_results[i].keys():
+                        if k not in ["Age (Primary)", "Year"]: detailed_results[i][k] /= discount
+                    for k in nw_detailed_results[i].keys():
+                        if k not in ["Age (Primary)", "Year"] and not isinstance(nw_detailed_results[i][k], str):
+                            nw_detailed_results[i][k] /= discount
+
+            df_sim = pd.DataFrame(sim_results)
+            df_det = pd.DataFrame(detailed_results).fillna(0)
+            df_nw = pd.DataFrame(nw_detailed_results).fillna(0)
+
+            final_nw = df_sim_nominal.iloc[-1]['Net Worth']
             shortfall_mask = df_sim_nominal['Unfunded Debt'] > 0
             deplete_year = df_sim_nominal[shortfall_mask]['Year'].min() if not df_sim_nominal[
                 shortfall_mask].empty else None
@@ -1871,23 +1890,6 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
             with c_ai_btn:
                 view_todays_dollars = st.toggle("💵 View Charts in Today's Dollars", value=False,
                                                 help="Removes the effect of inflation so you can easily understand what these big future numbers feel like today.")
-
-            # APPLY DISCOUNTING IF TOGGLED
-            if view_todays_dollars:
-                for i in range(len(sim_results)):
-                    discount = (1 + infl / 100) ** i
-                    for col in ["Annual Income", "Annual Expenses", "Annual Taxes", "Annual Net Savings",
-                                "Liquid Assets", "Real Estate Equity", "Business Equity", "Debt", "Unfunded Debt",
-                                "Net Worth"]:
-                        sim_results[i][col] /= discount
-                    for k in detailed_results[i].keys():
-                        if k not in ["Age (Primary)", "Year"]: detailed_results[i][k] /= discount
-                    for k in nw_detailed_results[i].keys():
-                        if k not in ["Age (Primary)", "Year"] and not isinstance(nw_detailed_results[i][k], str):
-                            nw_detailed_results[i][k] /= discount
-
-            df_sim = pd.DataFrame(sim_results)
-            df_nw = pd.DataFrame(nw_detailed_results).fillna(0)
 
             if HAS_PLOTLY:
                 # Pre-calculate Milestone Chart Markers
@@ -2019,68 +2021,87 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                                      legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
                 st.plotly_chart(fig_cf, use_container_width=True)
 
-            # --- MONTE CARLO SECTION ---
-            st.divider()
-            st.subheader("🎲 Monte Carlo Risk Analysis")
-            st.markdown(
-                '<div class="info-text">💡 <strong>Stress Test Your Plan:</strong> Real markets are bumpy. The Monte Carlo simulation runs your exact plan through hundreds of randomized market scenarios (based on historical volatility) to find your true probability of success.</div>',
-                unsafe_allow_html=True)
+                # --- SANKEY DIAGRAM ---
+                st.divider()
+                st.write("#### 🌊 Cash Flow Sankey Snapshot")
+                st.markdown(
+                    '<div class="info-text">💡 <strong>Follow the Money:</strong> Select any year on the slider to see exactly where your money comes from and where it goes.</div>',
+                    unsafe_allow_html=True)
 
-            col_mc1, col_mc2, col_mc3 = st.columns([1, 1, 2])
-            mc_vol = col_mc1.number_input("Portfolio Volatility (%)", value=15.0,
-                                          help="Historically, the S&P 500 maintains a volatility (standard deviation) proximal to 15%. Fixed income allocations approximate 5%.")
-            mc_runs = col_mc2.number_input("Number of Simulations", min_value=10, max_value=500, value=100, step=10)
+                min_yr = int(df_sim['Year'].min())
+                max_yr = int(df_sim['Year'].max())
 
-            with col_mc3:
-                st.markdown("<div style='height: 27px;'></div>", unsafe_allow_html=True)
-                st.markdown('<div class="ai-btn-marker"></div>', unsafe_allow_html=True)
-                if st.button("✨ Run Monte Carlo Simulation", use_container_width=True):
-                    with st.spinner(f"Rendering {mc_runs} parallel market sequences..."):
-                        success_count = 0
-                        all_nw_paths = []
+                if min_yr < max_yr:
+                    sankey_year = st.slider("Select Year for Cash Flow Snapshot", min_value=min_yr, max_value=max_yr,
+                                            value=min_yr, key="sankey_slider")
+                else:
+                    sankey_year = min_yr
 
-                        for r in range(mc_runs):
-                            rand_seq = [random.gauss(mkt, mc_vol) for _ in range(max_years + 1)]
-                            res, _, _, _ = run_simulation(rand_seq)
+                if sankey_year in df_det['Year'].values:
+                    row = df_det[df_det['Year'] == sankey_year].iloc[0]
 
-                            nw_path = [step["Net Worth"] for step in res]
-                            all_nw_paths.append(nw_path)
+                    inflows = {k.replace('Income: ', ''): v for k, v in row.items() if
+                               k.startswith('Income:') and v > 0}
+                    outflows = {k.replace('Expense: ', ''): v for k, v in row.items() if
+                                k.startswith('Expense:') and v > 0}
 
-                            if nw_path[-1] > 0 and min(nw_path) > 0: success_count += 1
+                    net_savings = row.get('Net Savings', 0)
+                    if net_savings > 0:
+                        outflows['Net Savings & Investments'] = net_savings
+                    elif net_savings < 0:
+                        inflows['Shortfall Debt Funded'] = abs(net_savings)
 
-                        success_rate = (success_count / mc_runs) * 100
+                    in_labels = [f"{k}<br>${v:,.0f}" for k, v in inflows.items()]
+                    out_labels = [f"{k}<br>${v:,.0f}" for k, v in outflows.items()]
+                    total_inflow = sum(inflows.values())
+                    mid_label = f"Total Cash Pool<br>${total_inflow:,.0f}"
 
-                        path_len = len(all_nw_paths[0])
-                        years_list = [df_sim.iloc[i]["Year"] for i in range(path_len)]
-                        p10, p50, p90 = [], [], []
+                    labels = in_labels + [mid_label] + out_labels
+                    middle_idx = len(inflows)
 
-                        for i in range(path_len):
-                            step_vals = sorted([path[i] for path in all_nw_paths])
-                            discount = (1 + infl / 100) ** i if view_todays_dollars else 1.0
-                            p10.append(step_vals[int(mc_runs * 0.10)] / discount)
-                            p50.append(step_vals[int(mc_runs * 0.50)] / discount)
-                            p90.append(step_vals[int(mc_runs * 0.90)] / discount)
+                    source = []
+                    target = []
+                    value = []
+                    node_colors = []
+                    link_colors = []
 
-                        st.markdown(
-                            f"<h3 style='text-align: center; color: {'#10b981' if success_rate > 80 else '#f59e0b' if success_rate > 50 else '#f43f5e'};'>Probability of Success: {success_rate:.1f}%</h3>",
-                            unsafe_allow_html=True)
+                    # Build Inflows -> Middle
+                    for i, (k, v) in enumerate(inflows.items()):
+                        source.append(i)
+                        target.append(middle_idx)
+                        value.append(v)
+                        node_colors.append('#f43f5e' if k == 'Shortfall Debt Funded' else '#10b981')
+                        link_colors.append(
+                            'rgba(244, 63, 94, 0.4)' if k == 'Shortfall Debt Funded' else 'rgba(16, 185, 129, 0.4)')
 
-                        if HAS_PLOTLY:
-                            fig_mc = go.Figure()
-                            fig_mc.add_trace(go.Scatter(x=years_list, y=p90, mode='lines',
-                                                        name='90th Percentile (Favorable Timeline)',
-                                                        line=dict(color='#10b981', dash='dot')))
-                            fig_mc.add_trace(go.Scatter(x=years_list, y=p50, mode='lines',
-                                                        name='50th Percentile (Median Expectation)',
-                                                        line=dict(color='#3b82f6', width=3)))
-                            fig_mc.add_trace(go.Scatter(x=years_list, y=p10, mode='lines',
-                                                        name='10th Percentile (Severe Contraction)',
-                                                        line=dict(color='#f43f5e', dash='dot')))
-                            fig_mc.update_layout(title="Stochastic Net Worth Projections", hovermode="x unified",
-                                                 yaxis=dict(tickformat="$,.0f"), margin=dict(l=0, r=0, t=40, b=0),
-                                                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right",
-                                                             x=1))
-                            st.plotly_chart(fig_mc, use_container_width=True)
+                    node_colors.append('#3b82f6')  # Middle node color
+
+                    # Build Middle -> Outflows
+                    for i, (k, v) in enumerate(outflows.items()):
+                        source.append(middle_idx)
+                        target.append(middle_idx + 1 + i)
+                        value.append(v)
+                        node_colors.append('#10b981' if k == 'Net Savings & Investments' else '#f43f5e')
+                        link_colors.append(
+                            'rgba(16, 185, 129, 0.4)' if k == 'Net Savings & Investments' else 'rgba(244, 63, 94, 0.4)')
+
+                    fig_sankey = go.Figure(data=[go.Sankey(
+                        node=dict(
+                            pad=20,
+                            thickness=30,
+                            line=dict(color="black", width=0.5),
+                            label=labels,
+                            color=node_colors
+                        ),
+                        link=dict(
+                            source=source,
+                            target=target,
+                            value=value,
+                            color=link_colors
+                        )
+                    )])
+                    fig_sankey.update_layout(height=550, margin=dict(l=0, r=0, t=30, b=0), font=dict(size=12))
+                    st.plotly_chart(fig_sankey, use_container_width=True)
 
             # --- DATA AUDIT TABLES ---
             st.divider()
@@ -2091,7 +2112,6 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
             t1, t2 = st.tabs(["Income & Expense Log", "Net Worth Log"])
             with t1:
                 st.subheader("Detailed Tax & Expense Log")
-                df_det = pd.DataFrame(detailed_results).fillna(0)
                 inc_c = sorted([c for c in df_det.columns if c.startswith("Income:") or c.startswith("Roth")])
                 exp_c = sorted([c for c in df_det.columns if c.startswith("Expense:")])
                 ord_det = ["Year", "Age (Primary)"] + inc_c + exp_c + ["Net Savings"]
@@ -2103,7 +2123,6 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                 st.subheader("Detailed Net Worth Log")
                 st.markdown(
                     "Track the exact, year-by-year balance of every single asset account and liability to trace your drawdowns and growth.")
-                # We already built df_nw above, no need to rebuild it here
                 ast_c = sorted([c for c in df_nw.columns if c.startswith("Asset:")])
                 ord_nw = ["Year", "Age (Primary)"] + ast_c + ["Total Liquid Assets", "Total Real Estate Equity",
                                                               "Total Business Equity", "Total Debt Liabilities",
