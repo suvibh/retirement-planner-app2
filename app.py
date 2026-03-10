@@ -700,8 +700,8 @@ with st.expander("💸 4. Lifetime Cash Flows (Budgets & Milestones)", expanded=
     col_ai_cb, col_sv_cb = st.columns([3, 1])
     with col_ai_cb:
         st.markdown('<div class="ai-btn-marker"></div>', unsafe_allow_html=True)
-        if st.button("✨ Auto-Estimate Budget & Milestones for " + (
-        curr_city_flow if curr_city_flow else "Your Area") + " (AI)", use_container_width=True):
+        if st.button("✨ Auto-Estimate Budget & Milestones for selected current and future locations (AI)",
+                     use_container_width=True):
             with st.spinner("Analyzing localized CPI data, timelines, and family needs..."):
                 valid = edited_exp[edited_exp["Description"].astype(str) != ""].copy()
                 locked = valid[valid["AI Estimate?"] == False].to_dict('records')
@@ -1850,24 +1850,6 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
             # Create Dataframes before any charting logic
             df_sim_nominal = pd.DataFrame(sim_results)
 
-            # APPLY DISCOUNTING IF TOGGLED (Inline directly on data structs)
-            if view_todays_dollars:
-                for i in range(len(sim_results)):
-                    discount = (1 + infl / 100) ** i
-                    for col in ["Annual Income", "Annual Expenses", "Annual Taxes", "Annual Net Savings",
-                                "Liquid Assets", "Real Estate Equity", "Business Equity", "Debt", "Unfunded Debt",
-                                "Net Worth"]:
-                        sim_results[i][col] /= discount
-                    for k in detailed_results[i].keys():
-                        if k not in ["Age (Primary)", "Year"]: detailed_results[i][k] /= discount
-                    for k in nw_detailed_results[i].keys():
-                        if k not in ["Age (Primary)", "Year"] and not isinstance(nw_detailed_results[i][k], str):
-                            nw_detailed_results[i][k] /= discount
-
-            df_sim = pd.DataFrame(sim_results)
-            df_det = pd.DataFrame(detailed_results).fillna(0)
-            df_nw = pd.DataFrame(nw_detailed_results).fillna(0)
-
             final_nw = df_sim_nominal.iloc[-1]['Net Worth']
             shortfall_mask = df_sim_nominal['Unfunded Debt'] > 0
             deplete_year = df_sim_nominal[shortfall_mask]['Year'].min() if not df_sim_nominal[
@@ -1890,6 +1872,24 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
             with c_ai_btn:
                 view_todays_dollars = st.toggle("💵 View Charts in Today's Dollars", value=False,
                                                 help="Removes the effect of inflation so you can easily understand what these big future numbers feel like today.")
+
+            # APPLY DISCOUNTING IF TOGGLED (Inline directly on data structs)
+            if view_todays_dollars:
+                for i in range(len(sim_results)):
+                    discount = (1 + infl / 100) ** i
+                    for col in ["Annual Income", "Annual Expenses", "Annual Taxes", "Annual Net Savings",
+                                "Liquid Assets", "Real Estate Equity", "Business Equity", "Debt", "Unfunded Debt",
+                                "Net Worth"]:
+                        sim_results[i][col] /= discount
+                    for k in detailed_results[i].keys():
+                        if k not in ["Age (Primary)", "Year"]: detailed_results[i][k] /= discount
+                    for k in nw_detailed_results[i].keys():
+                        if k not in ["Age (Primary)", "Year"] and not isinstance(nw_detailed_results[i][k], str):
+                            nw_detailed_results[i][k] /= discount
+
+            df_sim = pd.DataFrame(sim_results)
+            df_det = pd.DataFrame(detailed_results).fillna(0)
+            df_nw = pd.DataFrame(nw_detailed_results).fillna(0)
 
             if HAS_PLOTLY:
                 # Pre-calculate Milestone Chart Markers
