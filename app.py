@@ -48,30 +48,34 @@ if GA_MEASUREMENT_ID:
         width=0, height=0)
 
 # --- DESIGN SYSTEM & CSS ---
-# Removed the `* { font-family: ... !important; }` rule that was breaking Streamlit's Material Icons
 st.markdown("""
 <style>
-:root { --primary: #6366f1; --primary-dark: #4f46e5; --primary-light: #e0e7ff; --success: #10b981; --warning: #f59e0b; --danger: #ef4444; --surface: #ffffff; --border: #e2e8f0; --text-primary: #0f172a; --text-secondary: #64748b; --radius-sm: 8px; --radius-md: 12px; --radius-lg: 20px; --shadow-sm: 0 1px 3px rgba(0,0,0,0.08); --shadow-md: 0 4px 16px rgba(0,0,0,0.08); }
+:root {
+    --primary: #6366f1; --primary-dark: #4f46e5; --primary-light: #e0e7ff; 
+    --success: #10b981; --warning: #f59e0b; --danger: #ef4444; 
+    --surface: #ffffff; --border: #e2e8f0; --text-primary: #0f172a; --text-secondary: #64748b; 
+    --radius-sm: 8px; --radius-md: 12px; --radius-lg: 20px; 
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.08); --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
+}
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-html, body, p, div, span, h1, h2, h3, h4, h5, h6, label, input, button { font-family: 'Inter', sans-serif; }
-span[class*="material-symbols"] { font-family: 'Material Symbols Rounded' !important; }
-h1 { font-size: 2.2rem !important; font-weight: 900 !important; background: linear-gradient(135deg, var(--primary-dark), #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; }
-h2 { font-weight: 800 !important; color: var(--text-primary) !important; }
-h3 { font-weight: 700 !important; color: var(--text-primary) !important; }
+h1 { font-family: 'Inter', sans-serif; font-size: 2.2rem !important; font-weight: 900 !important; background: linear-gradient(135deg, var(--primary-dark), #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; }
+h2 { font-family: 'Inter', sans-serif; font-weight: 800 !important; color: var(--text-primary) !important; }
+h3 { font-family: 'Inter', sans-serif; font-weight: 700 !important; color: var(--text-primary) !important; }
 [data-testid="stSidebar"] { background: var(--text-primary) !important; border-right: none !important; }
-[data-testid="stSidebar"] * { color: white !important; }
+[data-testid="stSidebar"] * { color: white !important; font-family: 'Inter', sans-serif; }
 [data-testid="stSidebar"] .stRadio label { padding: 10px 16px !important; border-radius: var(--radius-sm) !important; transition: background 0.15s ease !important; cursor: pointer !important; }
 [data-testid="stSidebar"] .stRadio label:hover { background: rgba(255,255,255,0.1) !important; }
 [data-testid="stMetric"] { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: var(--radius-md) !important; padding: 20px !important; box-shadow: var(--shadow-sm) !important; }
-[data-testid="stMetricValue"] { color: var(--primary-dark) !important; font-size: 1.75rem !important; font-weight: 800 !important; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important; }
-[data-testid="stDataEditor"] { border-radius: var(--radius-md) !important; border: 1px solid var(--border) !important; overflow: hidden !important; box-shadow: var(--shadow-sm) !important; }
+[data-testid="stMetricValue"] { font-family: 'Inter', sans-serif; color: var(--primary-dark) !important; font-size: 1.75rem !important; font-weight: 800 !important; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important; }
+[data-testid="stDataEditor"] { font-family: 'Inter', sans-serif; border-radius: var(--radius-md) !important; border: 1px solid var(--border) !important; overflow: hidden !important; box-shadow: var(--shadow-sm) !important; }
 [data-testid="stDataEditor"] tr:hover td { background: #f8fafc !important; }
-[data-testid="stTabs"] button { font-weight: 600 !important; border-radius: var(--radius-sm) var(--radius-sm) 0 0 !important; }
-[data-testid="stTextInput"] input, [data-testid="stNumberInput"] input { border-radius: var(--radius-sm) !important; border-color: var(--border) !important; font-size: 0.95rem !important; transition: border-color 0.15s ease, box-shadow 0.15s ease !important; }
+[data-testid="stTabs"] button { font-family: 'Inter', sans-serif; font-weight: 600 !important; border-radius: var(--radius-sm) var(--radius-sm) 0 0 !important; }
+[data-testid="stTextInput"] input, [data-testid="stNumberInput"] input { font-family: 'Inter', sans-serif; border-radius: var(--radius-sm) !important; border-color: var(--border) !important; font-size: 0.95rem !important; transition: border-color 0.15s ease, box-shadow 0.15s ease !important; }
 [data-testid="stTextInput"] input:focus, [data-testid="stNumberInput"] input:focus { border-color: var(--primary) !important; box-shadow: 0 0 0 3px var(--primary-light) !important; }
 [data-testid="stProgress"] > div > div { background: linear-gradient(90deg, var(--primary), #7c3aed) !important; border-radius: 999px !important; }
 [data-testid="stPlotlyChart"] { border-radius: 16px !important; overflow: hidden !important; box-shadow: 0 2px 12px rgba(0,0,0,0.06) !important; background: white; border: 1px solid var(--border); padding: 10px; }
-div[data-testid="stExpander"] { background-color: white !important; border: 1px solid var(--border) !important; border-radius: var(--radius-md) !important; box-shadow: var(--shadow-sm) !important; }
+div[data-testid="stExpander"] { font-family: 'Inter', sans-serif; background-color: white !important; border: 1px solid var(--border) !important; border-radius: var(--radius-md) !important; box-shadow: var(--shadow-sm) !important; }
+div.stButton > button { font-family: 'Inter', sans-serif; border-radius: 8px !important; font-weight: 600 !important; }
 @media (max-width: 768px) { [data-testid="column"] { min-width: 100% !important; } button { min-height: 48px !important; } [data-testid="stMetricValue"] { font-size: 1.4rem !important; } }
 </style>
 """, unsafe_allow_html=True)
@@ -102,13 +106,13 @@ def stat_card(label, value, color="indigo", icon=""):
     }
     grad, _ = colors.get(color, colors["indigo"])
     st.markdown(
-        f"<div style='background:{grad}; padding:20px; border-radius:16px; color:white; box-shadow: 0 4px 14px rgba(0,0,0,0.1);'><div style='font-size:1.5rem; margin-bottom:4px;'>{html.escape(str(icon))}</div><div style='font-size:1.8rem; font-weight:900; letter-spacing:-0.5px;'>{html.escape(str(value))}</div><div style='font-size:0.85rem; opacity:0.9; margin-top:2px;'>{html.escape(str(label))}</div></div>",
+        f"<div style='background:{grad}; padding:20px; border-radius:16px; color:white; box-shadow: 0 4px 14px rgba(0,0,0,0.1); font-family: Inter;'><div style='font-size:1.5rem; margin-bottom:4px;'>{html.escape(str(icon))}</div><div style='font-size:1.8rem; font-weight:900; letter-spacing:-0.5px;'>{html.escape(str(value))}</div><div style='font-size:0.85rem; opacity:0.9; margin-top:2px;'>{html.escape(str(label))}</div></div>",
         unsafe_allow_html=True)
 
 
 def section_header(title, subtitle="", icon=""):
     st.markdown(
-        f"<div style='margin: 24px 0 16px 0;'><div style='display:flex; align-items:center; gap:10px;'><span style='font-size:1.4rem;'>{html.escape(str(icon))}</span><h2 style='margin:0; font-size:1.3rem; font-weight:800; color:#0f172a;'>{html.escape(str(title))}</h2></div>{f'<p style=\"margin:4px 0 0 34px; color:#64748b; font-size:0.9rem;\">{html.escape(str(subtitle))}</p>' if subtitle else ''}</div>",
+        f"<div style='margin: 24px 0 16px 0; font-family: Inter;'><div style='display:flex; align-items:center; gap:10px;'><span style='font-size:1.4rem;'>{html.escape(str(icon))}</span><h2 style='margin:0; font-size:1.3rem; font-weight:800; color:#0f172a;'>{html.escape(str(title))}</h2></div>{f'<p style=\"margin:4px 0 0 34px; color:#64748b; font-size:0.9rem;\">{html.escape(str(subtitle))}</p>' if subtitle else ''}</div>",
         unsafe_allow_html=True)
 
 
@@ -117,7 +121,7 @@ def info_banner(text, type="info"):
                "danger": ("#fef2f2", "#ef4444", "#b91c1c", "🚨")}
     bg, border, text_color, emoji = configs.get(type, configs["info"])
     st.markdown(
-        f"<div style='background:{bg}; border-left:4px solid {border}; padding:12px 16px; border-radius:0 8px 8px 0; margin-bottom:16px;'><span style='color:{text_color}; font-size:0.9rem;'>{emoji} {html.escape(str(text))}</span></div>",
+        f"<div style='font-family: Inter; background:{bg}; border-left:4px solid {border}; padding:12px 16px; border-radius:0 8px 8px 0; margin-bottom:16px;'><span style='color:{text_color}; font-size:0.9rem;'>{emoji} {html.escape(str(text))}</span></div>",
         unsafe_allow_html=True)
 
 
@@ -125,7 +129,7 @@ def retirement_health_score(score):
     color = "#10b981" if score > 75 else "#f59e0b" if score > 50 else "#ef4444"
     label = "Excellent" if score > 75 else "Needs Work" if score > 50 else "At Risk"
     st.markdown(f"""
-    <div style='text-align:center; padding:20px; background:white; border-radius:16px; border:1px solid #e2e8f0; box-shadow:0 2px 8px rgba(0,0,0,0.04);'>
+    <div style='text-align:center; padding:20px; background:white; border-radius:16px; border:1px solid #e2e8f0; box-shadow:0 2px 8px rgba(0,0,0,0.04); font-family: Inter;'>
         <svg width='140' height='140' viewBox='0 0 140 140'>
             <circle cx='70' cy='70' r='56' fill='none' stroke='#f1f5f9' stroke-width='12'/>
             <circle cx='70' cy='70' r='56' fill='none' stroke='{color}' stroke-width='12' stroke-dasharray='{2 * 3.14159 * 56}' stroke-dashoffset='{2 * 3.14159 * 56 * (1 - score / 100)}' stroke-linecap='round' transform='rotate(-90 70 70)'/>
@@ -148,20 +152,20 @@ def render_status_bar(deplete_year, deplete_age, final_nw, mc_success_rate=None)
         bg, icon, msg, sub = "#fef2f2", "🔴", "Projected Insolvency", "Net worth goes negative before end of plan."
     mc_html = f"<span style='margin-left:16px; font-size:0.85rem; color:#64748b;'>Monte Carlo: <b>{mc_success_rate:.0f}%</b> success rate</span>" if mc_success_rate is not None else ""
     st.markdown(
-        f"<div style='background:{bg}; border-radius:12px; padding:16px 20px; display:flex; align-items:center; gap:12px; margin-bottom:20px; border: 1px solid #e2e8f0;'><span style='font-size:1.8rem;'>{icon}</span><div><div style='font-weight:800; font-size:1.1rem; color:#0f172a;'>{html.escape(msg)}</div><div style='font-size:0.9rem; color:#64748b; margin-top:2px;'>{html.escape(sub)}{mc_html}</div></div></div>",
+        f"<div style='font-family: Inter; background:{bg}; border-radius:12px; padding:16px 20px; display:flex; align-items:center; gap:12px; margin-bottom:20px; border: 1px solid #e2e8f0;'><span style='font-size:1.8rem;'>{icon}</span><div><div style='font-weight:800; font-size:1.1rem; color:#0f172a;'>{html.escape(msg)}</div><div style='font-size:0.9rem; color:#64748b; margin-top:2px;'>{html.escape(sub)}{mc_html}</div></div></div>",
         unsafe_allow_html=True)
 
 
 def render_empty_state(section, icon):
     st.markdown(
-        f"<div style='text-align:center; padding:48px 24px; background:#f8fafc; border-radius:16px; border:2px dashed #cbd5e1; margin-bottom:20px;'><div style='font-size:3rem; margin-bottom:12px;'>{icon}</div><h3 style='color:#0f172a; margin:0 0 8px;'>No {html.escape(section)} Added Yet</h3><p style='color:#64748b; margin:0 0 20px; font-size:0.95rem;'>Use the table to add rows, or click the AI button to auto-populate based on your profile.</p></div>",
+        f"<div style='font-family: Inter; text-align:center; padding:48px 24px; background:#f8fafc; border-radius:16px; border:2px dashed #cbd5e1; margin-bottom:20px;'><div style='font-size:3rem; margin-bottom:12px;'>{icon}</div><h3 style='color:#0f172a; margin:0 0 8px;'>No {html.escape(section)} Added Yet</h3><p style='color:#64748b; margin:0 0 20px; font-size:0.95rem;'>Use the table to add rows, or click the AI button to auto-populate based on your profile.</p></div>",
         unsafe_allow_html=True)
 
 
 def render_total(label, series):
     total = pd.to_numeric(series, errors='coerce').fillna(0).sum()
     st.markdown(
-        f"<div style='text-align: right; font-weight: 600; color: #4f46e5; font-size: 1.1rem;'>{label}: <span style='color: #111827;'>${total:,.0f}</span></div>",
+        f"<div style='font-family: Inter; text-align: right; font-weight: 600; color: #4f46e5; font-size: 1.1rem;'>{label}: <span style='color: #111827;'>${total:,.0f}</span></div>",
         unsafe_allow_html=True)
 
 
@@ -273,7 +277,7 @@ if 'user_email' not in st.session_state:
         st.rerun()
 
     st.markdown(
-        "<div style='text-align: center; padding-top: 50px;'><h1>🏦 AI Retirement Planner Pro</h1></div><p style='text-align: center; color: #64748b;'>Secure Login required to access your financial blueprint.</p>",
+        "<div style='font-family: Inter; text-align: center; padding-top: 50px;'><h1>🏦 AI Retirement Planner Pro</h1></div><p style='text-align: center; color: #64748b;'>Secure Login required to access your financial blueprint.</p>",
         unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
@@ -341,11 +345,9 @@ def initialize_session_state():
         st.session_state['s_ret_age'] = int(p_info.get('spouse_retire_age', 65))
         st.session_state['my_life_exp'] = int(p_info.get('my_life_exp', 95))
         st.session_state['spouse_life_exp'] = int(p_info.get('spouse_life_exp', 95))
-
         st.session_state['kids_data'] = p_info.get('kids', [])
         st.session_state['curr_city_flow'] = p_info.get('current_city', '')
         st.session_state['retire_city_flow'] = ud.get('retire_city', st.session_state['curr_city_flow'])
-
         st.session_state['income_data'] = ud.get('income', [])
         st.session_state['real_estate_data'] = ud.get('real_estate', [])
         st.session_state['business_data'] = ud.get('business', [])
@@ -1077,7 +1079,7 @@ def run_simulation(mkt_sequence, ctx):
             prev_debt_bals[d['name']] = d['bal']
             debt_bal_total += d['bal']
 
-        # Base Taxes & Contributions Pass
+        # Pass 1: Base Taxes & Contributions
         base_fed_tax_pre_conversion, marginal_rate_pre_conversion = calc_federal_tax(tax_base_ord, active_mfj,
                                                                                      year_offset, ctx['infl'])
         state_tax_rate = ctx['cur_t'] if not is_retired else ctx['ret_t']
@@ -1271,11 +1273,46 @@ def run_simulation(mkt_sequence, ctx):
         elif net_cash_flow < 0:
             shortfall = abs(net_cash_flow)
 
+            def _withdraw_local(a, current_shortfall, tax_treatment):
+                if a['bal'] <= 0 or current_shortfall <= 0: return current_shortfall, 0.0
+
+                eff_tax = 0.0
+                if tax_treatment == 'cg':
+                    is_step_up = ctx['has_spouse'] and (not is_my_alive or not is_spouse_alive)
+                    eff_tax = 0.0 if is_step_up else (
+                                get_ltcg_rate(tax_base_ord, active_mfj, year_offset, ctx['infl']) + (
+                                    state_tax_rate / 100.0))
+                elif tax_treatment == 'ordinary':
+                    o_acct = a.get('Owner', 'Me')
+                    o_age = my_current_age if o_acct in ['Me', 'Joint'] else spouse_current_age
+                    o_ret_yr = ctx['primary_retire_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_retire_year']
+                    o_birth = ctx['my_birth_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_birth_year']
+                    rule_of_55 = (year >= o_ret_yr) and ((o_ret_yr - o_birth) >= 55)
+                    penalty = 0.10 if (o_age < 59.5 and not rule_of_55) else 0.0
+                    eff_tax = min(marginal_rate + (state_tax_rate / 100.0) + penalty, 0.99)
+                elif tax_treatment == 'free':
+                    o_acct = a.get('Owner', 'Me')
+                    o_age = my_current_age if o_acct in ['Me', 'Joint'] else spouse_current_age
+                    o_ret_yr = ctx['primary_retire_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_retire_year']
+                    o_birth = ctx['my_birth_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_birth_year']
+                    rule_of_55 = (year >= o_ret_yr) and ((o_ret_yr - o_birth) >= 55)
+                    penalty = 0.10 if (a.get('Type') in ['Roth 401(k)',
+                                                         'Roth IRA'] and o_age < 59.5 and not rule_of_55) else 0.0
+                    eff_tax = min(penalty, 0.99)
+
+                req_gross = current_shortfall / max(0.01, (1.0 - eff_tax))
+                withdrawn = min(a['bal'], req_gross)
+                a['bal'] -= withdrawn
+                tax_inc = withdrawn * eff_tax
+                net_cash = withdrawn - tax_inc
+                yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + tax_inc
+                yd[f"Income: Withdrawal ({a.get('Account Name', 'Account')})"] = withdrawn
+                return current_shortfall - net_cash, tax_inc
+
             for a in sim_assets:
                 if shortfall <= 0: break
                 if a.get('Type') in ['Checking/Savings', 'HYSA', 'Unallocated Cash']:
-                    shortfall, _ = _withdraw(a, shortfall, 'free', ctx, my_current_age, spouse_current_age, active_mfj,
-                                             year_offset, tax_base_ord, marginal_rate, state_tax_rate, year)
+                    shortfall, _ = _withdraw_local(a, shortfall, 'free')
 
             if shortfall > 0 and not cash_depleted and not any(a['bal'] > 0 for a in sim_assets if
                                                                a.get('Type') in ['Checking/Savings', 'HYSA',
@@ -1288,11 +1325,13 @@ def run_simulation(mkt_sequence, ctx):
             for a in sim_assets:
                 if shortfall <= 0: break
                 if a.get('Type') == 'Brokerage (Taxable)':
-                    shortfall, t_inc = _withdraw(a, shortfall, 'cg', ctx, my_current_age, spouse_current_age,
-                                                 active_mfj, year_offset, tax_base_ord, marginal_rate, state_tax_rate,
-                                                 year)
+                    if not tapped_brokerage:
+                        if year not in milestones_by_year: milestones_by_year[year] = []
+                        milestones_by_year[year].append(
+                            {"desc": "📉 Began Drawing from Taxable Brokerage", "amt": 0, "type": "system"})
+                        tapped_brokerage = True
+                    shortfall, t_inc = _withdraw_local(a, shortfall, 'cg')
                     total_tax += t_inc
-                    yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
 
             seq = ['Traditional 401(k)', 'Traditional IRA', 'Roth 401(k)', 'Roth IRA', 'HSA', 'Crypto', '529 Plan',
                    'Other'] if 'Standard' in ctx['active_withdrawal_strategy'] else ['Roth 401(k)', 'Roth IRA', 'HSA',
@@ -1303,11 +1342,18 @@ def run_simulation(mkt_sequence, ctx):
                 if shortfall <= 0: break
                 for a in sim_assets:
                     if a.get('Type') == t:
-                        shortfall, t_inc = _withdraw(a, shortfall, 'ordinary' if 'Traditional' in t else 'free', ctx,
-                                                     my_current_age, spouse_current_age, active_mfj, year_offset,
-                                                     tax_base_ord, marginal_rate, state_tax_rate, year)
+                        if 'Traditional' in t and not tapped_trad:
+                            if year not in milestones_by_year: milestones_by_year[year] = []
+                            milestones_by_year[year].append(
+                                {"desc": "📉 Began Drawing from Traditional 401(k)/IRA", "amt": 0, "type": "system"})
+                            tapped_trad = True
+                        if 'Roth' in t and not tapped_roth:
+                            if year not in milestones_by_year: milestones_by_year[year] = []
+                            milestones_by_year[year].append(
+                                {"desc": "📉 Began Drawing from Roth/Tax-Free Assets", "amt": 0, "type": "system"})
+                            tapped_roth = True
+                        shortfall, t_inc = _withdraw_local(a, shortfall, 'ordinary' if 'Traditional' in t else 'free')
                         total_tax += t_inc
-                        yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
 
             if shortfall > 0:
                 unfunded_debt_bal += shortfall
@@ -2437,8 +2483,8 @@ with st.sidebar:
     st.progress(completed / 100)
     st.caption(f"<div style='text-align: center;'>Profile {completed}% Complete</div>", unsafe_allow_html=True)
 
-    if 'df_sim' in st.session_state and not st.session_state['df_sim'].empty:
-        nw = st.session_state['df_sim'].iloc[0]['Net Worth']
+    if 'df_sim_display' in st.session_state and not st.session_state['df_sim_display'].empty:
+        nw = st.session_state['df_sim_display'].iloc[0]['Net Worth']
         st.markdown(
             f"<div style='text-align: center; margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 8px;'><span style='font-size: 0.8rem; color: #cbd5e1;'>Live Net Worth</span><br><b style='font-size: 1.2rem;'>${nw:,.0f}</b></div>",
             unsafe_allow_html=True)
