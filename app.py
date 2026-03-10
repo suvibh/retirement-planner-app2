@@ -2400,7 +2400,7 @@ def render_simulation():
                             f"User lives in {curr_city_flow} with ${curr_inc_total:,.0f} income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'current_tax_rate': float}}",
                             ac8)
     ret_t = ai_number_input("Retire State Tax (%)", 'retire_tax_rate',
-                            f"User plans to retire in {ret_city_state} with estimated retirement income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'retire_tax_rate': float}}",
+                            f"User plans to retire in {ret_city_flow} with estimated retirement income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'retire_tax_rate': float}}",
                             ac9)
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -3030,7 +3030,7 @@ def render_faq():
 
     ### 🏥 HEALTHCARE & MEDICARE
     **Q: What is the "Pre-Medicare Gap" and why is it so expensive?**
-    **A:** If you retire before age 65, you face a potentially brutal financial gap. Most working Americans get health insurance through their employer — it's one of the most valuable parts of your compensation package, and your employer typically pays the majority of the premium. The moment you retire, that coverage ends. You're now on your own for health insurance until Medicare kicks in at age 65.
+    **A:** If you retire before age 65, you face a potentially brutal financial gap. Most working Americans get health insurance through employer — it's one of the most valuable parts of your compensation package, and your employer typically pays the majority of the premium. The moment you retire, that coverage ends. You're now on your own for health insurance until Medicare kicks in at age 65.
 
     Buying private health insurance for a 60-year-old can easily cost $1,000-$2,000+ per month just in premiums, before copays and deductibles. This is called the "Pre-Medicare Gap" and it catches many early retirees completely off guard. The app automatically adds this cost to your simulation if you retire before 65, scaled to your income level (since lower-income retirees may qualify for ACA subsidies that reduce the cost).
 
