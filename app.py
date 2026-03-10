@@ -282,7 +282,8 @@ def sign_up_with_email_and_password(email, password):
 
 
 def load_user_data(email):
-    if email == "guest_demo" or not st.session_state['firebase_enabled']: return {}
+    if email == "guest_demo" or not st.session_state['firebase_enabled']:
+        return {}
     doc = db.collection('users').document(email).get()
     return doc.to_dict() if doc.exists else {}
 
@@ -301,16 +302,18 @@ def call_gemini_json(prompt, retries=4):
             res.raise_for_status()
             res_json = res.json()
             if "error" in res_json:
-                if attempt == retries - 1: st.error(f"⚠️ API Error: {res_json['error'].get('message')}"); return None
-                time.sleep(2 ** attempt);
+                if attempt == retries - 1:
+                    st.error(f"⚠️ API Error: {res_json['error'].get('message')}")
+                    return None
+                time.sleep(2 ** attempt)
                 continue
 
             text = res_json['candidates'][0]['content']['parts'][0]['text'].strip()
             text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
             text = re.sub(r"\n?```$", "", text).strip()
             parsed = json.loads(text)
-            if isinstance(parsed, dict) and len(parsed) == 1 and isinstance(list(parsed.values())[0], list): return \
-            list(parsed.values())[0]
+            if isinstance(parsed, dict) and len(parsed) == 1 and isinstance(list(parsed.values())[0], list):
+                return list(parsed.values())[0]
             return parsed
         except requests.exceptions.RequestException as e:
             if attempt == retries - 1: st.error(f"⚠️ Network Error connecting to AI: {e}")
@@ -322,10 +325,6 @@ def call_gemini_json(prompt, retries=4):
             if attempt == retries - 1: st.error(f"⚠️ Unexpected AI Error: {e}")
             time.sleep(2 ** attempt)
     return None
-
-
-def subtract_years(dt, years):
-    return dt - relativedelta(years=years)
 
 
 def safe_num(val, default=0.0):
@@ -454,17 +453,17 @@ def initialize_session_state():
             migrated = []
             current_year = datetime.date.today().year
             for c in ud.get('current_expenses', []):
-                if c.get("Description"): migrated.append(
-                    {"Description": c.get("Description"), "Category": c.get("Category", "Other"),
-                     "Frequency": c.get("Frequency", "Monthly"), "Amount ($)": c.get("Amount ($)", 0),
-                     "Start Phase": "Now", "Start Year": None, "End Phase": "At Retirement", "End Year": None,
-                     "AI Estimate?": c.get("AI Estimate?", False)})
+                if c.get("Description"):
+                    migrated.append({"Description": c.get("Description"), "Category": c.get("Category", "Other"),
+                                     "Frequency": c.get("Frequency", "Monthly"), "Amount ($)": c.get("Amount ($)", 0),
+                                     "Start Phase": "Now", "Start Year": None, "End Phase": "At Retirement",
+                                     "End Year": None, "AI Estimate?": c.get("AI Estimate?", False)})
             for r in ud.get('retire_expenses', []):
-                if r.get("Description"): migrated.append(
-                    {"Description": r.get("Description"), "Category": r.get("Category", "Other"),
-                     "Frequency": r.get("Frequency", "Monthly"), "Amount ($)": r.get("Amount ($)", 0),
-                     "Start Phase": "At Retirement", "Start Year": None, "End Phase": "End of Life", "End Year": None,
-                     "AI Estimate?": r.get("AI Estimate?", False)})
+                if r.get("Description"):
+                    migrated.append({"Description": r.get("Description"), "Category": r.get("Category", "Other"),
+                                     "Frequency": r.get("Frequency", "Monthly"), "Amount ($)": r.get("Amount ($)", 0),
+                                     "Start Phase": "At Retirement", "Start Year": None, "End Phase": "End of Life",
+                                     "End Year": None, "AI Estimate?": r.get("AI Estimate?", False)})
             for m in ud.get('one_time_events', []):
                 if m.get("Description"):
                     try:
@@ -503,7 +502,8 @@ def initialize_session_state():
 initialize_session_state()
 
 
-def mark_dirty(): st.session_state['dirty'] = True
+def mark_dirty():
+    st.session_state['dirty'] = True
 
 
 def get_completion_score():
@@ -798,33 +798,41 @@ def run_simulation(mkt_sequence, ctx):
         is_my_alive = year <= ctx['primary_end_year']
         is_spouse_alive = ctx['has_spouse'] and (year <= ctx['spouse_end_year'])
 
-        if not is_my_alive and not is_spouse_alive: break
+        if not is_my_alive and not is_spouse_alive:
+            break
 
         # Base Milestones
         if ctx['has_spouse'] and not is_spouse_alive and not spouse_died_notified:
             if year not in milestones_by_year: milestones_by_year[year] = []
             milestones_by_year[year].append(
-                {"desc": "💀 Spouse Passes Away (Step-up Basis Applied)", "amt": 0, "type": "critical"});
+                {"desc": "💀 Spouse Passes Away (Step-up Basis Applied)", "amt": 0, "type": "critical"})
             spouse_died_notified = True
+
         if not is_my_alive and not me_died_notified:
             if year not in milestones_by_year: milestones_by_year[year] = []
-            milestones_by_year[year].append({"desc": "💀 You Pass Away", "amt": 0, "type": "critical"});
+            milestones_by_year[year].append({"desc": "💀 You Pass Away", "amt": 0, "type": "critical"})
             me_died_notified = True
+
         if year == ctx['primary_retire_year'] and is_my_alive:
             if year not in milestones_by_year: milestones_by_year[year] = []
             milestones_by_year[year].append({"desc": "🎓 You Retire", "amt": 0, "type": "system"})
+
         if ctx['has_spouse'] and year == ctx['spouse_retire_year'] and is_spouse_alive:
             if year not in milestones_by_year: milestones_by_year[year] = []
             milestones_by_year[year].append({"desc": "🎓 Spouse Retires", "amt": 0, "type": "system"})
+
         if is_my_alive and my_current_age == 65:
             if year not in milestones_by_year: milestones_by_year[year] = []
             milestones_by_year[year].append({"desc": "🏥 Medicare Kicks In (You)", "amt": 0, "type": "system"})
+
         if ctx['has_spouse'] and is_spouse_alive and spouse_current_age == 65:
             if year not in milestones_by_year: milestones_by_year[year] = []
             milestones_by_year[year].append({"desc": "🏥 Medicare Kicks In (Spouse)", "amt": 0, "type": "system"})
+
         if is_my_alive and my_current_age == ctx['primary_rmd_age']:
             if year not in milestones_by_year: milestones_by_year[year] = []
             milestones_by_year[year].append({"desc": "🏦 Your RMDs Begin", "amt": 0, "type": "system"})
+
         if ctx['has_spouse'] and is_spouse_alive and spouse_current_age == ctx['spouse_rmd_age']:
             if year not in milestones_by_year: milestones_by_year[year] = []
             milestones_by_year[year].append({"desc": "🏦 Spouse RMDs Begin", "amt": 0, "type": "system"})
@@ -839,12 +847,15 @@ def run_simulation(mkt_sequence, ctx):
 
         base_mkt_yr = mkt_sequence[year_offset]
         if ctx['stress_test'] and year == ctx['primary_retire_year']:
-            mkt_glide = mkt_roth = -25.0
+            mkt_glide = -25.0
+            mkt_roth = -25.0
         elif ctx['glidepath'] and is_retired:
-            mkt_glide = max(3.0, base_mkt_yr - (math.floor((year - ctx['primary_retire_year']) / 5) * 1.0))
+            years_retired = year - ctx['primary_retire_year']
+            mkt_glide = max(3.0, base_mkt_yr - (math.floor(years_retired / 5) * 1.0))
             mkt_roth = base_mkt_yr
         else:
-            mkt_glide = mkt_roth = base_mkt_yr
+            mkt_glide = base_mkt_yr
+            mkt_roth = base_mkt_yr
 
         active_mfj = True if ctx['has_spouse'] and is_my_alive and is_spouse_alive else False
 
@@ -859,9 +870,12 @@ def run_simulation(mkt_sequence, ctx):
                 if owner_alive and owner_age >= owner_rmd_age:
                     rmd_amt = a['bal'] / irs_uniform_table.get(owner_age, 2.0)
                     a['bal'] -= rmd_amt
-                    rmd_income += rmd_amt;
+                    rmd_income += rmd_amt
                     pre_tax_ord += rmd_amt
-        if rmd_income > 0: annual_inc += rmd_income; yd["Income: RMDs"] = rmd_income
+
+        if rmd_income > 0:
+            annual_inc += rmd_income
+            yd["Income: RMDs"] = rmd_income
 
         # Incomes
         primary_ss_entitlement, spouse_ss_entitlement = 0, 0
@@ -870,10 +884,11 @@ def run_simulation(mkt_sequence, ctx):
             cat_name = inc.get("Category", "Other")
             owner_retire_year = ctx['primary_retire_year'] if owner in ["Me", "Joint"] else ctx['spouse_retire_year']
             start_year = safe_num(inc.get('Start Year'), ctx['current_year'])
+            end_year = safe_num(inc.get('End Year'), 2100)
 
             is_active = (year >= start_year) and (not inc.get("Stop at Ret.?", False) or year < owner_retire_year)
-            if cat_name in ["Social Security", "Pension"]: is_active = (year >= start_year) and (
-                        year <= safe_num(inc.get('End Year'), 2100))
+            if cat_name in ["Social Security", "Pension"]:
+                is_active = (year >= start_year) and (year <= end_year)
 
             if inc.get("Description"):
                 base_amt = safe_num(inc.get('Annual Amount ($)'))
@@ -890,9 +905,10 @@ def run_simulation(mkt_sequence, ctx):
                     continue
 
                 if not is_active: continue
-                amt = base_amt * ((1 + safe_num(inc.get('Override Growth (%)'), ctx['inc_g']) / 100) ** max(0,
-                                                                                                            year - int(
-                                                                                                                start_year)))
+
+                g = safe_num(inc.get('Override Growth (%)'), ctx['inc_g'])
+                offset_for_growth = max(0, year - max(int(start_year), ctx['current_year']))
+                amt = base_amt * ((1 + g / 100) ** offset_for_growth)
 
                 # Hide 401(k) match from spendable income completely, but track it to auto-deposit to assets
                 if cat_name == "Employer Match (401k/HSA)":
@@ -902,11 +918,13 @@ def run_simulation(mkt_sequence, ctx):
                     continue
 
                 if (owner == "Me" and not is_my_alive) or (owner == "Spouse" and not is_spouse_alive) or (
-                        owner == "Joint" and not is_my_alive and not is_spouse_alive): continue
+                        owner == "Joint" and not is_my_alive and not is_spouse_alive):
+                    continue
 
-                annual_inc += amt;
-                pre_tax_ord += amt;
+                annual_inc += amt
+                pre_tax_ord += amt
                 yd[f"Income: {cat_name}"] = yd.get(f"Income: {cat_name}", 0) + amt
+
                 if cat_name in ["Base Salary (W-2)", "Bonus / Commission", "Contractor (1099)"]:
                     if owner in ["Me", "Joint"]:
                         earned_income_me += amt
@@ -921,34 +939,38 @@ def run_simulation(mkt_sequence, ctx):
             if primary_ss_entitlement > 0 and year >= primary_ss_start_year and not ss_started_me:
                 if year not in milestones_by_year: milestones_by_year[year] = []
                 milestones_by_year[year].append(
-                    {"desc": "📈 Social Security Begins (You)", "amt": primary_ss_entitlement, "type": "system"});
+                    {"desc": "📈 Social Security Begins (You)", "amt": primary_ss_entitlement, "type": "system"})
                 ss_started_me = True
             if spouse_ss_entitlement > 0 and year >= spouse_ss_start_year and not ss_started_spouse:
                 if year not in milestones_by_year: milestones_by_year[year] = []
                 milestones_by_year[year].append(
-                    {"desc": "📈 Social Security Begins (Spouse)", "amt": spouse_ss_entitlement, "type": "system"});
+                    {"desc": "📈 Social Security Begins (Spouse)", "amt": spouse_ss_entitlement, "type": "system"})
                 ss_started_spouse = True
         elif is_my_alive and not is_spouse_alive:
-            active_ss = max(primary_ss_entitlement if year >= primary_ss_start_year else 0,
-                            max(primary_ss_entitlement, spouse_ss_entitlement))
+            primary_actual = primary_ss_entitlement if year >= primary_ss_start_year else 0
+            survivor_benefit = max(primary_ss_entitlement,
+                                   spouse_ss_entitlement)  # Per SSA rules, survivor inherits the higher of the two
+            active_ss = max(primary_actual, survivor_benefit)
             if active_ss > 0 and not ss_started_me:
                 if year not in milestones_by_year: milestones_by_year[year] = []
                 milestones_by_year[year].append(
-                    {"desc": "📈 Social Security Survivor Benefit Begins", "amt": active_ss, "type": "system"});
+                    {"desc": "📈 Social Security Survivor Benefit Begins", "amt": active_ss, "type": "system"})
                 ss_started_me = True
         elif is_spouse_alive and not is_my_alive:
-            active_ss = max(spouse_ss_entitlement if year >= spouse_ss_start_year else 0,
-                            max(primary_ss_entitlement, spouse_ss_entitlement))
+            spouse_actual = spouse_ss_entitlement if year >= spouse_ss_start_year else 0
+            survivor_benefit = max(primary_ss_entitlement, spouse_ss_entitlement)
+            active_ss = max(spouse_actual, survivor_benefit)
             if active_ss > 0 and not ss_started_spouse:
                 if year not in milestones_by_year: milestones_by_year[year] = []
                 milestones_by_year[year].append(
-                    {"desc": "📈 Social Security Survivor Benefit Begins", "amt": active_ss, "type": "system"});
+                    {"desc": "📈 Social Security Survivor Benefit Begins", "amt": active_ss, "type": "system"})
                 ss_started_spouse = True
 
         if active_ss > 0:
-            annual_inc += active_ss;
-            annual_ss += active_ss;
+            annual_inc += active_ss
+            annual_ss += active_ss
             yd["Income: Social Security"] = active_ss
+
             ss_provisional_income = pre_tax_ord + (active_ss * 0.5)
             if active_mfj:
                 if ss_provisional_income <= SS_MFJ_TIER1_BASE:
@@ -971,9 +993,11 @@ def run_simulation(mkt_sequence, ctx):
         # Business & Real Estate
         cur_biz_val, re_equity, total_exp, biz_income_total = 0, 0, 0, 0
         for b in sim_biz:
-            if year_offset > 0: b['val'] *= (1 + b['v_growth'] / 100); b['dist'] *= (1 + b['d_growth'] / 100)
-            cur_biz_val += (b['val'] * b['own']);
-            annual_inc += b['dist'];
+            if year_offset > 0:
+                b['val'] *= (1 + b['v_growth'] / 100)
+                b['dist'] *= (1 + b['d_growth'] / 100)
+            cur_biz_val += (b['val'] * b['own'])
+            annual_inc += b['dist']
             biz_income_total += b['dist']
             yd["Income: Biz Dist"] = yd.get("Income: Biz Dist", 0) + b['dist']
 
@@ -989,9 +1013,13 @@ def run_simulation(mkt_sequence, ctx):
                             ((483900 if active_mfj else 241950) * infl_factor - pre_tax_ord) / (100000 * infl_factor))
 
         for r in sim_re:
-            if year_offset > 0: r['rent'] *= (1 + r['r_growth'] / 100); r['exp'] *= (1 + ctx['infl'] / 100); r[
-                'val'] *= (1 + r['v_growth'] / 100)
-            monthly_rate, monthly_pmt = r['rate'] / 12, r['pmt'] / 12
+            if year_offset > 0:
+                r['rent'] *= (1 + r['r_growth'] / 100)
+                r['exp'] *= (1 + ctx['infl'] / 100)
+                r['val'] *= (1 + r['v_growth'] / 100)
+
+            monthly_rate = r['rate'] / 12
+            monthly_pmt = r['pmt'] / 12
             interest_paid, actual_mortgage_paid = 0, 0
             for _ in range(12):
                 if r['debt'] > 0:
@@ -1006,23 +1034,27 @@ def run_simulation(mkt_sequence, ctx):
                 if year not in milestones_by_year: milestones_by_year[year] = []
                 milestones_by_year[year].append(
                     {"desc": f"🏡 Mortgage Paid Off: {r['name']}", "amt": 0, "type": "system"})
-            prev_re_debts[r['name']] = r['debt'];
+            prev_re_debts[r['name']] = r['debt']
             re_equity += (r['val'] - r['debt'])
 
             if r['is_primary']:
                 total_exp += (r['exp'] + actual_mortgage_paid)
                 yd["Expense: Primary Home (Mortgage & Upkeep)"] = yd.get("Expense: Primary Home (Mortgage & Upkeep)",
                                                                          0) + (r['exp'] + actual_mortgage_paid)
-                if r['rent'] > 0: annual_inc += r['rent']; yd["Income: Primary Home Rent"] = yd.get(
-                    "Income: Primary Home Rent", 0) + r['rent']
+                if r['rent'] > 0:
+                    annual_inc += r['rent']
+                    yd["Income: Primary Home Rent"] = yd.get("Income: Primary Home Rent", 0) + r['rent']
             else:
                 net_re_cashflow = r['rent'] - (r['exp'] + actual_mortgage_paid)
                 if net_re_cashflow > 0:
-                    annual_inc += net_re_cashflow; yd["Income: Net Investment RE Cashflow"] = yd.get(
-                        "Income: Net Investment RE Cashflow", 0) + net_re_cashflow
+                    annual_inc += net_re_cashflow
+                    yd["Income: Net Investment RE Cashflow"] = yd.get("Income: Net Investment RE Cashflow",
+                                                                      0) + net_re_cashflow
                 elif net_re_cashflow < 0:
-                    total_exp += abs(net_re_cashflow); yd["Expense: Net Investment RE Loss"] = yd.get(
-                        "Expense: Net Investment RE Loss", 0) + abs(net_re_cashflow)
+                    total_exp += abs(net_re_cashflow)
+                    yd["Expense: Net Investment RE Loss"] = yd.get("Expense: Net Investment RE Loss", 0) + abs(
+                        net_re_cashflow)
+
             pre_tax_ord += max(0, r['rent'] - r['exp'] - interest_paid)
 
         # Tax Base Ord isolates QBI to protect IRMAA MAGI logic below
@@ -1032,19 +1064,36 @@ def run_simulation(mkt_sequence, ctx):
         for ev in ctx['exp_records']:
             desc = str(ev.get("Description", "")).strip()
             if not desc: continue
+
             cat = ev.get("Category", "Other")
             if ctx['owns_home'] and cat in ["Housing / Rent", "Debt Payments"]: continue
             if not ctx['owns_home'] and cat == "Debt Payments": continue
 
             freq = ev.get("Frequency", "Monthly")
             amt = safe_num(ev.get("Amount ($)", 0)) * (12 if freq == "Monthly" else 1)
-            start_phase, end_phase = ev.get("Start Phase", "Now"), ev.get("End Phase", "End of Life")
-            actual_start = ctx['primary_retire_year'] if start_phase == "At Retirement" else safe_num(
-                ev.get("Start Year"), ctx['current_year'])
-            actual_end = ctx['primary_retire_year'] - 1 if end_phase == "At Retirement" else safe_num(
-                ev.get("End Year"), ctx['max_year'])
 
-            if (year == actual_start if freq == "One-Time" else actual_start <= year <= actual_end):
+            start_phase = ev.get("Start Phase", "Now")
+            end_phase = ev.get("End Phase", "End of Life")
+
+            actual_start = ctx['current_year']
+            if start_phase == "At Retirement":
+                actual_start = ctx['primary_retire_year']
+            elif start_phase == "Custom Year":
+                actual_start = safe_num(ev.get("Start Year"), ctx['current_year'])
+
+            actual_end = ctx['max_year']
+            if end_phase == "At Retirement":
+                actual_end = ctx['primary_retire_year'] - 1
+            elif end_phase == "Custom Year":
+                actual_end = safe_num(ev.get("End Year"), ctx['max_year'])
+
+            is_active = False
+            if freq == "One-Time":
+                is_active = (year == actual_start)
+            else:
+                is_active = (actual_start <= year <= actual_end)
+
+            if is_active:
                 cat_infl = ctx['infl_hc'] if cat in ["Healthcare", "Insurance"] else (
                     ctx['infl_ed'] if cat == "Education" else ctx['infl'])
                 inflated_amt = amt * ((1 + cat_infl / 100) ** year_offset)
@@ -1052,7 +1101,8 @@ def run_simulation(mkt_sequence, ctx):
                 # Drop recurring lifestyle expenses if widow(er) -> Applies to lifestyle only
                 if ctx['has_spouse'] and not (is_my_alive and is_spouse_alive) and freq != "One-Time" and cat not in [
                     "Education", "Debt Payments", "Healthcare", "Insurance", "Housing / Rent"]:
-                    if year >= ctx['primary_retire_year']: inflated_amt *= WIDOW_EXPENSE_MULTIPLIER
+                    if year >= ctx['primary_retire_year']:
+                        inflated_amt *= WIDOW_EXPENSE_MULTIPLIER
 
                 # Medicare Cliff logic (Proportional Reduction)
                 primary_on_medicare = is_my_alive and my_current_age >= 65
@@ -1067,6 +1117,7 @@ def run_simulation(mkt_sequence, ctx):
                         inflated_amt *= max(0.5, reduction)
 
                 total_exp += inflated_amt
+
                 if freq == "One-Time":
                     yd[f"Expense: Milestone ({desc})"] = inflated_amt
                     if year not in milestones_by_year: milestones_by_year[year] = []
@@ -1076,47 +1127,56 @@ def run_simulation(mkt_sequence, ctx):
 
                 # 529 Plan Routing Logic
                 if any(k in desc.lower() for k in ['college', 'tuition', 'university', 'education', 'school']):
-                    amt_to_cover = inflated_amt;
-                    cov_by_529 = 0
-                    target_kid = next(
-                        (k['name'].lower() for k in ctx['kids_data'] if k['name'].lower() in desc.lower()), None)
+                    amount_to_cover = inflated_amt
+                    covered_by_529 = 0
+                    target_kid = None
+                    for k in ctx['kids_data']:
+                        if k['name'].lower() in desc.lower():
+                            target_kid = k['name'].lower()
+                            break
 
                     if target_kid:
                         for a in sim_assets:
                             if a.get('Type') == '529 Plan' and a['bal'] > 0 and re.search(
                                     rf'\b{re.escape(target_kid)}\b', str(a.get('Account Name', '')).lower()):
-                                pull = min(a['bal'], amt_to_cover);
-                                a['bal'] -= pull;
-                                amt_to_cover -= pull;
-                                cov_by_529 += pull
-                                if amt_to_cover <= 0: break
-                    if amt_to_cover > 0:
+                                pull = min(a['bal'], amount_to_cover)
+                                a['bal'] -= pull
+                                amount_to_cover -= pull
+                                covered_by_529 += pull
+                                if amount_to_cover <= 0: break
+
+                    if amount_to_cover > 0:
                         for a in sim_assets:
                             if a.get('Type') == '529 Plan' and a['bal'] > 0:
-                                pull = min(a['bal'], amt_to_cover);
-                                a['bal'] -= pull;
-                                amt_to_cover -= pull;
-                                cov_by_529 += pull
-                                if amt_to_cover <= 0: break
-                    if cov_by_529 > 0: annual_inc += cov_by_529; yd[
-                        f"Income: Tax-Free 529 Withdrawal ({desc})"] = cov_by_529
+                                pull = min(a['bal'], amount_to_cover)
+                                a['bal'] -= pull
+                                amount_to_cover -= pull
+                                covered_by_529 += pull
+                                if amount_to_cover <= 0: break
 
+                    if covered_by_529 > 0:
+                        annual_inc += covered_by_529
+                        yd[f"Income: Tax-Free 529 Withdrawal ({desc})"] = covered_by_529
+
+        # Global Medicare Gap applied exactly once per year if conditions met
         if ctx['medicare_gap'] and is_retired and my_current_age < 65:
-            gap_cost = (MEDICARE_GAP_COST * min(1.0, max(0.0, pre_tax_ord / 100000.0))) * (
-                        (1 + ctx['infl_hc'] / 100) ** year_offset)
-            total_exp += gap_cost;
+            subsidy_factor = min(1.0, max(0.0, pre_tax_ord / 100000.0))
+            gap_cost = (MEDICARE_GAP_COST * subsidy_factor) * ((1 + ctx['infl_hc'] / 100) ** year_offset)
+            total_exp += gap_cost
             yd["Expense: Healthcare (Pre-Medicare Gap Proxy)"] = gap_cost
 
+        # LTC Shock
         if ctx['ltc_shock']:
             if is_my_alive and my_current_age >= (ctx['my_life_exp_val'] - 2):
                 ltc_cost = LTC_SHOCK_COST * ((1 + ctx['infl_hc'] / 100) ** year_offset)
-                total_exp += ltc_cost;
+                total_exp += ltc_cost
                 yd["Expense: Long Term Care Shock (Primary)"] = ltc_cost
             if ctx['has_spouse'] and is_spouse_alive and spouse_current_age >= (ctx['spouse_life_exp_val'] - 2):
                 ltc_cost_spouse = LTC_SHOCK_COST * ((1 + ctx['infl_hc'] / 100) ** year_offset)
-                total_exp += ltc_cost_spouse;
+                total_exp += ltc_cost_spouse
                 yd["Expense: Long Term Care Shock (Spouse)"] = ltc_cost_spouse
 
+        # Debt Amortization (Generic Liabilities)
         debt_bal_total = 0
         for d in sim_debts:
             actual_paid = 0
@@ -1127,12 +1187,14 @@ def run_simulation(mkt_sequence, ctx):
                     d['bal'] = max(0, d['bal'] - max(0, (d['pmt'] / 12) - m_int))
                 else:
                     break
-            total_exp += actual_paid;
+
+            total_exp += actual_paid
             yd["Expense: Debt Payments"] = yd.get("Expense: Debt Payments", 0) + actual_paid
+
             if d['bal'] <= 0 and prev_debt_bals.get(d['name'], 0) > 0:
                 if year not in milestones_by_year: milestones_by_year[year] = []
                 milestones_by_year[year].append({"desc": f"🎉 Debt Paid Off: {d['name']}", "amt": 0, "type": "system"})
-            prev_debt_bals[d['name']] = d['bal'];
+            prev_debt_bals[d['name']] = d['bal']
             debt_bal_total += d['bal']
 
         # 8. PRE-PASS Base Taxes (Need to calculate exact safe margin for Roth Conversions)
@@ -1157,7 +1219,7 @@ def run_simulation(mkt_sequence, ctx):
                 for a in sim_assets:
                     if a.get('Type') == acct_type_target and a.get('Owner') == owner:
                         a['match_contrib_queue'] = a.get('match_contrib_queue', 0) + match_left
-                        match_income_by_owner[owner] = 0;
+                        match_income_by_owner[owner] = 0
                         break
 
         for owner, match_left in match_income_by_owner.items():
@@ -1166,7 +1228,7 @@ def run_simulation(mkt_sequence, ctx):
                 for a in sim_assets:
                     if a.get('Owner') == owner and a.get('Type') in ['Brokerage (Taxable)', 'HYSA', 'Checking/Savings']:
                         a['match_contrib_queue'] = a.get('match_contrib_queue', 0) + match_left
-                        found_fallback = True;
+                        found_fallback = True
                         break
                 if not found_fallback and len(sim_assets) > 0:
                     sim_assets[0]['match_contrib_queue'] = sim_assets[0].get('match_contrib_queue', 0) + match_left
@@ -1206,11 +1268,12 @@ def run_simulation(mkt_sequence, ctx):
             available_cash = sum(a['bal'] for a in sim_assets if
                                  a.get('Type') in ['Checking/Savings', 'HYSA', 'Brokerage (Taxable)',
                                                    'Unallocated Cash'])
-            safe_cash = max(0,
-                            available_cash - total_exp - user_out_of_pocket_contribs - base_fed_tax_pre - base_state_tax_pre_conversion)
+            locked_outflows = total_exp + user_out_of_pocket_contribs + base_fed_tax_pre_conversion + base_state_tax_pre_conversion
+            safe_liquid_cash = max(0, available_cash - locked_outflows)
 
-            est_tax_rate = marginal_rate_pre + (state_tax_rate / 100.0)
-            max_conversion_by_cash = (safe_cash * ROTH_CASH_BUFFER_MARGIN) / max(0.10, est_tax_rate)
+            est_tax_rate = marginal_rate_pre_conversion + (state_tax_rate / 100.0)
+            max_tax_budget = safe_liquid_cash * ROTH_CASH_BUFFER_MARGIN
+            max_conversion_by_cash = max_tax_budget / max(0.10, est_tax_rate)
             conversion_room = min(conversion_room, max_conversion_by_cash)
 
             if conversion_room > 0:
@@ -1218,19 +1281,26 @@ def run_simulation(mkt_sequence, ctx):
                     if a.get('Type') in ['Traditional 401(k)', 'Traditional IRA'] and a['bal'] > 0:
                         convert = min(a['bal'], conversion_room - total_converted)
                         if convert > 0:
-                            a['bal'] -= convert;
+                            a['bal'] -= convert
                             total_converted += convert
                             roth_found = False
                             for ra in sim_assets:
                                 if ra.get('Type') in ['Roth 401(k)', 'Roth IRA'] and ra.get('Owner') == a.get('Owner'):
-                                ra['bal'] += convert; roth_found = True; break
-                            if not roth_found: sim_assets.append(
-                                {"Account Name": f"Converted Roth ({a.get('Owner')})", "Type": "Roth IRA",
-                                 "Owner": a.get("Owner", "Me"), "bal": convert, "contrib": 0.0,
-                                 "growth": a.get('growth'), "stop_at_ret": True})
-                            if total_converted >= conversion_room: break
-            if total_converted > 0: pre_tax_ord += total_converted; tax_base_ord += total_converted; yd[
-                "Roth Conversion Amount"] = total_converted
+                                    ra['bal'] += convert
+                                    roth_found = True
+                                    break
+                            if not roth_found:
+                                sim_assets.append(
+                                    {"Account Name": f"Converted Roth ({a.get('Owner')})", "Type": "Roth IRA",
+                                     "Owner": a.get("Owner", "Me"), "bal": convert, "contrib": 0.0,
+                                     "growth": a.get('growth'), "stop_at_ret": True})
+                            if total_converted >= conversion_room:
+                                break
+
+            if total_converted > 0:
+                pre_tax_ord += total_converted
+                tax_base_ord += total_converted
+                yd["Roth Conversion Amount"] = total_converted
 
         # 11. Execute Mid-Year Growth
         for a in sim_assets:
@@ -1238,7 +1308,8 @@ def run_simulation(mkt_sequence, ctx):
                 0.0 if a.get('Type') in ['Checking/Savings', 'HYSA', 'Unallocated Cash'] else (
                     mkt_glide if a.get('Type') in ['Traditional 401(k)', 'Traditional IRA',
                                                    'Brokerage (Taxable)'] else mkt_roth))
-            add, match = a.pop('approved_oop_contrib', 0), a.pop('match_contrib_queue', 0)
+            add = a.pop('approved_oop_contrib', 0)
+            match = a.pop('match_contrib_queue', 0)
             a['bal'] = (a['bal'] + (add + match) * 0.5) * (1 + g / 100) + (add + match) * 0.5
 
         # 12. Finalize Taxes & IRMAA
@@ -1275,29 +1346,33 @@ def run_simulation(mkt_sequence, ctx):
                 surcharge = 1000 * infl_f
             if surcharge > 0:
                 total_irmaa = surcharge * num_medicare
-                total_exp += total_irmaa;
+                total_exp += total_irmaa
                 yd["Expense: Medicare IRMAA Surcharge"] = total_irmaa
                 if not irmaa_triggered:
                     if year not in milestones_by_year: milestones_by_year[year] = []
                     milestones_by_year[year].append(
-                        {"desc": "📉 Medicare IRMAA Surcharge Triggered", "amt": total_irmaa, "type": "system"});
+                        {"desc": "📉 Medicare IRMAA Surcharge Triggered", "amt": total_irmaa, "type": "system"})
                     irmaa_triggered = True
                 if total_irmaa > last_irmaa_tier + 500:
                     if year not in milestones_by_year: milestones_by_year[year] = []
                     milestones_by_year[year].append(
-                        {"desc": "📉 Medicare IRMAA Surcharge Tier Jumped", "amt": total_irmaa, "type": "system"});
+                        {"desc": "📉 Medicare IRMAA Surcharge Tier Jumped", "amt": total_irmaa, "type": "system"})
                     last_irmaa_tier = total_irmaa
 
         # 13. Robust Shortfall / Withdrawal Math
-        if user_out_of_pocket_contribs > 0: yd["Expense: Portfolio Contributions"] = user_out_of_pocket_contribs
-        net_cash_flow = annual_inc - (total_exp + user_out_of_pocket_contribs + total_tax)
+        if user_out_of_pocket_contribs > 0:
+            yd["Expense: Portfolio Contributions"] = user_out_of_pocket_contribs
+
+        cash_outflows = total_exp + user_out_of_pocket_contribs + total_tax
+        net_cash_flow = annual_inc - cash_outflows
         yd["Net Savings"] = net_cash_flow
 
         if net_cash_flow > 0:
             yd["Cashflow: Surplus Reinvested"] = net_cash_flow
+            # Surplus Handling & RMD Reinvestment
             if unfunded_debt_bal > 0:
                 payoff = min(net_cash_flow, unfunded_debt_bal)
-                unfunded_debt_bal -= payoff;
+                unfunded_debt_bal -= payoff
                 net_cash_flow -= payoff
             if net_cash_flow > 0 and sim_assets:
                 brokerage = next((a for a in sim_assets if a.get('Type') == 'Brokerage (Taxable)'),
@@ -1308,7 +1383,7 @@ def run_simulation(mkt_sequence, ctx):
             shortfall = abs(net_cash_flow)
 
             def _withdraw(a, current_shortfall, tax_treatment):
-                nonlocal tapped_brokerage, tapped_trad, tapped_roth
+                nonlocal tapped_brokerage, tapped_trad, tapped_roth, total_tax
                 if a['bal'] <= 0 or current_shortfall <= 0: return current_shortfall
 
                 eff_tax = 0.0
@@ -1316,7 +1391,7 @@ def run_simulation(mkt_sequence, ctx):
                     if not tapped_brokerage:
                         if year not in milestones_by_year: milestones_by_year[year] = []
                         milestones_by_year[year].append(
-                            {"desc": "📉 Began Drawing from Taxable Brokerage", "amt": 0, "type": "system"});
+                            {"desc": "📉 Began Drawing from Taxable Brokerage", "amt": 0, "type": "system"})
                         tapped_brokerage = True
                     is_step_up = ctx['has_spouse'] and (not is_my_alive or not is_spouse_alive)
                     eff_tax = 0.0 if is_step_up else (
@@ -1326,7 +1401,7 @@ def run_simulation(mkt_sequence, ctx):
                     if not tapped_trad:
                         if year not in milestones_by_year: milestones_by_year[year] = []
                         milestones_by_year[year].append(
-                            {"desc": "📉 Began Drawing from Traditional 401(k)/IRA", "amt": 0, "type": "system"});
+                            {"desc": "📉 Began Drawing from Traditional 401(k)/IRA", "amt": 0, "type": "system"})
                         tapped_trad = True
                     o_acct = a.get('Owner', 'Me')
                     o_age = my_current_age if o_acct in ['Me', 'Joint'] else spouse_current_age
@@ -1339,7 +1414,7 @@ def run_simulation(mkt_sequence, ctx):
                     if not tapped_roth:
                         if year not in milestones_by_year: milestones_by_year[year] = []
                         milestones_by_year[year].append(
-                            {"desc": "📉 Began Drawing from Roth/Tax-Free Assets", "amt": 0, "type": "system"});
+                            {"desc": "📉 Began Drawing from Roth/Tax-Free Assets", "amt": 0, "type": "system"})
                         tapped_roth = True
                     o_acct = a.get('Owner', 'Me')
                     o_age = my_current_age if o_acct in ['Me', 'Joint'] else spouse_current_age
@@ -1356,27 +1431,28 @@ def run_simulation(mkt_sequence, ctx):
 
                 tax_inc = withdrawn * eff_tax
                 net_cash = withdrawn - tax_inc
+                total_tax += tax_inc
                 yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + tax_inc
                 yd[f"Income: Withdrawal ({a.get('Account Name', 'Account')})"] = withdrawn
                 return current_shortfall - net_cash
 
             for a in sim_assets:
                 if shortfall <= 0: break
-                if a.get('Type') in ['Checking/Savings', 'HYSA', 'Unallocated Cash']: shortfall = _withdraw(a,
-                                                                                                            shortfall,
-                                                                                                            'free')
+                if a.get('Type') in ['Checking/Savings', 'HYSA', 'Unallocated Cash']:
+                    shortfall = _withdraw(a, shortfall, 'free')
 
             if shortfall > 0 and not cash_depleted and not any(a['bal'] > 0 for a in sim_assets if
                                                                a.get('Type') in ['Checking/Savings', 'HYSA',
                                                                                  'Unallocated Cash']):
                 if year not in milestones_by_year: milestones_by_year[year] = []
                 milestones_by_year[year].append(
-                    {"desc": "⚠️ Cash Reserves Depleted. Now drawing from investments.", "amt": 0, "type": "system"});
+                    {"desc": "⚠️ Cash Reserves Depleted. Now drawing from investments.", "amt": 0, "type": "system"})
                 cash_depleted = True
 
             for a in sim_assets:
                 if shortfall <= 0: break
-                if a.get('Type') == 'Brokerage (Taxable)': shortfall = _withdraw(a, shortfall, 'cg')
+                if a.get('Type') == 'Brokerage (Taxable)':
+                    shortfall = _withdraw(a, shortfall, 'cg')
 
             seq = ['Traditional 401(k)', 'Traditional IRA', 'Roth 401(k)', 'Roth IRA', 'HSA', 'Crypto', '529 Plan',
                    'Other'] if 'Standard' in ctx['active_withdrawal_strategy'] else ['Roth 401(k)', 'Roth IRA', 'HSA',
@@ -1386,10 +1462,12 @@ def run_simulation(mkt_sequence, ctx):
             for t in seq:
                 if shortfall <= 0: break
                 for a in sim_assets:
-                    if a.get('Type') == t: shortfall = _withdraw(a, shortfall,
-                                                                 'ordinary' if 'Traditional' in t else 'free')
+                    if a.get('Type') == t:
+                        shortfall = _withdraw(a, shortfall, 'ordinary' if 'Traditional' in t else 'free')
 
-            if shortfall > 0: unfunded_debt_bal += shortfall; yd["Income: Shortfall Debt Funded"] = shortfall
+            if shortfall > 0:
+                unfunded_debt_bal += shortfall
+                yd["Income: Shortfall Debt Funded"] = shortfall
 
         if unfunded_debt_bal > 0 and prev_unfunded_debt_bal <= 0:
             if year not in milestones_by_year: milestones_by_year[year] = []
@@ -1398,7 +1476,8 @@ def run_simulation(mkt_sequence, ctx):
                  "type": "critical"})
 
         liquid_assets_total = sum(max(0, a['bal']) for a in sim_assets)
-        for a in sim_assets: nw_yd[f"Asset: {a.get('Account Name', 'Account')}"] = max(0, a['bal'])
+        for a in sim_assets:
+            nw_yd[f"Asset: {a.get('Account Name', 'Account')}"] = max(0, a['bal'])
 
         net_worth = liquid_assets_total + re_equity + cur_biz_val - debt_bal_total - unfunded_debt_bal
         nw_yd.update({"Total Liquid Assets": liquid_assets_total, "Total Real Estate Equity": re_equity,
@@ -1418,7 +1497,7 @@ def run_simulation(mkt_sequence, ctx):
                         "Liquid Assets": liquid_assets_total, "Real Estate Equity": re_equity,
                         "Business Equity": cur_biz_val, "Debt": -debt_bal_total, "Unfunded Debt": unfunded_debt_bal,
                         "Net Worth": net_worth})
-        det_res.append(yd);
+        det_res.append(yd)
         nw_det_res.append(nw_yd)
 
     return sim_res, det_res, nw_det_res, milestones_by_year
@@ -2387,82 +2466,6 @@ def render_simulation():
                     )])
                     fig_sankey.update_layout(height=400, margin=dict(l=0, r=0, t=30, b=0), font=dict(size=12))
                     st.plotly_chart(fig_sankey, width="stretch")
-
-            # --- MONTE CARLO SECTION ---
-            st.divider()
-            st.subheader("🎲 Monte Carlo Risk Analysis")
-            st.markdown(
-                '<div class="info-text">💡 <strong>Stress Test Your Plan:</strong> Real markets are bumpy. The Monte Carlo simulation runs your exact plan through hundreds of randomized market scenarios (based on historical volatility) to find your true probability of success.</div>',
-                unsafe_allow_html=True)
-
-            col_mc1, col_mc2, col_mc3 = st.columns([1, 1, 2])
-            mc_vol = col_mc1.number_input("Portfolio Volatility (%)", value=15.0,
-                                          help="Historically, the S&P 500 maintains a volatility (standard deviation) proximal to 15%. Fixed income allocations approximate 5%.")
-            mc_runs = col_mc2.number_input("Number of Simulations", min_value=10, max_value=500, value=100, step=10)
-
-            with col_mc3:
-                st.markdown("<div style='height: 27px;'></div>", unsafe_allow_html=True)
-                st.markdown('<div class="ai-btn-marker"></div>', unsafe_allow_html=True)
-                if st.button("✨ Run Monte Carlo Simulation", width="stretch"):
-                    with st.spinner(f"Rendering {mc_runs} parallel market sequences (Multi-threaded)..."):
-                        success_count = 0
-                        all_nw_paths = []
-                        mc_progress = st.progress(0)
-
-                        random_sequences = [
-                            [random.gauss(sim_ctx['mkt'], mc_vol) for _ in range(sim_ctx['max_years'] + 1)] for _ in
-                            range(mc_runs)]
-
-                        try:
-                            with ThreadPoolExecutor(max_workers=min(mc_runs, 8)) as executor:
-                                futures = [executor.submit(run_simulation, seq, sim_ctx) for seq in random_sequences]
-
-                                for i, future in enumerate(futures):
-                                    res, _, _, _ = future.result()
-                                    if res:
-                                        nw_path = [step["Net Worth"] for step in res]
-                                        all_nw_paths.append(nw_path)
-                                        if res[-1].get("Unfunded Debt", 0) <= 0: success_count += 1
-
-                                    if i % max(1, mc_runs // 20) == 0: mc_progress.progress(min(1.0, (i + 1) / mc_runs))
-                        except Exception as e:
-                            st.error(f"Simulation failed during multi-threading: {e}")
-                        finally:
-                            mc_progress.empty()
-
-                        if all_nw_paths:
-                            success_rate = (success_count / len(all_nw_paths)) * 100
-                            st.session_state['mc_success_rate'] = success_rate
-
-                            path_len = len(all_nw_paths[0])
-                            current_year = datetime.date.today().year
-                            years_list = [sim_ctx['current_year'] + i for i in range(path_len)]
-                            p10, p50, p90 = [], [], []
-
-                            for i in range(path_len):
-                                step_vals = sorted([path[i] for path in all_nw_paths])
-                                discount = (1 + sim_ctx['infl'] / 100) ** i if view_todays_dollars else 1.0
-                                p10.append(step_vals[int(len(all_nw_paths) * 0.10)] / discount)
-                                p50.append(step_vals[int(len(all_nw_paths) * 0.50)] / discount)
-                                p90.append(step_vals[int(len(all_nw_paths) * 0.90)] / discount)
-
-                            st.markdown(
-                                f"<h3 style='text-align: center; color: {'#10b981' if success_rate > 80 else '#f59e0b' if success_rate > 50 else '#f43f5e'};'>Probability of Success: {success_rate:.1f}%</h3>",
-                                unsafe_allow_html=True)
-
-                            if HAS_PLOTLY:
-                                fig_mc = go.Figure()
-                                fig_mc.add_trace(go.Scatter(x=years_list, y=p90, mode='lines',
-                                                            name='90th Percentile (Favorable Timeline)',
-                                                            line=dict(color='#10b981', dash='dot')))
-                                fig_mc.add_trace(go.Scatter(x=years_list, y=p50, mode='lines',
-                                                            name='50th Percentile (Median Expectation)',
-                                                            line=dict(color='#3b82f6', width=3)))
-                                fig_mc.add_trace(go.Scatter(x=years_list, y=p10, mode='lines',
-                                                            name='10th Percentile (Severe Contraction)',
-                                                            line=dict(color='#f43f5e', dash='dot')))
-                                fig_mc = apply_chart_theme(fig_mc, "Stochastic Net Worth Projections")
-                                st.plotly_chart(fig_mc, width="stretch")
 
             # --- DATA AUDIT TABLES ---
             st.divider()
