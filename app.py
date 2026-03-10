@@ -415,6 +415,24 @@ def safe_num(val, default=0.0):
         return default
 
 
+# Scrub DataFrames of pandas NA types before serialization
+def scrub_records(records):
+    if not records: return []
+    scrubbed = []
+    for r in records:
+        new_r = {}
+        for k, v in r.items():
+            try:
+                if pd.isna(v) or v is pd.NA:
+                    new_r[k] = None
+                else:
+                    new_r[k] = v
+            except Exception:
+                new_r[k] = v
+        scrubbed.append(new_r)
+    return scrubbed
+
+
 # --- AUTH LAYER ---
 if 'user_email' not in st.session_state:
     saved_email = cookie_manager.get(cookie="user_email")
@@ -680,9 +698,12 @@ def build_sim_context():
         'owns_home': owns_home, 'kids_data': st.session_state['kids_data'],
         'max_years': max_years, 'max_year': max_year, 'my_life_exp_val': my_life_exp_val,
         'spouse_life_exp_val': spouse_life_exp_val,
-        'ast_records': st.session_state['liquid_assets_data'], 'debt_records': debt_records,
-        're_records': st.session_state['real_estate_data'], 'biz_records': st.session_state['business_data'],
-        'inc_records': st.session_state['income_data'], 'exp_records': st.session_state['lifetime_expenses'],
+        'ast_records': scrub_records(st.session_state['liquid_assets_data']),
+        'debt_records': scrub_records(debt_records),
+        're_records': scrub_records(st.session_state['real_estate_data']),
+        'biz_records': scrub_records(st.session_state['business_data']),
+        'inc_records': scrub_records(st.session_state['income_data']),
+        'exp_records': scrub_records(st.session_state['lifetime_expenses']),
         'my_age': my_age, 'spouse_age': spouse_age
     }
 
@@ -1746,7 +1767,9 @@ def render_dashboard():
     st.session_state['df_det'] = df_det
     st.session_state['df_nw'] = df_nw
 
-    if df_sim.empty: return
+    if df_sim.empty:
+        st.error("Simulation returned no data. Please check your profile and start dates.")
+        return
 
     final_nw = df_sim.iloc[-1]['Net Worth']
     shortfall_mask = df_sim['Unfunded Debt'] > 0
@@ -1891,13 +1914,24 @@ def render_income():
     info_banner(
         "Employer Match Note: List 401(k) matches here. The engine strips them from your spendable cash flow, but safely deposits them into your portfolios.")
 
-    df_inc = pd.DataFrame(st.session_state['income_data'])
+    df_inc = pd.DataFrame(st.session_state.get('income_data', ud.get('income', [])))
     if df_inc.empty:
         my_age = relativedelta(datetime.date.today(), st.session_state['my_dob']).years
         df_inc = pd.DataFrame(
             [{"Description": "Base Salary", "Category": "Base Salary (W-2)", "Owner": "Me", "Annual Amount ($)": 0,
               "Start Year": datetime.date.today().year, "End Year": datetime.date.today().year + max(0, 65 - my_age),
               "Stop at Ret.?": True, "Override Growth (%)": None}])
+    else:
+        if "Start Age" in df_inc.columns:
+            my_age = relativedelta(datetime.date.today(), st.session_state['my_dob']).years
+            df_inc["Start Year"] = current_year + (pd.to_numeric(df_inc["Start Age"], errors='coerce') - my_age)
+            df_inc["End Year"] = current_year + (pd.to_numeric(df_inc["End Age"], errors='coerce') - my_age)
+            df_inc = df_inc.drop(columns=["Start Age", "End Age"])
+
+        if "Stop at Ret.?" not in df_inc.columns: df_inc["Stop at Ret.?"] = False
+        df_inc = df_inc.reindex(
+            columns=["Description", "Category", "Owner", "Annual Amount ($)", "Start Year", "End Year", "Stop at Ret.?",
+                     "Override Growth (%)"])
 
     edited_inc = st.data_editor(
         df_inc,
@@ -1931,7 +1965,7 @@ def render_income():
         st.markdown('<div class="ai-btn-marker"></div>', unsafe_allow_html=True)
         if st.button("✨ Auto-Estimate My Social Security (AI)", width="stretch"):
             # Save UI state before rerun
-            st.session_state['income'] = edited_inc.to_dict('records')
+            st.session_state['income_data'] = edited_inc.to_dict('records')
 
             with st.spinner("Asking AI to estimate your Social Security benefits based on your age and income..."):
                 my_age = relativedelta(datetime.date.today(), st.session_state['my_dob']).years
@@ -1977,15 +2011,23 @@ def render_assets():
         info_banner(
             "Smart Mortgages: Enter your balance, rate, and payment. The math engine automatically pays it down and drops the expense once it hits zero.")
         df_re = pd.DataFrame(st.session_state['real_estate_data'])
-        if df_re.empty: df_re = pd.DataFrame(
-            [{"Property Name": "Primary Home", "Is Primary Residence?": True, "Market Value ($)": 0,
-              "Mortgage Balance ($)": 0, "Interest Rate (%)": 0.0, "Mortgage Payment ($)": 0, "Monthly Expenses ($)": 0,
-              "Monthly Rent ($)": 0, "Override Prop Growth (%)": None, "Override Rent Growth (%)": None}])
+        if df_re.empty:
+            df_re = pd.DataFrame(
+                [{"Property Name": "Primary Home", "Is Primary Residence?": True, "Market Value ($)": 0,
+                  "Mortgage Balance ($)": 0, "Interest Rate (%)": 0.0, "Mortgage Payment ($)": 0,
+                  "Monthly Expenses ($)": 0, "Monthly Rent ($)": 0, "Override Prop Growth (%)": None,
+                  "Override Rent Growth (%)": None}])
+        else:
+            df_re = df_re.reindex(
+                columns=["Property Name", "Is Primary Residence?", "Market Value ($)", "Mortgage Balance ($)",
+                         "Interest Rate (%)", "Mortgage Payment ($)", "Monthly Expenses ($)", "Monthly Rent ($)",
+                         "Override Prop Growth (%)", "Override Rent Growth (%)"])
 
         edited_re = st.data_editor(
             df_re,
             column_config={
-                "Property Name": st.column_config.TextColumn("Property Name"),
+                "Property Name": st.column_config.TextColumn("Property Name",
+                                                             help="A simple label for your property (e.g. 'Beach House' or 'Main St')."),
                 "Is Primary Residence?": st.column_config.CheckboxColumn("Primary Home?", default=False),
                 "Market Value ($)": st.column_config.NumberColumn("Market Value ($)", step=10000, format="$%d"),
                 "Mortgage Balance ($)": st.column_config.NumberColumn("Mortgage Balance ($)", step=10000, format="$%d"),
@@ -2013,9 +2055,16 @@ def render_assets():
 
     with tab_biz:
         df_biz = pd.DataFrame(st.session_state['business_data'])
-        if df_biz.empty: df_biz = pd.DataFrame(
-            [{"Business Name": "", "Total Valuation ($)": 0, "Your Ownership (%)": 100, "Annual Distribution ($)": 0,
-              "Override Val. Growth (%)": None, "Override Dist. Growth (%)": None}])
+        if df_biz.empty:
+            df_biz = pd.DataFrame([{"Business Name": "", "Total Valuation ($)": 0, "Your Ownership (%)": 100,
+                                    "Annual Distribution ($)": 0, "Override Val. Growth (%)": None,
+                                    "Override Dist. Growth (%)": None}])
+        else:
+            if "Override Val. Growth (%)" not in df_biz.columns: df_biz["Override Val. Growth (%)"] = None
+            if "Override Dist. Growth (%)" not in df_biz.columns: df_biz["Override Dist. Growth (%)"] = None
+            df_biz = df_biz.reindex(
+                columns=["Business Name", "Total Valuation ($)", "Your Ownership (%)", "Annual Distribution ($)",
+                         "Override Val. Growth (%)", "Override Dist. Growth (%)"])
 
         edited_biz = st.data_editor(
             df_biz,
@@ -2036,9 +2085,21 @@ def render_assets():
         info_banner(
             "Contribution Engine Update: Put ONLY your own out-of-pocket contributions here. The AI engine automatically detects 'Employer Matches' from your Income table and securely routes them directly into your 401(k) behind the scenes!")
         df_ast = pd.DataFrame(st.session_state['liquid_assets_data'])
-        if df_ast.empty: df_ast = pd.DataFrame(
-            [{"Account Name": "Primary 401(k)", "Type": "Traditional 401(k)", "Owner": "Me", "Current Balance ($)": 0,
-              "Annual Contribution ($/yr)": 0, "Est. Annual Growth (%)": None, "Stop Contrib at Ret.?": True}])
+        if df_ast.empty:
+            df_ast = pd.DataFrame([{"Account Name": "Primary 401(k)", "Type": "Traditional 401(k)", "Owner": "Me",
+                                    "Current Balance ($)": 0, "Annual Contribution ($/yr)": 0,
+                                    "Est. Annual Growth (%)": None, "Stop Contrib at Ret.?": True}])
+        else:
+            if "Annual Contribution ($)" in df_ast.columns: df_ast.rename(
+                columns={'Annual Contribution ($)': 'Annual Contribution ($/yr)'}, inplace=True)
+            if "Stop Contrib at Ret.?" not in df_ast.columns: df_ast["Stop Contrib at Ret.?"] = True
+
+            # Smoothly migrate legacy types
+            df_ast['Type'] = df_ast['Type'].replace(
+                {'Traditional 401k/IRA': 'Traditional 401(k)', 'Roth 401k/IRA': 'Roth 401(k)'})
+            df_ast = df_ast.reindex(
+                columns=["Account Name", "Type", "Owner", "Current Balance ($)", "Annual Contribution ($/yr)",
+                         "Est. Annual Growth (%)", "Stop Contrib at Ret.?"])
 
         edited_ast = st.data_editor(
             df_ast,
@@ -2061,6 +2122,7 @@ def render_assets():
         )
         st.session_state['liquid_assets_data'] = edited_ast.to_dict('records')
 
+        # Validation Warning: Check if 401k/IRA contributions wildly exceed normal limits
         for idx, a in edited_ast.iterrows():
             if a.get('Type') in ['Traditional 401(k)', 'Roth 401(k)', 'Traditional IRA', 'Roth IRA']:
                 contrib = safe_num(a.get('Annual Contribution ($/yr)'))
@@ -2072,9 +2134,13 @@ def render_assets():
         info_banner(
             "Like mortgages, simply provide the balance, rate, and payment. We'll dynamically pay it down to zero.")
         df_debt = pd.DataFrame(st.session_state['liabilities_data'])
-        if df_debt.empty: df_debt = pd.DataFrame(
-            [{"Debt Name": "Auto Loan", "Type": "Auto Loan", "Current Balance ($)": 0, "Interest Rate (%)": 0.0,
-              "Monthly Payment ($)": 0}])
+        if df_debt.empty:
+            df_debt = pd.DataFrame(
+                [{"Debt Name": "Auto Loan", "Type": "Auto Loan", "Current Balance ($)": 0, "Interest Rate (%)": 0.0,
+                  "Monthly Payment ($)": 0}])
+        else:
+            df_debt = df_debt.reindex(
+                columns=["Debt Name", "Type", "Current Balance ($)", "Interest Rate (%)", "Monthly Payment ($)"])
 
         edited_debt = st.data_editor(
             df_debt,
@@ -2086,11 +2152,55 @@ def render_assets():
         )
         st.session_state['liabilities_data'] = edited_debt.to_dict('records')
 
+    # Calculate Live Net Worth
+    re_eq = pd.to_numeric(edited_re['Market Value ($)'], errors='coerce').fillna(0).sum() - pd.to_numeric(
+        edited_re['Mortgage Balance ($)'], errors='coerce').fillna(0).sum()
+    biz_eq = (pd.to_numeric(edited_biz['Total Valuation ($)'], errors='coerce').fillna(0) * (
+                pd.to_numeric(edited_biz['Your Ownership (%)'], errors='coerce').fillna(0) / 100)).sum()
+    liq_ast = pd.to_numeric(edited_ast['Current Balance ($)'], errors='coerce').fillna(0).sum()
+    total_debt = pd.to_numeric(edited_debt['Current Balance ($)'], errors='coerce').fillna(0).sum()
+    net_worth = re_eq + biz_eq + liq_ast - total_debt
 
-def render_cashflows():
-    section_header("Lifetime Cash Flows", "Map out budgets and milestones. Do not double-count housing or debt.", "💸")
-    info_banner(
-        "Healthcare Note: Assume you are covered by employer-sponsored healthcare while working. The engine automatically builds in Pre-Medicare coverage gaps, Medicare premium cliffs at age 65, and IRMAA surcharges.")
+    st.divider()
+    c_met1, c_met2, c_met3, c_met4 = st.columns(4)
+    c_met1.metric("Real Estate Equity", f"${re_eq:,.0f}")
+    c_met2.metric("Business Equity", f"${biz_eq:,.0f}")
+    c_met3.metric("Liquid Assets", f"${liq_ast:,.0f}")
+    c_met4.metric("Other Debt", f"${total_debt:,.0f}")
+    st.markdown(
+        f"<div style='text-align: center; padding: 15px; margin-top: 15px; background: #eff6ff; border-radius: 8px;'><h3 style='margin:0; color: #1e293b;'>Total Estimated Net Worth: <span style='color: #3b82f6;'>${net_worth:,.0f}</span></h3></div>",
+        unsafe_allow_html=True)
+
+
+# --- AI CONTEXT PREP ---
+k_ctx_list = [f"{k['name']}:{k['age']}" for k in kids_data]
+k_ctx_str = ", ".join(k_ctx_list)
+
+primary_re = edited_re[edited_re["Is Primary Residence?"] == True]
+h_pmt = pd.to_numeric(primary_re["Mortgage Payment ($)"], errors='coerce').fillna(0).sum()
+h_exp = pd.to_numeric(primary_re["Monthly Expenses ($)"], errors='coerce').fillna(0).sum()
+owns_home = not primary_re.empty
+
+curr_inc_total = pd.to_numeric(edited_inc['Annual Amount ($)'], errors='coerce').fillna(0).sum()
+liq_ast_total = pd.to_numeric(edited_ast['Current Balance ($)'], errors='coerce').fillna(0).sum()
+
+if owns_home:
+    h_ctx = f"Primary housing costs are ${h_pmt + h_exp:,.0f}/mo (Already accounted for)."
+    ai_exclusion = "STRICT RULE: DO NOT INCLUDE Housing, Rent, Mortgages, Auto Loans, or Debt Payments in this list. They are explicitly tracked via balance sheet parameters."
+else:
+    h_ctx = "User is currently renting."
+    ai_exclusion = "STRICT RULE: DO NOT INCLUDE Mortgages, Auto Loans, or Debt Payments. HOWEVER, YOU MUST INCLUDE a realistic 'Housing / Rent' expense reflecting current local market rates."
+
+f_ctx = f"User({my_age})" + (
+    f", Spouse({spouse_name}:{spouse_age})" if has_spouse else "") + f", Dependents({k_ctx_str})"
+budget_categories = ["Housing / Rent", "Transportation", "Food", "Utilities", "Insurance", "Healthcare",
+                     "Entertainment", "Education", "Personal Care", "Subscriptions", "Travel", "Debt Payments", "Other"]
+
+# --- 4. LIFESTYLE CASH FLOWS ---
+with st.expander("💸 4. Lifetime Cash Flows (Budgets & Milestones)", expanded=False):
+    st.markdown(
+        '<div class="info-text">💡 <strong>Using the Cash Flow Engine:</strong> We highly recommend clicking the <strong>✨ Auto-Estimate Budget & Milestones (AI)</strong> button below first. The AI will generate a complete baseline of lifetime expenses and milestones based on your family profile, current city, and retirement city. Once populated, you can add your own custom rows, modify the AI\'s amounts, or delete anything that doesn\'t fit your lifestyle.<br><br><strong>Healthcare Note:</strong> Assume you are covered by employer-sponsored healthcare while working. The simulation engine automatically builds in major post-retirement medical costs (like Pre-Medicare coverage gaps, Medicare premium cliffs at age 65, IRMAA surcharges, and Long-Term Care). You only need to enter modest baseline out-of-pocket costs for healthcare here.</div>',
+        unsafe_allow_html=True)
 
     c_loc1, c_loc2 = st.columns(2)
     with c_loc1:
@@ -2103,20 +2213,50 @@ def render_cashflows():
         st.session_state['retire_city_flow'] = ret_city_flow
 
     st.divider()
+
+    if 'lifetime_expenses' not in st.session_state:
+        migrated = []
+        for c in ud.get('current_expenses', []):
+            if c.get("Description"):
+                migrated.append({"Description": c.get("Description"), "Category": c.get("Category", "Other"),
+                                 "Frequency": c.get("Frequency", "Monthly"), "Amount ($)": c.get("Amount ($)", 0),
+                                 "Start Phase": "Now", "Start Year": None, "End Phase": "At Retirement",
+                                 "End Year": None, "AI Estimate?": c.get("AI Estimate?", False)})
+        for r in ud.get('retire_expenses', []):
+            if r.get("Description"):
+                migrated.append({"Description": r.get("Description"), "Category": r.get("Category", "Other"),
+                                 "Frequency": r.get("Frequency", "Monthly"), "Amount ($)": r.get("Amount ($)", 0),
+                                 "Start Phase": "At Retirement", "Start Year": None, "End Phase": "End of Life",
+                                 "End Year": None, "AI Estimate?": r.get("AI Estimate?", False)})
+        for m in ud.get('one_time_events', []):
+            if m.get("Description"):
+                try:
+                    sy_int = int(str(m.get("Start Date (MM/YYYY)", "")).split('/')[-1])
+                except:
+                    sy_int = current_year
+                try:
+                    ey_int = int(str(m.get("End Date (MM/YYYY)", "")).split('/')[-1])
+                except:
+                    ey_int = sy_int
+                migrated.append({"Description": m.get("Description"), "Category": "Other",
+                                 "Frequency": m.get("Frequency", "One-Time"), "Amount ($)": m.get("Amount ($)", 0),
+                                 "Start Phase": "Custom Year", "Start Year": sy_int, "End Phase": "Custom Year",
+                                 "End Year": ey_int, "AI Estimate?": m.get("AI Estimate?", False)})
+
+        if not migrated:
+            migrated = [{"Description": "Groceries", "Category": "Food", "Frequency": "Monthly", "Amount ($)": 0,
+                         "Start Phase": "Now", "Start Year": None, "End Phase": "End of Life", "End Year": None,
+                         "AI Estimate?": False}]
+        st.session_state['lifetime_expenses'] = migrated
+
     df_exp = pd.DataFrame(st.session_state['lifetime_expenses'])
-    if df_exp.empty: df_exp = pd.DataFrame(
-        [{"Description": "Groceries", "Category": "Food", "Frequency": "Monthly", "Amount ($)": 0, "Start Phase": "Now",
-          "Start Year": None, "End Phase": "End of Life", "End Year": None, "AI Estimate?": False}])
 
+    # Force clean nulls for non-custom phases to keep UI clean
     if not df_exp.empty:
-        if 'Start Phase' in df_exp.columns and 'Start Year' in df_exp.columns: df_exp.loc[
-            df_exp['Start Phase'] != 'Custom Year', 'Start Year'] = None
-        if 'End Phase' in df_exp.columns and 'End Year' in df_exp.columns: df_exp.loc[
-            df_exp['End Phase'] != 'Custom Year', 'End Year'] = None
-
-    budget_categories = ["Housing / Rent", "Transportation", "Food", "Utilities", "Insurance", "Healthcare",
-                         "Entertainment", "Education", "Personal Care", "Subscriptions", "Travel", "Debt Payments",
-                         "Other"]
+        if 'Start Phase' in df_exp.columns and 'Start Year' in df_exp.columns:
+            df_exp.loc[df_exp['Start Phase'] != 'Custom Year', 'Start Year'] = None
+        if 'End Phase' in df_exp.columns and 'End Year' in df_exp.columns:
+            df_exp.loc[df_exp['End Phase'] != 'Custom Year', 'End Year'] = None
 
     edited_exp = st.data_editor(
         df_exp,
@@ -2137,57 +2277,59 @@ def render_cashflows():
     )
     st.session_state['lifetime_expenses'] = edited_exp.to_dict('records')
 
-    st.markdown('<div class="ai-btn-marker"></div>', unsafe_allow_html=True)
-    if st.button("✨ Auto-Estimate Budget & Milestones for selected locations (AI)", width="stretch"):
-        # Save UI state before rerun
-        st.session_state['lifetime_expenses'] = edited_exp.to_dict('records')
+    col_ai_cb, _ = st.columns([3, 1])
+    with col_ai_cb:
+        st.markdown('<div class="ai-btn-marker"></div>', unsafe_allow_html=True)
+        if st.button("✨ Auto-Estimate Budget & Milestones for selected locations (AI)", width="stretch"):
+            # Save UI state before rerun
+            st.session_state['lifetime_expenses'] = edited_exp.to_dict('records')
 
-        with st.spinner("Analyzing localized CPI data, timelines, and family needs..."):
-            valid = edited_exp[edited_exp["Description"].astype(str) != ""].copy()
-            locked = valid[valid["AI Estimate?"] == False].to_dict('records')
-            locked_desc = [x['Description'] for x in locked]
+            with st.spinner("Analyzing localized CPI data, timelines, and family needs..."):
+                valid = edited_exp[edited_exp["Description"].astype(str) != ""].copy()
+                locked = valid[valid["AI Estimate?"] == False].to_dict('records')
+                locked_desc = [x['Description'] for x in locked]
 
-            # Reconstruct basic context
-            my_age = relativedelta(datetime.date.today(), st.session_state['my_dob']).years
-            spouse_age = relativedelta(datetime.date.today(), st.session_state['spouse_dob']).years if st.session_state[
-                'has_spouse'] else 0
-            k_ctx_list = [f"{k['name']}:{k['age']}" for k in st.session_state['kids_data']]
-            k_ctx_str = ", ".join(k_ctx_list)
-            f_ctx = f"User({my_age})" + (
-                f", Spouse({st.session_state['spouse_name']}:{spouse_age})" if st.session_state[
-                    'has_spouse'] else "") + f", Dependents({k_ctx_str})"
+                # Reconstruct basic context
+                my_age = relativedelta(datetime.date.today(), st.session_state['my_dob']).years
+                spouse_age = relativedelta(datetime.date.today(), st.session_state['spouse_dob']).years if \
+                st.session_state['has_spouse'] else 0
+                k_ctx_list = [f"{k['name']}:{k['age']}" for k in st.session_state['kids_data']]
+                k_ctx_str = ", ".join(k_ctx_list)
+                f_ctx = f"User({my_age})" + (
+                    f", Spouse({st.session_state['spouse_name']}:{spouse_age})" if st.session_state[
+                        'has_spouse'] else "") + f", Dependents({k_ctx_str})"
 
-            df_inc = pd.DataFrame(st.session_state['income_data'])
-            curr_inc_total = pd.to_numeric(df_inc['Annual Amount ($)'], errors='coerce').fillna(
-                0).sum() if not df_inc.empty else 0
-            df_ast = pd.DataFrame(st.session_state['liquid_assets_data'])
-            liq_ast_total = pd.to_numeric(df_ast['Current Balance ($)'], errors='coerce').fillna(
-                0).sum() if not df_ast.empty else 0
+                df_inc = pd.DataFrame(st.session_state['income_data'])
+                curr_inc_total = pd.to_numeric(df_inc['Annual Amount ($)'], errors='coerce').fillna(
+                    0).sum() if not df_inc.empty else 0
+                df_ast = pd.DataFrame(st.session_state['liquid_assets_data'])
+                liq_ast_total = pd.to_numeric(df_ast['Current Balance ($)'], errors='coerce').fillna(
+                    0).sum() if not df_ast.empty else 0
 
-            df_re = pd.DataFrame(st.session_state['real_estate_data'])
-            primary_re = df_re[df_re[
-                                   "Is Primary Residence?"] == True] if not df_re.empty and "Is Primary Residence?" in df_re.columns else pd.DataFrame()
-            h_pmt = pd.to_numeric(primary_re["Mortgage Payment ($)"], errors='coerce').fillna(
-                0).sum() if not primary_re.empty else 0
-            h_exp = pd.to_numeric(primary_re["Monthly Expenses ($)"], errors='coerce').fillna(
-                0).sum() if not primary_re.empty else 0
-            owns_home = not primary_re.empty
+                df_re = pd.DataFrame(st.session_state['real_estate_data'])
+                primary_re = df_re[df_re[
+                                       "Is Primary Residence?"] == True] if not df_re.empty and "Is Primary Residence?" in df_re.columns else pd.DataFrame()
+                h_pmt = pd.to_numeric(primary_re["Mortgage Payment ($)"], errors='coerce').fillna(
+                    0).sum() if not primary_re.empty else 0
+                h_exp = pd.to_numeric(primary_re["Monthly Expenses ($)"], errors='coerce').fillna(
+                    0).sum() if not primary_re.empty else 0
+                owns_home = not primary_re.empty
 
-            if owns_home:
-                ai_exclusion = "STRICT RULE: DO NOT INCLUDE Housing, Rent, Mortgages, Auto Loans, or Debt Payments in this list. They are explicitly tracked via balance sheet parameters."
-            else:
-                ai_exclusion = "STRICT RULE: DO NOT INCLUDE Mortgages, Auto Loans, or Debt Payments. HOWEVER, YOU MUST INCLUDE a realistic 'Housing / Rent' expense reflecting current local market rates."
+                if owns_home:
+                    ai_exclusion = "STRICT RULE: DO NOT INCLUDE Housing, Rent, Mortgages, Auto Loans, or Debt Payments in this list. They are explicitly tracked via balance sheet parameters."
+                else:
+                    ai_exclusion = "STRICT RULE: DO NOT INCLUDE Mortgages, Auto Loans, or Debt Payments. HOWEVER, YOU MUST INCLUDE a realistic 'Housing / Rent' expense reflecting current local market rates."
 
-            wealth_ctx = f"The household has a current annual pre-tax income of ${curr_inc_total:,.0f} and liquid assets totaling ${liq_ast_total:,.0f}. VERY IMPORTANT: While you should scale the budget to reflect this wealth, assume these users are savvy spenders and aggressive savers (comfortable but smart with money), so avoid over-inflating lifestyle costs unnecessarily."
-            allowed_cats = ", ".join(budget_categories)
-            prompt = f"Current City: {curr_city_flow}. Planned Retirement City: {ret_city_flow}. Family: {f_ctx}. Current Year is {datetime.date.today().year}. {wealth_ctx} Generate a comprehensive list of missing living expenses AND expected future life milestones (like college or weddings). {ai_exclusion} CRITICAL INSTRUCTIONS: 1) Medical expenses (IRMAA, Medicare Cliff, Pre-Medicare gap, LTC) are handled automatically by the simulation engine; only provide modest baseline out-of-pocket healthcare costs. 2) Model 'Empty Nesting': phase out child-heavy groceries, utility expenses, and ANY K-12 extracurriculars/lessons using 'Custom Year' End Phases exactly when the youngest child turns 18. 3) ALL College/University expenses MUST be categorized strictly as 'Education' (not 'Other') so they receive the 5% education inflation penalty. NOTE: Start and End Years are INCLUSIVE. For a standard 4-year college, the End Year must be exactly 3 years after the Start Year (e.g., Start 2032, End 2035 is 4 years). 4) Model Retirement Lifestyle Phases: split travel and entertainment into 'Go-Go Years' (high spend, starts at retirement, lasts 10 years, calculate costs based on {ret_city_flow}), 'Slow-Go Years' (medium spend, lasts next 10 years), and 'No-Go Years' (low spend) using 'Custom Year' Start/End phases. 5) STRICT PHASE SHIFTING: Never overlap the same living expense category. If an expense changes at retirement, the 'Now' version MUST have 'End Phase' set to 'At Retirement', and the new version MUST have 'Start Phase' set to 'At Retirement'. If an expense continues unchanged forever, set it to 'Now' until 'End of Life'. Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (MUST be exactly one of: {allowed_cats}. If unsure, default to 'Other'), 'Frequency' (Monthly/Yearly/One-Time), 'Amount ($)' (number), 'Start Phase' (Now/At Retirement/Custom Year), 'Start Year' (integer, ONLY if 'Start Phase' is 'Custom Year', otherwise null), 'End Phase' (End of Life/At Retirement/Custom Year), 'End Year' (integer, ONLY if 'End Phase' is 'Custom Year', otherwise null), and 'AI Estimate?' (true)."
-            res = call_gemini_json(prompt)
-            if res and isinstance(res, list) and len(res) > 0:
-                st.session_state['lifetime_expenses'] = locked + res
-                mark_dirty()
-                st.rerun()
-            else:
-                st.error("⚠️ AI returned an invalid format. Please try again.")
+                wealth_ctx = f"The household has a current annual pre-tax income of ${curr_inc_total:,.0f} and liquid assets totaling ${liq_ast_total:,.0f}. VERY IMPORTANT: While you should scale the budget to reflect this wealth, assume these users are savvy spenders and aggressive savers (comfortable but smart with money), so avoid over-inflating lifestyle costs unnecessarily."
+                allowed_cats = ", ".join(budget_categories)
+                prompt = f"Current City: {curr_city_flow}. Planned Retirement City: {ret_city_flow}. Family: {f_ctx}. Current Year is {datetime.date.today().year}. {wealth_ctx} Generate a comprehensive list of missing living expenses AND expected future life milestones (like college or weddings). {ai_exclusion} CRITICAL INSTRUCTIONS: 1) Medical expenses (IRMAA, Medicare Cliff, Pre-Medicare gap, LTC) are handled automatically by the simulation engine; only provide modest baseline out-of-pocket healthcare costs. 2) Model 'Empty Nesting': phase out child-heavy groceries, utility expenses, and ANY K-12 extracurriculars/lessons using 'Custom Year' End Phases exactly when the youngest child turns 18. 3) ALL College/University expenses MUST be categorized strictly as 'Education' (not 'Other') so they receive the 5% education inflation penalty. NOTE: Start and End Years are INCLUSIVE. For a standard 4-year college, the End Year must be exactly 3 years after the Start Year (e.g., Start 2032, End 2035 is 4 years). 4) Model Retirement Lifestyle Phases: split travel and entertainment into 'Go-Go Years' (high spend, starts at retirement, lasts 10 years, calculate costs based on {ret_city_flow}), 'Slow-Go Years' (medium spend, lasts next 10 years), and 'No-Go Years' (low spend) using 'Custom Year' Start/End phases. 5) STRICT PHASE SHIFTING: Never overlap the same living expense category. If an expense changes at retirement, the 'Now' version MUST have 'End Phase' set to 'At Retirement', and the new version MUST have 'Start Phase' set to 'At Retirement'. If an expense continues unchanged forever, set it to 'Now' until 'End of Life'. Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (MUST be exactly one of: {allowed_cats}. If unsure, default to 'Other'), 'Frequency' (Monthly/Yearly/One-Time), 'Amount ($)' (number), 'Start Phase' (Now/At Retirement/Custom Year), 'Start Year' (integer, ONLY if 'Start Phase' is 'Custom Year', otherwise null), 'End Phase' (End of Life/At Retirement/Custom Year), 'End Year' (integer, ONLY if 'End Phase' is 'Custom Year', otherwise null), and 'AI Estimate?' (true)."
+                res = call_gemini_json(prompt)
+                if res and isinstance(res, list) and len(res) > 0:
+                    st.session_state['lifetime_expenses'] = locked + res
+                    mark_dirty()
+                    st.rerun()
+                else:
+                    st.error("⚠️ AI returned an invalid format. Please try again.")
 
 
 def render_simulation():
@@ -2281,7 +2423,7 @@ def render_simulation():
                             f"User lives in {curr_city_flow} with ${curr_inc_total:,.0f} income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'current_tax_rate': float}}",
                             ac8)
     ret_t = ai_number_input("Retire State Tax (%)", 'retire_tax_rate',
-                            f"User plans to retire in {ret_city_flow} with estimated retirement income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'retire_tax_rate': float}}",
+                            f"User plans to retire in {ret_city_state} with estimated retirement income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'retire_tax_rate': float}}",
                             ac9)
     st.markdown("</div>", unsafe_allow_html=True)
 
