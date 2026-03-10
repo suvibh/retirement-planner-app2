@@ -682,7 +682,8 @@ def build_sim_context():
         'spouse_life_exp_val': spouse_life_exp_val,
         'ast_records': st.session_state['liquid_assets_data'], 'debt_records': debt_records,
         're_records': st.session_state['real_estate_data'], 'biz_records': st.session_state['business_data'],
-        'inc_records': st.session_state['income_data'], 'exp_records': st.session_state['lifetime_expenses']
+        'inc_records': st.session_state['income_data'], 'exp_records': st.session_state['lifetime_expenses'],
+        'my_age': my_age, 'spouse_age': spouse_age
     }
 
 
@@ -1558,10 +1559,14 @@ def run_simulation(mkt_sequence, ctx):
                         tapped_trad = True
                     owner_acct = a.get('Owner', 'Me')
                     owner_age_acct = my_current_age if owner_acct in ['Me', 'Joint'] else spouse_current_age
-                    owner_retire_age_acct = ctx['primary_retire_year'] - ctx['my_birth_year'] if owner_acct in ['Me',
-                                                                                                                'Joint'] else \
-                    ctx['spouse_retire_year'] - ctx['spouse_birth_year']
-                    rule_of_55 = (owner_retire_age_acct >= 55 and owner_age_acct >= owner_retire_age_acct)
+                    owner_retire_age_acct = ctx['primary_retire_year'] if owner_acct in ['Me', 'Joint'] else ctx[
+                        'spouse_retire_year']
+                    rule_of_55 = (owner_retire_age_acct >= (
+                        ctx['my_birth_year'] + 55 if owner_acct in ['Me', 'Joint'] else ctx[
+                                                                                            'spouse_birth_year'] + 55) and owner_age_acct >= (
+                                              owner_retire_age_acct - (
+                                          ctx['my_birth_year'] if owner_acct in ['Me', 'Joint'] else ctx[
+                                              'spouse_birth_year'])))
                     penalty = 0.10 if (owner_age_acct < 59.5 and not rule_of_55) else 0.0
                     eff_tax = min(marginal_rate + (state_tax_rate / 100.0) + penalty, 0.99)
                     req_gross = current_shortfall / max(0.01, (1.0 - eff_tax))
@@ -1574,10 +1579,14 @@ def run_simulation(mkt_sequence, ctx):
                         tapped_roth = True
                     owner_acct = a.get('Owner', 'Me')
                     owner_age_acct = my_current_age if owner_acct in ['Me', 'Joint'] else spouse_current_age
-                    owner_retire_age_acct = ctx['primary_retire_year'] - ctx['my_birth_year'] if owner_acct in ['Me',
-                                                                                                                'Joint'] else \
-                    ctx['spouse_retire_year'] - ctx['spouse_birth_year']
-                    rule_of_55 = (owner_retire_age_acct >= 55 and owner_age_acct >= owner_retire_age_acct)
+                    owner_retire_age_acct = ctx['primary_retire_year'] if owner_acct in ['Me', 'Joint'] else ctx[
+                        'spouse_retire_year']
+                    rule_of_55 = (owner_retire_age_acct >= (
+                        ctx['my_birth_year'] + 55 if owner_acct in ['Me', 'Joint'] else ctx[
+                                                                                            'spouse_birth_year'] + 55) and owner_age_acct >= (
+                                              owner_retire_age_acct - (
+                                          ctx['my_birth_year'] if owner_acct in ['Me', 'Joint'] else ctx[
+                                              'spouse_birth_year'])))
                     penalty = 0.10 if (a.get('Type') in ['Roth 401(k)',
                                                          'Roth IRA'] and owner_age_acct < 59.5 and not rule_of_55) else 0.0
                     eff_tax = min(penalty, 0.99)
@@ -1731,7 +1740,7 @@ def render_dashboard():
 
     mkt_seq = tuple([sim_ctx['mkt']] * (sim_ctx['max_years'] + 1))
     ctx_str = json.dumps(sim_ctx, sort_keys=True)
-    df_sim, df_det, df_nw, _ = run_cached_simulation(mkt_seq, ctx_str, st.session_state['user_email'])
+    df_sim, df_det, df_nw, _ = run_cached_simulation(mkt_seq, ctx_str, st.session_state.get('user_email', 'guest'))
 
     st.session_state['df_sim'] = df_sim
     st.session_state['df_det'] = df_det
@@ -1917,38 +1926,44 @@ def render_income():
 
     render_total("Total Pre-Tax Income", edited_inc['Annual Amount ($)'])
 
-    st.markdown('<div class="ai-btn-marker"></div>', unsafe_allow_html=True)
-    if st.button("✨ Auto-Estimate My Social Security (AI)", width="stretch"):
-        with st.spinner("Asking AI to estimate your Social Security benefits based on your age and income..."):
-            my_age = relativedelta(datetime.date.today(), st.session_state['my_dob']).years
-            spouse_age = relativedelta(datetime.date.today(), st.session_state['spouse_dob']).years if st.session_state[
-                'has_spouse'] else 0
-            curr_inc = pd.to_numeric(edited_inc['Annual Amount ($)'], errors='coerce').fillna(0).sum()
-            if st.session_state['has_spouse']:
-                prompt = f"User is {my_age} years old making ${curr_inc}/year. Spouse is {spouse_age} years old. Estimate realistic annual Social Security primary insurance amounts (PIA) at Full Retirement Age for both. Return JSON: {{'ss_amount_me': integer, 'ss_amount_spouse': integer}}"
-            else:
-                prompt = f"User is {my_age} years old making ${curr_inc}/year. Estimate their annual Social Security primary insurance amount (PIA) at Full Retirement Age. Return JSON: {{'ss_amount_me': integer}}"
-            res = call_gemini_json(prompt)
-            if res:
-                current_inc = edited_inc.to_dict('records')
-                current_year = datetime.date.today().year
-                my_birth_year = st.session_state['my_dob'].year
-                spouse_birth_year = st.session_state['spouse_dob'].year if st.session_state[
-                    'has_spouse'] else current_year
-                if 'ss_amount_me' in res:
-                    current_inc.append(
-                        {"Description": "Estimated Social Security (Primary)", "Category": "Social Security",
-                         "Owner": "Me", "Annual Amount ($)": res['ss_amount_me'], "Start Year": my_birth_year + 67,
-                         "End Year": 2100, "Stop at Ret.?": False, "Override Growth (%)": None})
-                if 'ss_amount_spouse' in res and st.session_state['has_spouse']:
-                    current_inc.append(
-                        {"Description": "Estimated Social Security (Spouse)", "Category": "Social Security",
-                         "Owner": "Spouse", "Annual Amount ($)": res['ss_amount_spouse'],
-                         "Start Year": spouse_birth_year + 67, "End Year": 2100, "Stop at Ret.?": False,
-                         "Override Growth (%)": None})
-                st.session_state['income_data'] = current_inc
-                mark_dirty()
-                st.rerun()
+    col_ai_inc, _ = st.columns([3, 1])
+    with col_ai_inc:
+        st.markdown('<div class="ai-btn-marker"></div>', unsafe_allow_html=True)
+        if st.button("✨ Auto-Estimate My Social Security (AI)", width="stretch"):
+            # Save UI state before rerun
+            st.session_state['income'] = edited_inc.to_dict('records')
+
+            with st.spinner("Asking AI to estimate your Social Security benefits based on your age and income..."):
+                my_age = relativedelta(datetime.date.today(), st.session_state['my_dob']).years
+                spouse_age = relativedelta(datetime.date.today(), st.session_state['spouse_dob']).years if \
+                st.session_state['has_spouse'] else 0
+                curr_inc = pd.to_numeric(edited_inc['Annual Amount ($)'], errors='coerce').fillna(0).sum()
+                if st.session_state['has_spouse']:
+                    prompt = f"User is {my_age} years old making ${curr_inc}/year. Spouse is {spouse_age} years old. Estimate realistic annual Social Security primary insurance amounts (PIA) at Full Retirement Age for both. Return JSON: {{'ss_amount_me': integer, 'ss_amount_spouse': integer}}"
+                else:
+                    prompt = f"User is {my_age} years old making ${curr_inc}/year. Estimate their annual Social Security primary insurance amount (PIA) at Full Retirement Age. Return JSON: {{'ss_amount_me': integer}}"
+                res = call_gemini_json(prompt)
+                if res:
+                    current_inc = edited_inc.to_dict('records')
+                    current_year = datetime.date.today().year
+                    my_birth_year = st.session_state['my_dob'].year
+                    spouse_birth_year = st.session_state['spouse_dob'].year if st.session_state[
+                        'has_spouse'] else current_year
+                    if 'ss_amount_me' in res:
+                        current_inc.append(
+                            {"Description": "Estimated Social Security (Primary)", "Category": "Social Security",
+                             "Owner": "Me", "Annual Amount ($)": res['ss_amount_me'], "Start Year": my_birth_year + 67,
+                             "End Year": 2100, "Stop at Ret.?": False, "Override Growth (%)": None})
+                    if 'ss_amount_spouse' in res and st.session_state['has_spouse']:
+                        current_inc.append(
+                            {"Description": "Estimated Social Security (Spouse)", "Category": "Social Security",
+                             "Owner": "Spouse", "Annual Amount ($)": res['ss_amount_spouse'],
+                             "Start Year": spouse_birth_year + 67, "End Year": 2100, "Stop at Ret.?": False,
+                             "Override Growth (%)": None})
+                    st.session_state['user_data']['income'] = current_inc
+                    st.session_state['income_data'] = current_inc
+                    mark_dirty()
+                    st.rerun()
 
 
 def render_assets():
@@ -1985,6 +2000,7 @@ def render_assets():
         )
         st.session_state['real_estate_data'] = edited_re.to_dict('records')
 
+        # Validation Warning: Check if mortgage payments cover interest
         for idx, r in edited_re.iterrows():
             bal = safe_num(r.get('Mortgage Balance ($)'))
             rate = safe_num(r.get('Interest Rate (%)'))
@@ -2018,7 +2034,7 @@ def render_assets():
 
     with tab_ast:
         info_banner(
-            "Contribution Engine Update: Put ONLY your out-of-pocket contributions here. The AI engine automatically detects 'Employer Matches' from your Income table and securely routes them directly into your 401(k) behind the scenes!")
+            "Contribution Engine Update: Put ONLY your own out-of-pocket contributions here. The AI engine automatically detects 'Employer Matches' from your Income table and securely routes them directly into your 401(k) behind the scenes!")
         df_ast = pd.DataFrame(st.session_state['liquid_assets_data'])
         if df_ast.empty: df_ast = pd.DataFrame(
             [{"Account Name": "Primary 401(k)", "Type": "Traditional 401(k)", "Owner": "Me", "Current Balance ($)": 0,
@@ -2123,6 +2139,9 @@ def render_cashflows():
 
     st.markdown('<div class="ai-btn-marker"></div>', unsafe_allow_html=True)
     if st.button("✨ Auto-Estimate Budget & Milestones for selected locations (AI)", width="stretch"):
+        # Save UI state before rerun
+        st.session_state['lifetime_expenses'] = edited_exp.to_dict('records')
+
         with st.spinner("Analyzing localized CPI data, timelines, and family needs..."):
             valid = edited_exp[edited_exp["Description"].astype(str) != ""].copy()
             locked = valid[valid["AI Estimate?"] == False].to_dict('records')
@@ -2229,41 +2248,41 @@ def render_simulation():
             return val
 
     ac1, ac2, ac3 = st.columns(3)
-    ai_number_input("Market Growth (%)", 'market_growth',
-                    f"What is a realistic conservative long-term annual market growth rate for a diversified retirement portfolio? Return JSON: {{'market_growth': float}}",
-                    ac1)
-    ai_number_input("General CPI Inflation (%)", 'inflation',
-                    f"What is the projected long-term average general US CPI inflation rate? Return JSON: {{'inflation': float}}",
-                    ac2)
-    ai_number_input("Income Growth (%)", 'income_growth',
-                    f"What is a realistic annual salary growth/merit increase rate? Return JSON: {{'income_growth': float}}",
-                    ac3)
+    mkt = ai_number_input("Market Growth (%)", 'market_growth',
+                          f"What is a realistic conservative long-term annual market growth rate for a diversified retirement portfolio? Return JSON: {{'market_growth': float}}",
+                          ac1)
+    infl = ai_number_input("General CPI Inflation (%)", 'inflation',
+                           f"What is the projected long-term average general US CPI inflation rate? Return JSON: {{'inflation': float}}",
+                           ac2)
+    inc_g = ai_number_input("Income Growth (%)", 'income_growth',
+                            f"What is a realistic annual salary growth/merit increase rate? Return JSON: {{'income_growth': float}}",
+                            ac3)
 
     ac4, ac5, ac6 = st.columns(3)
     curr_city_flow = st.session_state.get('curr_city_flow', '')
-    ai_number_input("Healthcare Inflation (%)", 'inflation_healthcare',
-                    f"What is the projected long-term annual healthcare cost inflation rate in the US? Return JSON: {{'inflation_healthcare': float}}",
-                    ac4)
-    ai_number_input("Education Inflation (%)", 'inflation_education',
-                    f"What is the projected long-term annual college tuition inflation rate in the US? Return JSON: {{'inflation_education': float}}",
-                    ac5)
-    ai_number_input("Property Growth (%)", 'property_growth',
-                    f"Historical average annual real estate appreciation rate for {curr_city_flow}? Return JSON: {{'property_growth': float}}",
-                    ac6)
+    infl_hc = ai_number_input("Healthcare Inflation (%)", 'inflation_healthcare',
+                              f"What is the projected long-term annual healthcare cost inflation rate in the US? Return JSON: {{'inflation_healthcare': float}}",
+                              ac4)
+    infl_ed = ai_number_input("Education Inflation (%)", 'inflation_education',
+                              f"What is the projected long-term annual college tuition inflation rate in the US? Return JSON: {{'inflation_education': float}}",
+                              ac5)
+    prop_g = ai_number_input("Property Growth (%)", 'property_growth',
+                             f"Historical average annual real estate appreciation rate for {curr_city_flow}? Return JSON: {{'property_growth': float}}",
+                             ac6)
 
     ac7, ac8, ac9 = st.columns(3)
     ret_city_flow = st.session_state.get('retire_city_flow', '')
     curr_inc_total = pd.to_numeric(pd.DataFrame(st.session_state['income_data'])['Annual Amount ($)'],
                                    errors='coerce').fillna(0).sum() if st.session_state['income_data'] else 0
-    ai_number_input("Rent Growth (%)", 'rent_growth',
-                    f"Projected average annual rent increase rate for {curr_city_flow}? Return JSON: {{'rent_growth': float}}",
-                    ac7)
-    ai_number_input("Current State Tax (%)", 'current_tax_rate',
-                    f"User lives in {curr_city_flow} with ${curr_inc_total:,.0f} income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'current_tax_rate': float}}",
-                    ac8)
-    ai_number_input("Retire State Tax (%)", 'retire_tax_rate',
-                    f"User plans to retire in {ret_city_flow} with estimated retirement income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'retire_tax_rate': float}}",
-                    ac9)
+    rent_g = ai_number_input("Rent Growth (%)", 'rent_growth',
+                             f"Projected average annual rent increase rate for {curr_city_flow}? Return JSON: {{'rent_growth': float}}",
+                             ac7)
+    cur_t = ai_number_input("Current State Tax (%)", 'current_tax_rate',
+                            f"User lives in {curr_city_flow} with ${curr_inc_total:,.0f} income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'current_tax_rate': float}}",
+                            ac8)
+    ret_t = ai_number_input("Retire State Tax (%)", 'retire_tax_rate',
+                            f"User plans to retire in {ret_city_flow} with estimated retirement income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'retire_tax_rate': float}}",
+                            ac9)
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("""<div class='card' style='margin-bottom: 24px;'>
@@ -2304,115 +2323,402 @@ def render_simulation():
         st.session_state['assumptions']['roth_conversions'] = roth_conversions
         st.session_state['assumptions']['roth_target'] = roth_target
         st.session_state['assumptions']['withdrawal_strategy'] = active_withdrawal_strategy.split(' ')[0]
-    st.markdown("</div>", unsafe_allow_html=True)
 
     st.divider()
-    st.subheader("🎲 Monte Carlo Risk Analysis")
-    st.markdown(
-        '<div class="info-text">💡 <strong>Stress Test Your Plan:</strong> Real markets are bumpy. The Monte Carlo simulation runs your exact plan through hundreds of randomized market scenarios (based on historical volatility) to find your true probability of success.</div>',
-        unsafe_allow_html=True)
 
-    col_mc1, col_mc2, col_mc3 = st.columns([1, 1, 2])
-    mc_vol = col_mc1.number_input("Portfolio Volatility (%)", value=15.0,
-                                  help="Historically, the S&P 500 maintains a volatility (standard deviation) proximal to 15%. Fixed income allocations approximate 5%.")
-    mc_runs = col_mc2.number_input("Number of Simulations", min_value=10, max_value=500, value=100, step=10)
+    view_todays_dollars = st.toggle("💵 View Charts in Today's Dollars", value=False,
+                                    help="Removes the effect of inflation so you can easily understand what these big future numbers feel like today.")
 
-    with col_mc3:
-        st.markdown("<div style='height: 27px;'></div>", unsafe_allow_html=True)
-        st.markdown('<div class="ai-btn-marker"></div>', unsafe_allow_html=True)
-        if st.button("✨ Run Monte Carlo Simulation", width="stretch"):
+    # --- SIMULATION ENGINE ---
+    sim_ctx = build_sim_context()
+    if sim_ctx['my_age'] <= 0:
+        st.warning("Please enter a valid Date of Birth in the Profile section to run the simulation.")
+    else:
+        @st.cache_data(show_spinner=False)
+        def run_cached_simulation(mkt_sequence_tuple, ctx_str, _email):
+            ctx = json.loads(ctx_str)
+            mkt_sequence = list(mkt_sequence_tuple)
+            s_res, d_res, nw_res, milestones = run_simulation(mkt_sequence, ctx)
+            return pd.DataFrame(s_res), pd.DataFrame(d_res).fillna(0), pd.DataFrame(nw_res).fillna(0), milestones
 
-            sim_ctx = build_sim_context()
-            if sim_ctx['my_age'] <= 0:
-                st.warning("Please complete your profile to run Monte Carlo.")
-                return
+        # --- EXECUTE BASE DETERMINISTIC RUN ---
+        deterministic_seq = tuple([sim_ctx['mkt']] * (sim_ctx['max_years'] + 1))
+        ctx_json_str = json.dumps(sim_ctx, sort_keys=True)
 
-            with st.spinner(f"Rendering {mc_runs} parallel market sequences (Multi-threaded)..."):
-                success_count = 0
-                all_nw_paths = []
-                mc_progress = st.progress(0)
+        df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = run_cached_simulation(deterministic_seq,
+                                                                                              ctx_json_str,
+                                                                                              st.session_state.get(
+                                                                                                  'user_email',
+                                                                                                  'guest'))
 
-                random_sequences = [[random.gauss(sim_ctx['mkt'], mc_vol) for _ in range(sim_ctx['max_years'] + 1)] for
-                                    _ in range(mc_runs)]
+        # --- UI RENDER: DASHBOARD ---
+        if not df_sim_nominal.empty:
+            df_sim = df_sim_nominal.copy()
+            df_det = df_det_nominal.copy()
+            df_nw = df_nw_nominal.copy()
 
-                try:
-                    with ThreadPoolExecutor(max_workers=min(mc_runs, 8)) as executor:
-                        futures = [executor.submit(run_simulation, seq, copy.deepcopy(sim_ctx)) for seq in
-                                   random_sequences]
-                        for i, future in enumerate(futures):
-                            res, _, _, _ = future.result()
-                            nw_path = [step["Net Worth"] for step in res]
-                            all_nw_paths.append(nw_path)
-                            if res[-1].get("Unfunded Debt", 0) <= 0: success_count += 1
-                            if i % max(1, mc_runs // 20) == 0: mc_progress.progress((i + 1) / mc_runs)
-                except Exception as e:
-                    st.error(f"Simulation failed during multi-threading: {e}")
-                finally:
-                    mc_progress.empty()
+            final_nw = df_sim.iloc[-1]['Net Worth']
+            shortfall_mask = df_sim['Unfunded Debt'] > 0
+            deplete_year = df_sim[shortfall_mask]['Year'].min() if not df_sim[shortfall_mask].empty else None
+            deplete_age = df_sim[shortfall_mask]['Age (Primary)'].min() if not df_sim[shortfall_mask].empty else None
 
-                success_rate = (success_count / mc_runs) * 100
-                st.session_state['mc_success_rate'] = success_rate  # Store for dashboard
+            c_status, c_ai_btn = st.columns([3, 2])
+            with c_status:
+                if deplete_year is not None:
+                    st.error(
+                        f"🔴 **Liquidity Crisis:** You completely exhaust your liquid cash in **Year {int(deplete_year)}** (Age {int(deplete_age)}) and begin accumulating high-interest shortfall debt.")
+                elif final_nw >= 1000000:
+                    st.success(
+                        f"🟢 **On Track:** Projected Net Worth at timeline end is **${final_nw:,.0f}**. Your assets comfortably outlive your life expectancy.")
+                elif final_nw > 0:
+                    st.warning(
+                        f"🟡 **Caution:** Projected Net Worth at timeline end is **${final_nw:,.0f}**. You are solvent, but with a narrow margin of safety.")
 
-                path_len = len(all_nw_paths[0])
-                years_list = [sim_ctx['current_year'] + i for i in range(path_len)]
-                p10, p50, p90 = [], [], []
+            # APPLY DISCOUNTING IF TOGGLED (Vectorized execution for extreme performance)
+            if view_todays_dollars:
+                discounts = (1 + sim_ctx['infl'] / 100) ** (df_sim['Year'] - current_year)
 
-                for i in range(path_len):
-                    step_vals = sorted([path[i] for path in all_nw_paths])
-                    p10.append(step_vals[int(mc_runs * 0.10)])
-                    p50.append(step_vals[int(mc_runs * 0.50)])
-                    p90.append(step_vals[int(mc_runs * 0.90)])
+                cols_sim = ["Annual Income", "Annual Expenses", "Annual Taxes", "Annual Net Savings", "Liquid Assets",
+                            "Real Estate Equity", "Business Equity", "Debt", "Unfunded Debt", "Net Worth"]
+                df_sim[cols_sim] = df_sim[cols_sim].div(discounts, axis=0)
 
+                cols_det = [c for c in df_det.columns if
+                            c not in ["Age (Primary)", "Age (Spouse)", "Year"] and pd.api.types.is_numeric_dtype(
+                                df_det[c])]
+                df_det[cols_det] = df_det[cols_det].div(discounts, axis=0)
+
+                cols_nw = [c for c in df_nw.columns if
+                           c not in ["Age (Primary)", "Age (Spouse)", "Year"] and pd.api.types.is_numeric_dtype(
+                               df_nw[c])]
+                df_nw[cols_nw] = df_nw[cols_nw].div(discounts, axis=0)
+
+            if HAS_PLOTLY:
+                # Pre-calculate Milestone Chart Markers
+                m_x_normal, m_y_normal, m_text_normal = [], [], []
+                m_x_system, m_y_system, m_text_system = [], [], []
+                m_x_alert, m_y_alert, m_text_alert = [], [], []
+
+                if run_milestones:
+                    m_years = sorted(list(run_milestones.keys()))
+                    for y in m_years:
+                        row = df_sim[df_sim['Year'] == y]
+                        nw_val = row['Net Worth'].values[0] if not row.empty else 0
+
+                        events = run_milestones[y]
+                        normals = [e for e in events if e.get('type') == 'normal']
+                        systems = [e for e in events if e.get('type') == 'system']
+                        alerts = [e for e in events if e.get('type') == 'critical']
+
+                        discount = (1 + sim_ctx['infl'] / 100) ** (y - current_year) if view_todays_dollars else 1.0
+
+                        if normals:
+                            texts = [f"• {m['desc']} (${m['amt'] / discount:,.0f})" for m in normals]
+                            m_x_normal.append(y)
+                            m_y_normal.append(nw_val)
+                            m_text_normal.append(f"<b>Year {y}:</b><br>" + "<br>".join(texts))
+
+                        if systems:
+                            texts = [f"• {m['desc']}" for m in systems]
+                            m_x_system.append(y)
+                            m_y_system.append(nw_val)
+                            m_text_system.append(f"<b>System Event ({y}):</b><br>" + "<br>".join(texts))
+
+                        if alerts:
+                            texts = [f"• {m['desc']}" for m in alerts]
+                            m_x_alert.append(y)
+                            m_y_alert.append(nw_val)
+                            m_text_alert.append(f"<b>⚠️ ALERT ({y}):</b><br>" + "<br>".join(texts))
+
+                st.write("#### Net Worth Composition (Smart Asset Drawdown)")
+                fig_nw = go.Figure()
+
+                # Plot individual granular asset buckets dynamically
+                ast_cols = [c for c in df_nw.columns if c.startswith("Asset: ")]
+                fill_colors = ['rgba(45, 212, 191, 0.6)', 'rgba(56, 189, 248, 0.6)', 'rgba(129, 140, 248, 0.6)',
+                               'rgba(167, 139, 250, 0.6)', 'rgba(232, 121, 249, 0.6)', 'rgba(251, 113, 133, 0.6)',
+                               'rgba(52, 211, 153, 0.6)', 'rgba(251, 191, 36, 0.6)', 'rgba(163, 230, 53, 0.6)',
+                               'rgba(250, 204, 21, 0.6)']
+                line_colors = ['#2dd4bf', '#38bdf8', '#818cf8', '#a78bfa', '#e879f9', '#fb7185', '#34d399', '#fbbf24',
+                               '#a3e635', '#facc15']
+
+                for i, col in enumerate(ast_cols):
+                    asset_name = col.replace("Asset: ", "")
+                    fig_nw.add_trace(go.Scatter(
+                        x=df_nw["Year"], y=df_nw[col], mode='lines', stackgroup='one', name=asset_name,
+                        fillcolor=fill_colors[i % len(fill_colors)],
+                        line=dict(color=line_colors[i % len(line_colors)], width=1.5)
+                    ))
+
+                fig_nw.add_trace(
+                    go.Scatter(x=df_nw["Year"], y=df_nw["Total Real Estate Equity"], mode='lines', stackgroup='one',
+                               name='Real Estate Equity', fillcolor='rgba(139, 92, 246, 0.5)',
+                               line=dict(color='#8b5cf6', width=1.5)))
+                fig_nw.add_trace(
+                    go.Scatter(x=df_nw["Year"], y=df_nw["Total Business Equity"], mode='lines', stackgroup='one',
+                               name='Business Equity', fillcolor='rgba(245, 158, 11, 0.5)',
+                               line=dict(color='#f59e0b', width=1.5)))
+                fig_nw.add_trace(
+                    go.Scatter(x=df_nw["Year"], y=df_nw["Total Debt Liabilities"], mode='lines', stackgroup='two',
+                               name='Total Liabilities (Inc. Shortfalls)', fillcolor='rgba(244, 63, 94, 0.5)',
+                               line=dict(color='#f43f5e', width=1.5)))
+                fig_nw.add_trace(
+                    go.Scatter(x=df_nw["Year"], y=df_nw["Total Net Worth"], mode='lines', name='Total Net Worth',
+                               line=dict(color='#111827', width=3, dash='dot')))
+
+                # Overlay Milestone Markers
+                if m_x_normal:
+                    fig_nw.add_trace(go.Scatter(x=m_x_normal, y=m_y_normal, mode='markers',
+                                                marker=dict(symbol='star', size=14, color='#eab308',
+                                                            line=dict(width=1.5, color='white')),
+                                                name='User Milestones', hoverinfo='text', text=m_text_normal))
+                if m_x_system:
+                    fig_nw.add_trace(go.Scatter(x=m_x_system, y=m_y_system, mode='markers',
+                                                marker=dict(symbol='star', size=14, color='#3b82f6',
+                                                            line=dict(width=1.5, color='white')), name='System Events',
+                                                hoverinfo='text', text=m_text_system))
+                if m_x_alert:
+                    fig_nw.add_trace(go.Scatter(x=m_x_alert, y=m_y_alert, mode='markers',
+                                                marker=dict(symbol='star', size=18, color='#ef4444',
+                                                            line=dict(width=2, color='white')), name='Critical Alerts',
+                                                hoverinfo='text', text=m_text_alert))
+
+                fig_nw.update_layout(hovermode="x unified", yaxis=dict(tickformat="$,.0f"),
+                                     margin=dict(l=0, r=0, t=30, b=0),
+                                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+                st.plotly_chart(fig_nw, width="stretch")
+
+                st.write("#### Annual Cash Flow & Progressive Taxes")
+                fig_cf = go.Figure()
+                fig_cf.add_trace(
+                    go.Scatter(x=df_sim["Year"], y=df_sim["Annual Income"], mode='lines', name='Organic Income',
+                               line=dict(color='#4f46e5', width=3)))
+                fig_cf.add_trace(
+                    go.Scatter(x=df_sim["Year"], y=df_sim["Annual Expenses"], mode='lines', name='Expenses',
+                               line=dict(color='#f43f5e', width=3)))
+                fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Taxes"], mode='lines', name='Taxes',
+                                            line=dict(color='#f59e0b', width=3)))
+                fig_cf.add_trace(
+                    go.Scatter(x=df_sim["Year"], y=df_sim["Annual Net Savings"], mode='lines', name='Net Cashflow',
+                               line=dict(color='#10b981', width=3, dash='dot')))
+
+                # Overlay Milestone Markers
+                if m_x_normal:
+                    fig_cf.add_trace(go.Scatter(x=m_x_normal, y=[0] * len(m_x_normal), mode='markers',
+                                                marker=dict(symbol='star', size=14, color='#eab308',
+                                                            line=dict(width=1.5, color='white')),
+                                                name='User Milestones', hoverinfo='text', text=m_text_normal))
+                if m_x_system:
+                    fig_cf.add_trace(go.Scatter(x=m_x_system, y=[0] * len(m_x_system), mode='markers',
+                                                marker=dict(symbol='star', size=14, color='#3b82f6',
+                                                            line=dict(width=1.5, color='white')), name='System Events',
+                                                hoverinfo='text', text=m_text_system))
+                if m_x_alert:
+                    fig_cf.add_trace(go.Scatter(x=m_x_alert, y=[0] * len(m_x_alert), mode='markers',
+                                                marker=dict(symbol='star', size=18, color='#ef4444',
+                                                            line=dict(width=2, color='white')), name='Critical Alerts',
+                                                hoverinfo='text', text=m_text_alert))
+
+                fig_cf.update_layout(hovermode="x unified", yaxis=dict(tickformat="$,.0f"),
+                                     margin=dict(l=0, r=0, t=30, b=0),
+                                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+                st.plotly_chart(fig_cf, width="stretch")
+
+                # --- SANKEY DIAGRAM ---
+                st.divider()
+                sankey_title = "#### 🌊 Cash Flow Sankey Snapshot" + (" (Today's $)" if view_todays_dollars else "")
+                st.write(sankey_title)
                 st.markdown(
-                    f"<h3 style='text-align: center; color: {'#10b981' if success_rate > 80 else '#f59e0b' if success_rate > 50 else '#f43f5e'};'>Probability of Success: {success_rate:.1f}%</h3>",
+                    '<div class="info-text">💡 <strong>Follow the Money:</strong> Select any year on the slider to see exactly where your money comes from and where it goes.</div>',
                     unsafe_allow_html=True)
 
-                if HAS_PLOTLY:
-                    fig_mc = go.Figure()
-                    fig_mc.add_trace(
-                        go.Scatter(x=years_list, y=p90, mode='lines', name='90th Percentile (Favorable Timeline)',
-                                   line=dict(color='#10b981', dash='dot')))
-                    fig_mc.add_trace(
-                        go.Scatter(x=years_list, y=p50, mode='lines', name='50th Percentile (Median Expectation)',
-                                   line=dict(color='#3b82f6', width=3)))
-                    fig_mc.add_trace(
-                        go.Scatter(x=years_list, y=p10, mode='lines', name='10th Percentile (Severe Contraction)',
-                                   line=dict(color='#f43f5e', dash='dot')))
-                    fig_mc = apply_chart_theme(fig_mc, "Stochastic Net Worth Projections")
-                    st.plotly_chart(fig_mc, width="stretch")
+                min_yr = int(df_sim['Year'].min())
+                max_yr = int(df_sim['Year'].max())
 
-    st.divider()
-    if 'df_sim' in st.session_state and not st.session_state['df_sim'].empty:
-        st.subheader("Data Audit Tables")
-        df_sim = st.session_state['df_sim']
-        df_det = st.session_state['df_det']
-        df_nw = st.session_state['df_nw']
+                if min_yr < max_yr:
+                    sankey_year = st.slider("Select Year for Cash Flow Snapshot", min_value=min_yr, max_value=max_yr,
+                                            value=min_yr, key="sankey_slider")
+                else:
+                    sankey_year = min_yr
 
-        csv = df_sim.to_csv(index=False).encode('utf-8')
-        st.download_button(label="📥 Download Full Simulation (.csv)", data=csv, file_name='retirement_simulation.csv',
-                           mime='text/csv', type="secondary")
+                if sankey_year in df_det['Year'].values:
+                    row = df_det[df_det['Year'] == sankey_year].iloc[0]
 
-        t1, t2 = st.tabs(["Income & Expense Log", "Net Worth Log"])
-        with t1:
-            st.markdown("Detailed Tax & Expense Log")
-            inc_c = sorted([c for c in df_det.columns if
-                            c.startswith("Income:") or c.startswith("Roth") or c.startswith("Cashflow:")])
-            exp_c = sorted([c for c in df_det.columns if c.startswith("Expense:")])
-            ord_det = ["Year", "Age (Primary)", "Age (Spouse)"] + inc_c + exp_c + ["Net Savings"]
-            st.dataframe(df_det[ord_det].set_index("Year").style.format(
-                {c: "${:,.0f}" for c in ord_det if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
-                    "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), width="stretch")
+                    inflows = {k.replace('Income: ', ''): v for k, v in row.items() if
+                               k.startswith('Income:') and v > 0 and k != 'Income: Shortfall Debt Funded'}
+                    outflows = {k.replace('Expense: ', ''): v for k, v in row.items() if
+                                k.startswith('Expense:') and v > 0 and k not in ['Expense: Unallocated Surplus Saved']}
 
-        with t2:
-            st.markdown("Detailed Net Worth Log")
-            ast_c = sorted([c for c in df_nw.columns if c.startswith("Asset:")])
-            ord_nw = ["Year", "Age (Primary)", "Age (Spouse)"] + ast_c + ["Total Liquid Assets",
-                                                                          "Total Real Estate Equity",
-                                                                          "Total Business Equity",
-                                                                          "Total Debt Liabilities", "Total Net Worth"]
-            st.dataframe(df_nw[ord_nw].set_index("Year").style.format(
-                {c: "${:,.0f}" for c in ord_nw if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
-                    "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), width="stretch")
+                    net_savings = row.get('Net Savings', 0)
+                    if net_savings > 0:
+                        outflows['Cashflow: Surplus Reinvested'] = net_savings
+                    elif net_savings < 0:
+                        inflows['Shortfall Debt Funded'] = abs(net_savings)
+
+                    in_labels = [f"{k}<br>${v:,.0f}" for k, v in inflows.items()]
+                    out_labels = [f"{k}<br>${v:,.0f}" for k, v in outflows.items()]
+                    total_inflow = sum(inflows.values())
+                    mid_label = f"Total Cash Pool<br>${total_inflow:,.0f}"
+
+                    labels = in_labels + [mid_label] + out_labels
+                    middle_idx = len(inflows)
+
+                    source = []
+                    target = []
+                    value = []
+                    node_colors = []
+                    link_colors = []
+
+                    # Build Inflows -> Middle
+                    for i, (k, v) in enumerate(inflows.items()):
+                        source.append(i)
+                        target.append(middle_idx)
+                        value.append(v)
+                        node_colors.append('#f43f5e' if k == 'Shortfall Debt Funded' else '#10b981')
+                        link_colors.append(
+                            'rgba(244, 63, 94, 0.4)' if k == 'Shortfall Debt Funded' else 'rgba(16, 185, 129, 0.4)')
+
+                    node_colors.append('#3b82f6')  # Middle node color
+
+                    # Build Middle -> Outflows
+                    for i, (k, v) in enumerate(outflows.items()):
+                        source.append(middle_idx)
+                        target.append(middle_idx + 1 + i)
+                        value.append(v)
+                        node_colors.append('#10b981' if k in ['Portfolio Contributions',
+                                                              'Cashflow: Surplus Reinvested'] else '#f43f5e')
+                        link_colors.append('rgba(16, 185, 129, 0.4)' if k in ['Portfolio Contributions',
+                                                                              'Cashflow: Surplus Reinvested'] else 'rgba(244, 63, 94, 0.4)')
+
+                    fig_sankey = go.Figure(data=[go.Sankey(
+                        arrangement="snap",
+                        node=dict(
+                            pad=35,
+                            thickness=30,
+                            line=dict(color="black", width=0.5),
+                            label=labels,
+                            color=node_colors
+                        ),
+                        textfont=dict(color="black", size=12),
+                        link=dict(
+                            source=source,
+                            target=target,
+                            value=value,
+                            color=link_colors
+                        )
+                    )])
+                    fig_sankey.update_layout(height=750, margin=dict(l=0, r=0, t=30, b=0), font=dict(size=12))
+                    st.plotly_chart(fig_sankey, width="stretch")
+
+            # --- MONTE CARLO SECTION ---
+            st.divider()
+            st.subheader("🎲 Monte Carlo Risk Analysis")
+            st.markdown(
+                '<div class="info-text">💡 <strong>Stress Test Your Plan:</strong> Real markets are bumpy. The Monte Carlo simulation runs your exact plan through hundreds of randomized market scenarios (based on historical volatility) to find your true probability of success.</div>',
+                unsafe_allow_html=True)
+
+            col_mc1, col_mc2, col_mc3 = st.columns([1, 1, 2])
+            mc_vol = col_mc1.number_input("Portfolio Volatility (%)", value=15.0,
+                                          help="Historically, the S&P 500 maintains a volatility (standard deviation) proximal to 15%. Fixed income allocations approximate 5%.")
+            mc_runs = col_mc2.number_input("Number of Simulations", min_value=10, max_value=500, value=100, step=10)
+
+            with col_mc3:
+                st.markdown("<div style='height: 27px;'></div>", unsafe_allow_html=True)
+                st.markdown('<div class="ai-btn-marker"></div>', unsafe_allow_html=True)
+                if st.button("✨ Run Monte Carlo Simulation", width="stretch"):
+                    with st.spinner(f"Rendering {mc_runs} parallel market sequences (Multi-threaded)..."):
+                        success_count = 0
+                        all_nw_paths = []
+                        mc_progress = st.progress(0)
+
+                        # Generate random market sequences in advance
+                        random_sequences = [
+                            [random.gauss(sim_ctx['mkt'], mc_vol) for _ in range(sim_ctx['max_years'] + 1)] for _ in
+                            range(mc_runs)]
+
+                        # Execute deeply nested simulation via fast ThreadPool
+                        try:
+                            with ThreadPoolExecutor(max_workers=min(mc_runs, 8)) as executor:
+                                futures = [executor.submit(run_simulation, seq, copy.deepcopy(sim_ctx)) for seq in
+                                           random_sequences]
+
+                                for i, future in enumerate(futures):
+                                    res, _, _, _ = future.result()
+                                    nw_path = [step["Net Worth"] for step in res]
+                                    all_nw_paths.append(nw_path)
+
+                                    # A plan is successful if it finishes without carrying shortfall debt
+                                    if res[-1].get("Unfunded Debt", 0) <= 0:
+                                        success_count += 1
+
+                                    if i % max(1, mc_runs // 20) == 0:
+                                        mc_progress.progress((i + 1) / mc_runs)
+                        except Exception as e:
+                            st.error(f"Simulation failed during multi-threading: {e}")
+                        finally:
+                            mc_progress.empty()
+
+                        success_rate = (success_count / mc_runs) * 100
+                        st.session_state['mc_success_rate'] = success_rate  # Store for dashboard
+
+                        path_len = len(all_nw_paths[0])
+                        years_list = [sim_ctx['current_year'] + i for i in range(path_len)]
+                        p10, p50, p90 = [], [], []
+
+                        for i in range(path_len):
+                            step_vals = sorted([path[i] for path in all_nw_paths])
+                            discount = (1 + sim_ctx['infl'] / 100) ** i if view_todays_dollars else 1.0
+                            p10.append(step_vals[int(mc_runs * 0.10)] / discount)
+                            p50.append(step_vals[int(mc_runs * 0.50)] / discount)
+                            p90.append(step_vals[int(mc_runs * 0.90)] / discount)
+
+                        st.markdown(
+                            f"<h3 style='text-align: center; color: {'#10b981' if success_rate > 80 else '#f59e0b' if success_rate > 50 else '#f43f5e'};'>Probability of Success: {success_rate:.1f}%</h3>",
+                            unsafe_allow_html=True)
+
+                        if HAS_PLOTLY:
+                            fig_mc = go.Figure()
+                            fig_mc.add_trace(go.Scatter(x=years_list, y=p90, mode='lines',
+                                                        name='90th Percentile (Favorable Timeline)',
+                                                        line=dict(color='#10b981', dash='dot')))
+                            fig_mc.add_trace(go.Scatter(x=years_list, y=p50, mode='lines',
+                                                        name='50th Percentile (Median Expectation)',
+                                                        line=dict(color='#3b82f6', width=3)))
+                            fig_mc.add_trace(go.Scatter(x=years_list, y=p10, mode='lines',
+                                                        name='10th Percentile (Severe Contraction)',
+                                                        line=dict(color='#f43f5e', dash='dot')))
+                            fig_mc = apply_chart_theme(fig_mc, "Stochastic Net Worth Projections")
+                            st.plotly_chart(fig_mc, width="stretch")
+
+            # --- DATA AUDIT TABLES ---
+            st.divider()
+            csv = df_sim.to_csv(index=False).encode('utf-8')
+            st.download_button(label="📥 Download Full Simulation (.csv)", data=csv,
+                               file_name='retirement_simulation.csv', mime='text/csv', type="secondary")
+
+            t1, t2 = st.tabs(["Income & Expense Log", "Net Worth Log"])
+            with t1:
+                st.subheader("Detailed Tax & Expense Log")
+                inc_c = sorted([c for c in df_det.columns if
+                                c.startswith("Income:") or c.startswith("Roth") or c.startswith("Cashflow:")])
+                exp_c = sorted([c for c in df_det.columns if c.startswith("Expense:")])
+                ord_det = ["Year", "Age (Primary)", "Age (Spouse)"] + inc_c + exp_c + ["Net Savings"]
+                st.dataframe(df_det[ord_det].set_index("Year").style.format(
+                    {c: "${:,.0f}" for c in ord_det if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
+                        "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), width="stretch")
+
+            with t2:
+                st.subheader("Detailed Net Worth Log")
+                st.markdown(
+                    "Track the exact, year-by-year balance of every single asset account and liability to trace your drawdowns and growth.")
+                ast_c = sorted([c for c in df_nw.columns if c.startswith("Asset:")])
+                ord_nw = ["Year", "Age (Primary)", "Age (Spouse)"] + ast_c + ["Total Liquid Assets",
+                                                                              "Total Real Estate Equity",
+                                                                              "Total Business Equity",
+                                                                              "Total Debt Liabilities",
+                                                                              "Total Net Worth"]
+                st.dataframe(df_nw[ord_nw].set_index("Year").style.format(
+                    {c: "${:,.0f}" for c in ord_nw if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
+                        "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), width="stretch")
 
 
 def render_ai():
@@ -2432,13 +2738,18 @@ def render_ai():
             "Shortfall Year": str(deplete_year) if deplete_year is not None else "None"
         }
 
+        # Compress 50 years of data into 5-year leaps so the AI can digest the timeline without context limits
         timeline_summary = []
         for idx, row in df_sim.iloc[::5].iterrows():
             timeline_summary.append({
-                "Age": int(row["Age (Primary)"]), "Income": int(row["Annual Income"]),
-                "Expenses": int(row["Annual Expenses"]), "Taxes": int(row["Annual Taxes"]),
-                "Liquid_Assets": int(row["Liquid Assets"]), "Net_Worth": int(row["Net Worth"])
+                "Age": int(row["Age (Primary)"]),
+                "Income": int(row["Annual Income"]),
+                "Expenses": int(row["Annual Expenses"]),
+                "Taxes": int(row["Annual Taxes"]),
+                "Liquid_Assets": int(row["Liquid Assets"]),
+                "Net_Worth": int(row["Net Worth"])
             })
+        # Always append the final year
         last_row = df_sim.iloc[-1]
         timeline_summary.append({"Age": int(last_row["Age (Primary)"]), "Income": int(last_row["Annual Income"]),
                                  "Expenses": int(last_row["Annual Expenses"]), "Taxes": int(last_row["Annual Taxes"]),
