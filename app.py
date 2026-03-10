@@ -4,7 +4,6 @@ import requests
 import json
 import datetime
 import time
-import copy
 import random
 import math
 import html
@@ -71,9 +70,6 @@ DESIGN_SYSTEM = """
     --primary: #6366f1;
     --primary-dark: #4f46e5;
     --primary-light: #e0e7ff;
-    --success: #10b981;
-    --warning: #f59e0b;
-    --danger: #ef4444;
     --surface: #ffffff;
     --border: #e2e8f0;
     --text-primary: #0f172a;
@@ -96,26 +92,15 @@ h3 { font-weight: 700 !important; color: var(--text-primary) !important; }
 [data-testid="stMetric"] { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: var(--radius-md) !important; padding: 20px !important; box-shadow: var(--shadow-sm) !important; }
 [data-testid="stMetricValue"] { color: var(--primary-dark) !important; font-size: 1.75rem !important; font-weight: 800 !important; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important; }
 [data-testid="stDataEditor"] { border-radius: var(--radius-md) !important; border: 1px solid var(--border) !important; overflow: hidden !important; box-shadow: var(--shadow-sm) !important; }
-[data-testid="stDataEditor"] tr:hover td { background: #f8fafc !important; }
 [data-testid="stTabs"] button { font-weight: 600 !important; border-radius: var(--radius-sm) var(--radius-sm) 0 0 !important; }
-[data-testid="stTextInput"] input, [data-testid="stNumberInput"] input { border-radius: var(--radius-sm) !important; border-color: var(--border) !important; font-size: 0.95rem !important; transition: border-color 0.15s ease, box-shadow 0.15s ease !important; }
-[data-testid="stTextInput"] input:focus, [data-testid="stNumberInput"] input:focus { border-color: var(--primary) !important; box-shadow: 0 0 0 3px var(--primary-light) !important; }
 [data-testid="stProgress"] > div > div { background: linear-gradient(90deg, var(--primary), #7c3aed) !important; border-radius: 999px !important; }
 [data-testid="stPlotlyChart"] { border-radius: 16px !important; overflow: hidden !important; box-shadow: 0 2px 12px rgba(0,0,0,0.06) !important; background: white; border: 1px solid var(--border); padding: 10px; }
 div[data-testid="stExpander"] { background-color: white !important; border: 1px solid var(--border) !important; border-radius: var(--radius-md) !important; box-shadow: var(--shadow-sm) !important; }
+div.stButton > button { border-radius: 8px !important; font-weight: 600 !important; }
 </style>
 """
 
-MOBILE_CSS = """
-<style>
-@media (max-width: 768px) {
-    [data-testid="column"] { min-width: 100% !important; }
-    button { min-height: 48px !important; }
-    [data-testid="stMetricValue"] { font-size: 1.4rem !important; }
-}
-</style>
-"""
-st.markdown(DESIGN_SYSTEM + MOBILE_CSS, unsafe_allow_html=True)
+st.markdown(DESIGN_SYSTEM, unsafe_allow_html=True)
 
 
 # --- REUSABLE UI COMPONENTS ---
@@ -135,12 +120,6 @@ def apply_chart_theme(fig, title=""):
 
 
 def stat_card(label, value, delta=None, color="indigo", icon=""):
-    delta_html = ""
-    if delta is not None:
-        color_d = "#10b981" if delta > 0 else "#ef4444"
-        arrow = "↑" if delta > 0 else "↓"
-        delta_html = f"<div style='color:{color_d}; font-size:0.8rem; font-weight:600;'>{arrow} {abs(delta):,.0f}</div>"
-
     colors = {
         "indigo": ("linear-gradient(135deg,#6366f1,#4f46e5)", "#e0e7ff"),
         "emerald": ("linear-gradient(135deg,#10b981,#059669)", "#d1fae5"),
@@ -148,13 +127,11 @@ def stat_card(label, value, delta=None, color="indigo", icon=""):
         "rose": ("linear-gradient(135deg,#ef4444,#dc2626)", "#fee2e2"),
     }
     grad, bg = colors.get(color, colors["indigo"])
-
     st.markdown(f"""
     <div style='background:{grad}; padding:20px; border-radius:16px; color:white; box-shadow: 0 4px 14px rgba(0,0,0,0.1);'>
         <div style='font-size:1.5rem; margin-bottom:4px;'>{html.escape(str(icon))}</div>
         <div style='font-size:1.8rem; font-weight:900; letter-spacing:-0.5px;'>{html.escape(str(value))}</div>
         <div style='font-size:0.85rem; opacity:0.9; margin-top:2px;'>{html.escape(str(label))}</div>
-        {delta_html}
     </div>
     """, unsafe_allow_html=True)
 
@@ -174,7 +151,6 @@ def section_header(title, subtitle="", icon=""):
 def info_banner(text, type="info"):
     configs = {
         "info": ("#eff6ff", "#3b82f6", "#1d4ed8", "💡"),
-        "success": ("#f0fdf4", "#22c55e", "#15803d", "✅"),
         "warning": ("#fffbeb", "#f59e0b", "#b45309", "⚠️"),
         "danger": ("#fef2f2", "#ef4444", "#b91c1c", "🚨"),
     }
@@ -214,7 +190,7 @@ def render_status_bar(deplete_year, deplete_age, final_nw, mc_success_rate=None)
 
     mc_html = f"<span style='margin-left:16px; font-size:0.85rem; color:#64748b;'>Monte Carlo: <b>{mc_success_rate:.0f}%</b> success rate</span>" if mc_success_rate is not None else ""
     st.markdown(f"""
-    <div style='background:{bg}; border-radius:12px; padding:16px 20px; display:flex; align-items:center; gap:12px; margin-bottom:20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border: 1px solid #e2e8f0;'>
+    <div style='background:{bg}; border-radius:12px; padding:16px 20px; display:flex; align-items:center; gap:12px; margin-bottom:20px; border: 1px solid #e2e8f0;'>
         <span style='font-size:1.8rem;'>{icon}</span>
         <div><div style='font-weight:800; font-size:1.1rem; color:#0f172a;'>{html.escape(msg)}</div><div style='font-size:0.9rem; color:#64748b; margin-top:2px;'>{html.escape(sub)}{mc_html}</div></div>
     </div>
@@ -238,8 +214,7 @@ def render_total(label, series):
         unsafe_allow_html=True)
 
 
-# --- MODULE LEVEL SIMULATION CORE (MUST BE OUTSIDE ANY FUNCTION FOR CACHING) ---
-
+# --- MODULE LEVEL SIMULATION CORE (CACHED) ---
 def calc_federal_tax(ordinary_income, is_mfj, year_offset, inflation_rate):
     infl_factor = (1 + inflation_rate / 100) ** year_offset
     std_deduction = (29200 if is_mfj else 14600) * infl_factor
@@ -296,7 +271,7 @@ def get_ss_multi(birth_year, claim_year):
         else:
             return 1.0 - (36 * (5 / 9 * 0.01)) - ((months_early - 36) * (5 / 12 * 0.01))
     elif claim_age > fra:
-        months_late = min((claim_age - fra) * 12, (70 - fra) * 12)  # Strict cap at age 70 relative to FRA
+        months_late = min((claim_age - fra) * 12, (70 - fra) * 12)  # Strict cap at age 70
         return 1.0 + (months_late * (2 / 3 * 0.01))
     return 1.0
 
@@ -720,13 +695,11 @@ def run_simulation(mkt_sequence, ctx):
                     ctx['infl_ed'] if cat == "Education" else ctx['infl'])
                 inflated_amt = amt * ((1 + cat_infl / 100) ** year_offset)
 
-                # Drop recurring lifestyle expenses if widow(er) -> Applies to lifestyle only
                 if ctx['has_spouse'] and not (is_my_alive and is_spouse_alive) and freq != "One-Time" and cat not in [
                     "Education", "Debt Payments", "Healthcare", "Insurance", "Housing / Rent"]:
                     if year >= ctx['primary_retire_year']:
                         inflated_amt *= WIDOW_EXPENSE_MULTIPLIER
 
-                # Medicare Cliff logic (Proportional Reduction)
                 primary_on_medicare = is_my_alive and my_current_age >= 65
                 spouse_on_medicare = ctx['has_spouse'] and is_spouse_alive and spouse_current_age >= 65
 
@@ -779,7 +752,7 @@ def run_simulation(mkt_sequence, ctx):
                         annual_inc += covered_by_529
                         yd[f"Income: Tax-Free 529 Withdrawal ({desc})"] = covered_by_529
 
-        # Global Medicare Gap applied exactly once per year if conditions met
+        # Global Medicare Gap
         if ctx['medicare_gap'] and is_retired and my_current_age < 65:
             subsidy_factor = min(1.0, max(0.0, pre_tax_ord / 100000.0))
             gap_cost = (MEDICARE_GAP_COST * subsidy_factor) * ((1 + ctx['infl_hc'] / 100) ** year_offset)
@@ -797,7 +770,7 @@ def run_simulation(mkt_sequence, ctx):
                 total_exp += ltc_cost_spouse
                 yd["Expense: Long Term Care Shock (Spouse)"] = ltc_cost_spouse
 
-        # Debt Amortization (Generic Liabilities)
+        # Debt Amortization
         debt_bal_total = 0
         for d in sim_debts:
             actual_paid = 0
@@ -904,7 +877,6 @@ def run_simulation(mkt_sequence, ctx):
                             a['bal'] -= convert
                             total_converted += convert
 
-                            # Tax is explicitly deducted from liquid cash to avoid silent waterfall accumulation
                             tax_cost = convert * est_tax_rate
                             for ca in sim_assets:
                                 if tax_cost <= 0: break
@@ -959,7 +931,7 @@ def run_simulation(mkt_sequence, ctx):
         num_medicare = (1 if is_my_alive and my_current_age >= 65 else 0) + (
             1 if is_spouse_alive and spouse_current_age >= 65 else 0)
         if num_medicare > 0:
-            magi_for_irmaa = pre_tax_ord  # IRS rules specify MAGI includes Roth conversions, but we add back QBI implicitly because pre_tax_ord didn't have QBI deducted
+            magi_for_irmaa = pre_tax_ord
             infl_f = (1 + ctx['infl'] / 100) ** year_offset
             t1, t2, t3, t4, t5 = 103000 * infl_f * (2 if active_mfj else 1), 129000 * infl_f * (
                 2 if active_mfj else 1), 161000 * infl_f * (2 if active_mfj else 1), 193000 * infl_f * (
@@ -1232,7 +1204,7 @@ def render_dashboard():
                                                    textfont=dict(color="black", size=12),
                                                    link=dict(source=source, target=target, value=value,
                                                              color=link_colors))])
-            fig_sankey.update_layout(height=650, margin=dict(l=0, r=0, t=30, b=0), font=dict(size=12))
+            fig_sankey.update_layout(height=800, margin=dict(l=0, r=0, t=30, b=0), font=dict(size=12))
             st.plotly_chart(fig_sankey, use_container_width=True)
 
 
@@ -1344,34 +1316,37 @@ def render_income():
     col_ai_inc, _ = st.columns([3, 1])
     with col_ai_inc:
         if st.button("✨ Auto-Estimate My Social Security (AI)", type="primary", use_container_width=True):
-            with st.spinner("Asking AI to estimate your Social Security benefits based on your age and income..."):
-                spouse_age = relativedelta(datetime.date.today(), st.session_state['spouse_dob']).years if \
-                st.session_state['has_spouse'] else 0
-                curr_inc = pd.to_numeric(edited_inc['Annual Amount ($)'], errors='coerce').fillna(0).sum()
-                if st.session_state['has_spouse']:
-                    prompt = f"User is {my_age} years old making ${curr_inc}/year. Spouse is {spouse_age} years old. Estimate realistic annual Social Security primary insurance amounts (PIA) at Full Retirement Age for both. Return JSON: {{'ss_amount_me': integer, 'ss_amount_spouse': integer}}"
-                else:
-                    prompt = f"User is {my_age} years old making ${curr_inc}/year. Estimate their annual Social Security primary insurance amount (PIA) at Full Retirement Age. Return JSON: {{'ss_amount_me': integer}}"
-                res = call_gemini_json(prompt)
-                if res:
-                    current_inc = edited_inc.to_dict('records')
-                    my_birth_year = st.session_state['my_dob'].year
-                    spouse_birth_year = st.session_state['spouse_dob'].year if st.session_state[
-                        'has_spouse'] else current_year
-                    if 'ss_amount_me' in res:
-                        current_inc.append(
-                            {"Description": "Estimated Social Security (Primary)", "Category": "Social Security",
-                             "Owner": "Me", "Annual Amount ($)": res['ss_amount_me'], "Start Year": my_birth_year + 67,
-                             "End Year": 2100, "Stop at Ret.?": False, "Override Growth (%)": None})
-                    if 'ss_amount_spouse' in res and st.session_state['has_spouse']:
-                        current_inc.append(
-                            {"Description": "Estimated Social Security (Spouse)", "Category": "Social Security",
-                             "Owner": "Spouse", "Annual Amount ($)": res['ss_amount_spouse'],
-                             "Start Year": spouse_birth_year + 67, "End Year": 2100, "Stop at Ret.?": False,
-                             "Override Growth (%)": None})
-                    st.session_state['income_data'] = current_inc
-                    mark_dirty()
-                    st.rerun()
+            try:
+                with st.spinner("Asking AI to estimate your Social Security benefits based on your age and income..."):
+                    spouse_age = relativedelta(datetime.date.today(), st.session_state['spouse_dob']).years if \
+                    st.session_state['has_spouse'] else 0
+                    curr_inc = pd.to_numeric(edited_inc['Annual Amount ($)'], errors='coerce').fillna(0).sum()
+                    if st.session_state['has_spouse']:
+                        prompt = f"User is {my_age} years old making ${curr_inc}/year. Spouse is {spouse_age} years old. Estimate realistic annual Social Security primary insurance amounts (PIA) at Full Retirement Age for both. Return JSON: {{'ss_amount_me': integer, 'ss_amount_spouse': integer}}"
+                    else:
+                        prompt = f"User is {my_age} years old making ${curr_inc}/year. Estimate their annual Social Security primary insurance amount (PIA) at Full Retirement Age. Return JSON: {{'ss_amount_me': integer}}"
+                    res = call_gemini_json(prompt)
+                    if res:
+                        current_inc = edited_inc.to_dict('records')
+                        my_birth_year = st.session_state['my_dob'].year
+                        spouse_birth_year = st.session_state['spouse_dob'].year if st.session_state[
+                            'has_spouse'] else current_year
+                        if 'ss_amount_me' in res:
+                            current_inc.append(
+                                {"Description": "Estimated Social Security (Primary)", "Category": "Social Security",
+                                 "Owner": "Me", "Annual Amount ($)": res['ss_amount_me'],
+                                 "Start Year": my_birth_year + 67, "End Year": 2100, "Stop at Ret.?": False,
+                                 "Override Growth (%)": None})
+                        if 'ss_amount_spouse' in res and st.session_state['has_spouse']:
+                            current_inc.append(
+                                {"Description": "Estimated Social Security (Spouse)", "Category": "Social Security",
+                                 "Owner": "Spouse", "Annual Amount ($)": res['ss_amount_spouse'],
+                                 "Start Year": spouse_birth_year + 67, "End Year": 2100, "Stop at Ret.?": False,
+                                 "Override Growth (%)": None})
+                        st.session_state['income_data'] = current_inc
+                        mark_dirty()
+            finally:
+                st.rerun()
 
 
 def render_assets():
@@ -2065,7 +2040,7 @@ def render_simulation():
                             color=link_colors
                         )
                     )])
-                    fig_sankey.update_layout(height=650, margin=dict(l=0, r=0, t=30, b=0), font=dict(size=12))
+                    fig_sankey.update_layout(height=800, margin=dict(l=0, r=0, t=30, b=0), font=dict(size=12))
                     st.plotly_chart(fig_sankey, use_container_width=True)
 
             # --- MONTE CARLO SECTION ---
@@ -2333,7 +2308,7 @@ def render_faq():
 
     ### 🏡 REAL ESTATE & MORTGAGES
     **Q: How does the app handle my mortgage?**
-    **A:** You simply enter three things: your current loan balance, your interest rate, and your monthly payment. The app then does something most calculators don't — it mathematically pays down your mortgage month by month, exactly as your bank would, separating out the interest and principal portions correctly. When the balance finally hits zero, the mortgage expense automatically disappears from your cash flow for every future year. You should NOT separately list your mortgage payment in the budget section — the app handles it entirely through your real estate entry.
+    **A:** You simply enter three things: your current loan balance, your interest rate, and your monthly payment. The app then does something most calculators dont — it mathematically pays down your mortgage month by month, exactly as your bank would, separating out the interest and principal portions correctly. When the balance finally hits zero, the mortgage expense automatically disappears from your cash flow for every future year. You should NOT separately list your mortgage payment in the budget section — the app handles it entirely through your real estate entry.
 
     **Q: What is "home equity" and how does it affect my net worth?**
     **A:** Home equity is simply what you'd have left over if you sold your home and paid off the mortgage: Market Value minus Mortgage Balance. If your home is worth $400,000 and you owe $250,000, you have $150,000 in equity. As the years go by, your equity grows in two ways: your mortgage balance decreases as you make payments, and your home's market value (hopefully) increases with property appreciation. The app tracks both of these automatically and includes your home equity in your total net worth calculation.
@@ -2440,7 +2415,7 @@ def render_faq():
 
     ### 🎲 MONTE CARLO SIMULATION
     **Q: What is Monte Carlo simulation in plain English?**
-    **A:** Imagine running your retirement plan 200 times in parallel, but each time the stock market behaves differently — sometimes great, sometimes terrible, sometimes mediocre. Monte Carlo simulation does exactly that, mathematically. It takes your real financial plan and runs it through hundreds of randomly generated market scenarios based on historical volatility patterns.
+    **A:** Imagine running your retirement plan 200 times in parallel, but each time the stock market behaves differently — sometimes great, sometimes terrible, sometimes mediocre. Monte Carlo simulation does execution that, mathematically. It takes your real financial plan and runs it through hundreds of randomly generated market scenarios based on historical volatility patterns.
 
     The result is a "probability of success" percentage — how often your plan survived without running out of money across all those scenarios. An 85% success rate means that in 85 out of 100 randomly generated futures, your money lasted. A 60% success rate means you're essentially flipping a coin, and you should probably adjust your plan.
 
