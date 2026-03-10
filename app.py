@@ -22,7 +22,7 @@ except ImportError:
 
 # --- CONFIG & SUPPRESSION ---
 warnings.simplefilter(action='ignore', category=FutureWarning)
-st.set_page_config(page_title="AI Retirement Planner Pro (Ver2)", layout="wide", page_icon="🏦")
+st.set_page_config(page_title="AI Retirement Planner Pro", layout="wide", page_icon="🏦")
 
 # --- GOOGLE ANALYTICS INJECTION ---
 GA_MEASUREMENT_ID = st.secrets.get("GA_MEASUREMENT_ID", "")
@@ -315,7 +315,7 @@ def render_total(label, text):
 
 c_title, c_logout = st.columns([4, 1])
 with c_title:
-    st.title("🏦 AI Retirement Planner Pro (Ver2)")
+    st.title("🏦 AI Retirement Planner Pro")
     st.markdown("##### *Your personal, AI-powered guide to a secure and stress-free retirement.*")
 with c_logout:
     st.markdown(
@@ -345,8 +345,6 @@ with st.expander("👨‍👩‍👧‍👦 1. About You & Your Family", expande
                            max_value=datetime.date.today())
     my_age = relativedelta(datetime.date.today(), my_dob).years
     my_birth_year = my_dob.year
-
-    curr_city = city_autocomplete("Where do you live? (City)", "curr_city", default_val=p_info.get('current_city', ''))
 
     st.divider()
     has_spouse = st.checkbox("Include a Spouse or Partner? (Enables joint tax brackets)",
@@ -628,8 +626,17 @@ budget_categories = ["Housing / Rent", "Transportation", "Food", "Utilities", "I
 # --- 4. LIFESTYLE CASH FLOWS ---
 with st.expander("💸 4. Lifetime Cash Flows (Budgets & Milestones)", expanded=False):
     st.markdown(
-        '<div class="info-text">💡 <strong>Unified Lifetime Cash Flows:</strong> Instead of separate budgets for "now" vs "retirement", enter all your expenses here and control exactly when they start and stop. Example: A car loan might "Start: Now" and "End: Custom Year (2028)".<br><br><strong>Healthcare Note:</strong> The simulation engine already handles major medical events (Medicare cliffs, Pre-Medicare gaps, IRMAA surcharges, and Long-Term Care). Only enter your baseline out-of-pocket medical costs here.<br><br><strong>AI Estimator:</strong> Click the AI button and it will automatically generate your baseline budget, phase out costs when kids leave home (Empty Nesting), and split your retirement into Go-Go, Slow-Go, and No-Go travel phases!</div>',
+        '<div class="info-text">💡 <strong>Using the Cash Flow Engine:</strong> We highly recommend clicking the <strong>✨ Auto-Estimate Budget & Milestones (AI)</strong> button below first. The AI will generate a complete baseline of lifetime expenses and milestones based on your family profile, current city, and retirement city. Once populated, you can add your own custom rows, modify the AI\'s amounts, or delete anything that doesn\'t fit your lifestyle.<br><br><strong>Healthcare Note:</strong> Assume you are covered by employer-sponsored healthcare while working. The simulation engine automatically builds in major post-retirement medical costs (like Pre-Medicare coverage gaps, Medicare premium cliffs at age 65, IRMAA surcharges, and Long-Term Care). You only need to enter modest baseline out-of-pocket costs for healthcare here.</div>',
         unsafe_allow_html=True)
+
+    c_loc1, c_loc2 = st.columns(2)
+    with c_loc1:
+        curr_city = city_autocomplete("Current City", "curr_city", default_val=p_info.get('current_city', ''))
+    with c_loc2:
+        ret_city = city_autocomplete("Retirement City (Optional)", "retire_city",
+                                     default_val=ud.get('retire_city', curr_city))
+
+    st.divider()
 
     # --- MIGRATION LOGIC (Old separate lists to unified list) ---
     if 'lifetime_expenses' not in st.session_state:
@@ -699,7 +706,7 @@ with st.expander("💸 4. Lifetime Cash Flows (Budgets & Milestones)", expanded=
                 locked_desc = [x['Description'] for x in locked]
                 wealth_ctx = f"The household has a current annual pre-tax income of ${curr_inc_total:,.0f} and liquid assets totaling ${liq_ast_total:,.0f}. VERY IMPORTANT: While you should scale the budget to reflect this wealth, assume these users are savvy spenders and aggressive savers (comfortable but smart with money), so avoid over-inflating lifestyle costs unnecessarily."
                 allowed_cats = ", ".join(budget_categories)
-                prompt = f"City: {curr_city}. Family: {k_ctx}. Current Year is {current_year}. {wealth_ctx} Generate a comprehensive list of missing living expenses AND expected future life milestones (like college or weddings). {ai_exclusion} CRITICAL INSTRUCTIONS: 1) Medical expenses (IRMAA, Medicare Cliff, Pre-Medicare gap, LTC) are handled automatically by the simulation engine; only provide modest baseline out-of-pocket healthcare costs. 2) Model 'Empty Nesting': phase out child-heavy groceries and utility expenses using 'Custom Year' End Phases when the youngest child turns 18, and create new lower-cost rows starting that same year. 3) Model Retirement Lifestyle Phases: split travel and entertainment into 'Go-Go Years' (high spend, starts at retirement, lasts 10 years), 'Slow-Go Years' (medium spend, lasts next 10 years), and 'No-Go Years' (low spend) using 'Custom Year' Start/End phases. Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (MUST be exactly one of: {allowed_cats}. If unsure, default to 'Other'), 'Frequency' (Monthly/Yearly/One-Time), 'Amount ($)' (number), 'Start Phase' (Now/At Retirement/Custom Year), 'Start Year' (integer), 'End Phase' (End of Life/At Retirement/Custom Year), 'End Year' (integer), and 'AI Estimate?' (true)."
+                prompt = f"Current City: {curr_city}. Planned Retirement City: {ret_city}. Family: {k_ctx}. Current Year is {current_year}. {wealth_ctx} Generate a comprehensive list of missing living expenses AND expected future life milestones (like college or weddings). {ai_exclusion} CRITICAL INSTRUCTIONS: 1) Medical expenses (IRMAA, Medicare Cliff, Pre-Medicare gap, LTC) are handled automatically by the simulation engine; only provide modest baseline out-of-pocket healthcare costs. 2) Model 'Empty Nesting': phase out child-heavy groceries and utility expenses using 'Custom Year' End Phases when the youngest child turns 18, and create new lower-cost rows starting that same year. 3) Model Retirement Lifestyle Phases: split travel and entertainment into 'Go-Go Years' (high spend, starts at retirement, lasts 10 years, calculate costs based on {ret_city}), 'Slow-Go Years' (medium spend, lasts next 10 years), and 'No-Go Years' (low spend) using 'Custom Year' Start/End phases. Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (MUST be exactly one of: {allowed_cats}. If unsure, default to 'Other'), 'Frequency' (Monthly/Yearly/One-Time), 'Amount ($)' (number), 'Start Phase' (Now/At Retirement/Custom Year), 'Start Year' (integer), 'End Phase' (End of Life/At Retirement/Custom Year), 'End Year' (integer), and 'AI Estimate?' (true)."
                 res = call_gemini_json(prompt)
                 if res and isinstance(res, list) and len(res) > 0:
                     st.session_state['lifetime_expenses'] = locked + res
@@ -800,7 +807,8 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
         cur_t = ai_number_input("Current State Tax (%)", 'current_tax_rate', 5.0,
                                 f"User lives in {curr_city} with ${curr_inc_total:,.0f} income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'current_tax_rate': float}}",
                                 ac8)
-        ret_city_state = st.session_state.get('retire_city_input', ud.get('retire_city', curr_city))
+
+        ret_city_state = st.session_state.get('retire_city_input', ret_city)
         ret_t = ai_number_input("Retire State Tax (%)", 'retire_tax_rate', 0.0,
                                 f"User plans to retire in {ret_city_state} with estimated retirement income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'retire_tax_rate': float}}",
                                 ac9)
@@ -944,24 +952,6 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                          "v_growth": safe_num(b.get("Override Val. Growth (%)"), mkt),
                          "d_growth": safe_num(b.get("Override Dist. Growth (%)"), inc_g)} for b in
                         edited_biz.to_dict('records') if b.get("Business Name")]
-
-        curr_exp_by_cat = {}
-        for r in edited_c.to_dict('records'):
-            if r.get("Description") and (
-            r.get("Category") not in ["Housing / Rent", "Debt Payments"] if owns_home else r.get(
-                    "Category") != "Debt Payments"):
-                cat = r.get("Category", "Other")
-                amt = safe_num(r.get("Amount ($)")) * (12 if r.get("Frequency") == "Monthly" else 1)
-                curr_exp_by_cat[cat] = curr_exp_by_cat.get(cat, 0) + amt
-
-        ret_exp_by_cat = {}
-        for r in edited_r.to_dict('records'):
-            if r.get("Description") and (
-            r.get("Category") not in ["Housing / Rent", "Debt Payments"] if owns_home else r.get(
-                    "Category") != "Debt Payments"):
-                cat = r.get("Category", "Other")
-                amt = safe_num(r.get("Amount ($)")) * (12 if r.get("Frequency") == "Monthly" else 1)
-                ret_exp_by_cat[cat] = ret_exp_by_cat.get(cat, 0) + amt
 
         current_year = datetime.date.today().year
         my_life_exp_val = my_life_exp if my_life_exp else 95
@@ -1208,6 +1198,11 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                     desc = str(ev.get("Description", "")).strip()
                     if not desc: continue
 
+                    # Exclude housing/debt if owned (to prevent double counting)
+                    cat = ev.get("Category", "Other")
+                    if owns_home and cat in ["Housing / Rent", "Debt Payments"]: continue
+                    if not owns_home and cat == "Debt Payments": continue
+
                     freq = ev.get("Frequency", "Monthly")
                     amt = safe_num(ev.get("Amount ($)", 0))
                     if freq == "Monthly": amt *= 12
@@ -1234,7 +1229,6 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                         is_active = (actual_start <= year <= actual_end)
 
                     if is_active:
-                        cat = ev.get("Category", "Other")
                         cat_infl = infl_hc if cat in ["Healthcare", "Insurance"] else (
                             infl_ed if cat == "Education" else infl)
                         inflated_amt = amt * ((1 + cat_infl / 100) ** year_offset)
@@ -1249,12 +1243,13 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                             inflated_amt *= 0.50
 
                         total_exp += inflated_amt
-                        yd[f"Expense: {cat} ({desc})"] = inflated_amt
 
-                        # One-time event milestones marker
                         if freq == "One-Time":
+                            yd[f"Expense: Milestone ({desc})"] = inflated_amt
                             if year not in milestones_by_year: milestones_by_year[year] = []
                             milestones_by_year[year].append({"desc": desc, "amt": inflated_amt, "type": "normal"})
+                        else:
+                            yd[f"Expense: {cat}"] = yd.get(f"Expense: {cat}", 0) + inflated_amt
 
                         # 529 Plan Routing Logic
                         is_education = any(
