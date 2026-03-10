@@ -940,7 +940,8 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
             {"bal": safe_num(d.get("Current Balance ($)")), "pmt": safe_num(d.get("Monthly Payment ($)")) * 12,
              "rate": safe_num(d.get("Interest Rate (%)")) / 100, "name": d.get("Debt Name")} for d in
             edited_debt.to_dict('records') if d.get("Debt Name")]
-        base_sim_re = [{"val": safe_num(r.get("Market Value ($)")), "debt": safe_num(r.get("Mortgage Balance ($)")),
+        base_sim_re = [{"name": r.get("Property Name", "Property"), "is_primary": r.get("Is Primary Residence?", False),
+                        "val": safe_num(r.get("Market Value ($)")), "debt": safe_num(r.get("Mortgage Balance ($)")),
                         "pmt": safe_num(r.get("Mortgage Payment ($)")) * 12,
                         "exp": safe_num(r.get("Monthly Expenses ($)")) * 12,
                         "rent": safe_num(r.get("Monthly Rent ($)")) * 12,
@@ -1163,7 +1164,9 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                     yd["Income: RMDs"] = rmd_income
 
                 # Business & Real Estate
-                cur_biz_val, biz_dist_total, re_equity, re_exp_total = 0, 0, 0, 0
+                cur_biz_val, biz_dist_total, re_equity = 0, 0, 0
+                total_exp = 0  # Initialize general expenses
+
                 for b in sim_biz:
                     if year_offset > 0:
                         b['val'] *= (1 + b['v_growth'] / 100)
@@ -1175,30 +1178,50 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                     yd["Income: Biz Dist"] = yd.get("Income: Biz Dist", 0) + b['dist']
 
                 for r in sim_re:
-                    if year_offset > 0: r['rent'] *= (1 + r['r_growth'] / 100); r['exp'] *= (1 + infl / 100); r[
-                        'val'] *= (1 + r['v_growth'] / 100)
-                    annual_inc += r['rent']
-                    yd["Income: RE Rent"] = yd.get("Income: RE Rent", 0) + (r['rent'] if r['rent'] > 0 else 0)
-                    re_exp_total += r['exp']
-                    yd["Expense: RE Upkeep/Tax"] = yd.get("Expense: RE Upkeep/Tax", 0) + (
-                        r['exp'] if r['exp'] > 0 else 0)
+                    if year_offset > 0:
+                        r['rent'] *= (1 + r['r_growth'] / 100)
+                        r['exp'] *= (1 + infl / 100)
+                        r['val'] *= (1 + r['v_growth'] / 100)
 
                     interest_paid = 0
                     if r['debt'] > 0:
                         interest_paid = r['debt'] * r['rate']
                         principal = max(0, r['pmt'] - interest_paid)
                         r['debt'] = max(0, r['debt'] - principal)
-                        re_exp_total += r['pmt']
-                        yd["Expense: RE Mortgage"] = yd.get("Expense: RE Mortgage", 0) + r['pmt']
+
                     re_equity += (r['val'] - r['debt'])
+
+                    # Cash flow routing: Primary vs Investment
+                    if r['is_primary']:
+                        # Primary home: expenses flow directly to general budget.
+                        primary_costs = r['exp'] + r['pmt']
+                        total_exp += primary_costs
+                        yd["Expense: Primary Home (Mortgage & Upkeep)"] = yd.get(
+                            "Expense: Primary Home (Mortgage & Upkeep)", 0) + primary_costs
+
+                        # If you are house-hacking your primary residence, add rent to income
+                        if r['rent'] > 0:
+                            annual_inc += r['rent']
+                            yd["Income: Primary Home Rent"] = yd.get("Income: Primary Home Rent", 0) + r['rent']
+                    else:
+                        # Investment Property: Treated in a bubble
+                        net_re_cashflow = r['rent'] - (r['exp'] + r['pmt'])
+                        if net_re_cashflow > 0:
+                            # Positive cash flow feeds into your wallet
+                            annual_inc += net_re_cashflow
+                            yd["Income: Net Investment RE Cashflow"] = yd.get("Income: Net Investment RE Cashflow",
+                                                                              0) + net_re_cashflow
+                        elif net_re_cashflow < 0:
+                            # Negative cash flow (loss) drains your wallet
+                            total_exp += abs(net_re_cashflow)
+                            yd["Expense: Net Investment RE Loss"] = yd.get("Expense: Net Investment RE Loss", 0) + abs(
+                                net_re_cashflow)
 
                     # Schedule E Proxy: Real Estate is taxed on NET income, not gross.
                     taxable_rent = max(0, r['rent'] - r['exp'] - interest_paid)
                     pre_tax_ord += taxable_rent
 
                 # --- UNIFIED LIFETIME CASH FLOWS ENGINE ---
-                total_exp = re_exp_total
-
                 # Check for Medicare Gap trigger specifically for Health insurance
                 medicare_gap_applied_this_year = False
 
