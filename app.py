@@ -58,16 +58,17 @@ st.markdown("""
     --shadow-sm: 0 1px 3px rgba(0,0,0,0.08); --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
 }
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
 h1 { font-family: 'Inter', sans-serif; font-size: 2.2rem !important; font-weight: 900 !important; background: linear-gradient(135deg, var(--primary-dark), #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; }
 h2 { font-family: 'Inter', sans-serif; font-weight: 800 !important; color: var(--text-primary) !important; }
 h3 { font-family: 'Inter', sans-serif; font-weight: 700 !important; color: var(--text-primary) !important; }
 [data-testid="stSidebar"] { background: var(--text-primary) !important; border-right: none !important; }
-[data-testid="stSidebar"] * { color: white !important; font-family: 'Inter', sans-serif; }
+[data-testid="stSidebar"] * { color: white !important; }
 [data-testid="stSidebar"] .stRadio label { padding: 10px 16px !important; border-radius: var(--radius-sm) !important; transition: background 0.15s ease !important; cursor: pointer !important; }
 [data-testid="stSidebar"] .stRadio label:hover { background: rgba(255,255,255,0.1) !important; }
 [data-testid="stMetric"] { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: var(--radius-md) !important; padding: 20px !important; box-shadow: var(--shadow-sm) !important; }
 [data-testid="stMetricValue"] { font-family: 'Inter', sans-serif; color: var(--primary-dark) !important; font-size: 1.75rem !important; font-weight: 800 !important; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important; }
-[data-testid="stDataEditor"] { font-family: 'Inter', sans-serif; border-radius: var(--radius-md) !important; border: 1px solid var(--border) !important; overflow: hidden !important; box-shadow: var(--shadow-sm) !important; }
+[data-testid="stDataEditor"] { border-radius: var(--radius-md) !important; border: 1px solid var(--border) !important; overflow: hidden !important; box-shadow: var(--shadow-sm) !important; }
 [data-testid="stDataEditor"] tr:hover td { background: #f8fafc !important; }
 [data-testid="stTabs"] button { font-family: 'Inter', sans-serif; font-weight: 600 !important; border-radius: var(--radius-sm) var(--radius-sm) 0 0 !important; }
 [data-testid="stTextInput"] input, [data-testid="stNumberInput"] input { font-family: 'Inter', sans-serif; border-radius: var(--radius-sm) !important; border-color: var(--border) !important; font-size: 0.95rem !important; transition: border-color 0.15s ease, box-shadow 0.15s ease !important; }
@@ -415,7 +416,7 @@ def get_completion_score():
     if len(st.session_state.get('income_data', [])) > 0: score += 20
     if len(st.session_state.get('liquid_assets_data', [])) > 0: score += 20
     if len(st.session_state.get('lifetime_expenses', [])) > 0: score += 20
-    if 'df_sim' in st.session_state and not st.session_state['df_sim'].empty: score += 20
+    if 'df_sim_nominal' in st.session_state and not st.session_state['df_sim_nominal'].empty: score += 20
     return min(100, score)
 
 
@@ -1165,6 +1166,7 @@ def run_simulation(mkt_sequence, ctx):
                             a['bal'] -= convert
                             total_converted += convert
 
+                            # Tax is explicitly deducted from liquid cash to avoid silent waterfall accumulation
                             tax_cost = convert * est_tax_rate
                             for ca in sim_assets:
                                 if tax_cost <= 0: break
@@ -1219,7 +1221,7 @@ def run_simulation(mkt_sequence, ctx):
         num_medicare = (1 if is_my_alive and my_current_age >= 65 else 0) + (
             1 if is_spouse_alive and spouse_current_age >= 65 else 0)
         if num_medicare > 0:
-            magi_for_irmaa = pre_tax_ord
+            magi_for_irmaa = pre_tax_ord  # IRS rules specify MAGI includes Roth conversions, but we add back QBI implicitly because pre_tax_ord didn't have QBI deducted
             infl_f = (1 + ctx['infl'] / 100) ** year_offset
             t1, t2, t3, t4, t5 = 103000 * infl_f * (2 if active_mfj else 1), 129000 * infl_f * (
                 2 if active_mfj else 1), 161000 * infl_f * (2 if active_mfj else 1), 193000 * infl_f * (
@@ -1273,46 +1275,11 @@ def run_simulation(mkt_sequence, ctx):
         elif net_cash_flow < 0:
             shortfall = abs(net_cash_flow)
 
-            def _withdraw_local(a, current_shortfall, tax_treatment):
-                if a['bal'] <= 0 or current_shortfall <= 0: return current_shortfall, 0.0
-
-                eff_tax = 0.0
-                if tax_treatment == 'cg':
-                    is_step_up = ctx['has_spouse'] and (not is_my_alive or not is_spouse_alive)
-                    eff_tax = 0.0 if is_step_up else (
-                                get_ltcg_rate(tax_base_ord, active_mfj, year_offset, ctx['infl']) + (
-                                    state_tax_rate / 100.0))
-                elif tax_treatment == 'ordinary':
-                    o_acct = a.get('Owner', 'Me')
-                    o_age = my_current_age if o_acct in ['Me', 'Joint'] else spouse_current_age
-                    o_ret_yr = ctx['primary_retire_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_retire_year']
-                    o_birth = ctx['my_birth_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_birth_year']
-                    rule_of_55 = (year >= o_ret_yr) and ((o_ret_yr - o_birth) >= 55)
-                    penalty = 0.10 if (o_age < 59.5 and not rule_of_55) else 0.0
-                    eff_tax = min(marginal_rate + (state_tax_rate / 100.0) + penalty, 0.99)
-                elif tax_treatment == 'free':
-                    o_acct = a.get('Owner', 'Me')
-                    o_age = my_current_age if o_acct in ['Me', 'Joint'] else spouse_current_age
-                    o_ret_yr = ctx['primary_retire_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_retire_year']
-                    o_birth = ctx['my_birth_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_birth_year']
-                    rule_of_55 = (year >= o_ret_yr) and ((o_ret_yr - o_birth) >= 55)
-                    penalty = 0.10 if (a.get('Type') in ['Roth 401(k)',
-                                                         'Roth IRA'] and o_age < 59.5 and not rule_of_55) else 0.0
-                    eff_tax = min(penalty, 0.99)
-
-                req_gross = current_shortfall / max(0.01, (1.0 - eff_tax))
-                withdrawn = min(a['bal'], req_gross)
-                a['bal'] -= withdrawn
-                tax_inc = withdrawn * eff_tax
-                net_cash = withdrawn - tax_inc
-                yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + tax_inc
-                yd[f"Income: Withdrawal ({a.get('Account Name', 'Account')})"] = withdrawn
-                return current_shortfall - net_cash, tax_inc
-
             for a in sim_assets:
                 if shortfall <= 0: break
                 if a.get('Type') in ['Checking/Savings', 'HYSA', 'Unallocated Cash']:
-                    shortfall, _ = _withdraw_local(a, shortfall, 'free')
+                    shortfall, _ = _withdraw(a, shortfall, 'free', ctx, my_current_age, spouse_current_age, active_mfj,
+                                             year_offset, tax_base_ord, marginal_rate, state_tax_rate, year)
 
             if shortfall > 0 and not cash_depleted and not any(a['bal'] > 0 for a in sim_assets if
                                                                a.get('Type') in ['Checking/Savings', 'HYSA',
@@ -1325,13 +1292,11 @@ def run_simulation(mkt_sequence, ctx):
             for a in sim_assets:
                 if shortfall <= 0: break
                 if a.get('Type') == 'Brokerage (Taxable)':
-                    if not tapped_brokerage:
-                        if year not in milestones_by_year: milestones_by_year[year] = []
-                        milestones_by_year[year].append(
-                            {"desc": "📉 Began Drawing from Taxable Brokerage", "amt": 0, "type": "system"})
-                        tapped_brokerage = True
-                    shortfall, t_inc = _withdraw_local(a, shortfall, 'cg')
+                    shortfall, t_inc = _withdraw(a, shortfall, 'cg', ctx, my_current_age, spouse_current_age,
+                                                 active_mfj, year_offset, tax_base_ord, marginal_rate, state_tax_rate,
+                                                 year)
                     total_tax += t_inc
+                    yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
 
             seq = ['Traditional 401(k)', 'Traditional IRA', 'Roth 401(k)', 'Roth IRA', 'HSA', 'Crypto', '529 Plan',
                    'Other'] if 'Standard' in ctx['active_withdrawal_strategy'] else ['Roth 401(k)', 'Roth IRA', 'HSA',
@@ -1342,18 +1307,11 @@ def run_simulation(mkt_sequence, ctx):
                 if shortfall <= 0: break
                 for a in sim_assets:
                     if a.get('Type') == t:
-                        if 'Traditional' in t and not tapped_trad:
-                            if year not in milestones_by_year: milestones_by_year[year] = []
-                            milestones_by_year[year].append(
-                                {"desc": "📉 Began Drawing from Traditional 401(k)/IRA", "amt": 0, "type": "system"})
-                            tapped_trad = True
-                        if 'Roth' in t and not tapped_roth:
-                            if year not in milestones_by_year: milestones_by_year[year] = []
-                            milestones_by_year[year].append(
-                                {"desc": "📉 Began Drawing from Roth/Tax-Free Assets", "amt": 0, "type": "system"})
-                            tapped_roth = True
-                        shortfall, t_inc = _withdraw_local(a, shortfall, 'ordinary' if 'Traditional' in t else 'free')
+                        shortfall, t_inc = _withdraw(a, shortfall, 'ordinary' if 'Traditional' in t else 'free', ctx,
+                                                     my_current_age, spouse_current_age, active_mfj, year_offset,
+                                                     tax_base_ord, marginal_rate, state_tax_rate, year)
                         total_tax += t_inc
+                        yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
 
             if shortfall > 0:
                 unfunded_debt_bal += shortfall
@@ -1447,6 +1405,10 @@ def render_dashboard():
     st.session_state['df_sim_display'] = df_sim
 
     final_nw = df_sim.iloc[-1]['Net Worth']
+    current_nw = df_sim.iloc[0]['Net Worth']
+    ret_nw_rows = df_sim[df_sim['Year'] == sim_ctx['primary_retire_year']]
+    ret_nw = ret_nw_rows['Net Worth'].values[0] if not ret_nw_rows.empty else current_nw
+
     shortfall_mask = df_sim['Unfunded Debt'] > 0
     deplete_year = df_sim[shortfall_mask]['Year'].min() if not df_sim[shortfall_mask].empty else None
     deplete_age = df_sim[shortfall_mask]['Age (Primary)'].min() if not df_sim[shortfall_mask].empty else None
@@ -1466,11 +1428,9 @@ def render_dashboard():
         stat_card("Years to Retirement", max(0, sim_ctx['primary_retire_year'] - sim_ctx['current_year']), icon="⏳",
                   color="indigo")
     with col2:
-        stat_card("Current Net Worth", f"${df_sim.iloc[0]['Net Worth']:,.0f}", icon="💵", color="emerald")
+        stat_card("Current Net Worth", f"${current_nw:,.0f}", icon="💵", color="emerald")
     with col3:
-        stat_card("Retirement Net Worth",
-                  f"${df_sim[df_sim['Year'] == sim_ctx['primary_retire_year']]['Net Worth'].values[0]:,.0f}", icon="🚀",
-                  color="amber")
+        stat_card("Retirement Net Worth", f"${ret_nw:,.0f}", icon="🚀", color="amber")
     with col4:
         stat_card("End of Plan Net Worth", f"${final_nw:,.0f}", icon="🏁", color="rose")
 
@@ -1847,9 +1807,6 @@ def render_assets():
     c_met2.metric("Business Equity", f"${biz_eq:,.0f}")
     c_met3.metric("Liquid Assets", f"${liq_ast:,.0f}")
     c_met4.metric("Other Debt", f"${total_debt:,.0f}")
-    st.markdown(
-        f"<div style='text-align: center; padding: 15px; margin-top: 15px; background: #eff6ff; border-radius: 8px;'><h3 style='margin:0; color: #1e293b;'>Total Estimated Net Worth: <span style='color: #3b82f6;'>${net_worth:,.0f}</span></h3></div>",
-        unsafe_allow_html=True)
 
 
 def render_cashflows():
@@ -2127,23 +2084,6 @@ def render_simulation():
             st.session_state['df_sim_nominal'], st.session_state['df_det'], st.session_state[
                 'df_nw'] = df_sim_nominal, df_det_nominal, df_nw_nominal
 
-            final_nw = df_sim.iloc[-1]['Net Worth']
-            shortfall_mask = df_sim['Unfunded Debt'] > 0
-            deplete_year = df_sim[shortfall_mask]['Year'].min() if not df_sim[shortfall_mask].empty else None
-            deplete_age = df_sim[shortfall_mask]['Age (Primary)'].min() if not df_sim[shortfall_mask].empty else None
-
-            c_status, c_ai_btn = st.columns([3, 2])
-            with c_status:
-                if deplete_year is not None:
-                    st.error(
-                        f"🔴 **Liquidity Crisis:** You completely exhaust your liquid cash in **Year {int(deplete_year)}** (Age {int(deplete_age)}) and begin accumulating high-interest shortfall debt.")
-                elif final_nw >= 1000000:
-                    st.success(
-                        f"🟢 **On Track:** Projected Net Worth at timeline end is **${final_nw:,.0f}**. Your assets comfortably outlive your life expectancy.")
-                elif final_nw > 0:
-                    st.warning(
-                        f"🟡 **Caution:** Projected Net Worth at timeline end is **${final_nw:,.0f}**. You are solvent, but with a narrow margin of safety.")
-
             if view_todays_dollars:
                 current_year = datetime.date.today().year
                 discounts = (1 + sim_ctx['infl'] / 100) ** (df_sim['Year'] - current_year)
@@ -2160,6 +2100,27 @@ def render_simulation():
                 df_nw[cols_nw] = df_nw[cols_nw].div(discounts, axis=0)
 
             st.session_state['df_sim_display'] = df_sim
+
+            final_nw = df_sim.iloc[-1]['Net Worth']
+            current_nw = df_sim.iloc[0]['Net Worth']
+            ret_nw_rows = df_sim[df_sim['Year'] == sim_ctx['primary_retire_year']]
+            ret_nw = ret_nw_rows['Net Worth'].values[0] if not ret_nw_rows.empty else current_nw
+
+            shortfall_mask = df_sim['Unfunded Debt'] > 0
+            deplete_year = df_sim[shortfall_mask]['Year'].min() if not df_sim[shortfall_mask].empty else None
+            deplete_age = df_sim[shortfall_mask]['Age (Primary)'].min() if not df_sim[shortfall_mask].empty else None
+
+            c_status, c_ai_btn = st.columns([3, 2])
+            with c_status:
+                if deplete_year is not None:
+                    st.error(
+                        f"🔴 **Liquidity Crisis:** You completely exhaust your liquid cash in **Year {int(deplete_year)}** (Age {int(deplete_age)}) and begin accumulating high-interest shortfall debt.")
+                elif final_nw >= 1000000:
+                    st.success(
+                        f"🟢 **On Track:** Projected Net Worth at timeline end is **${final_nw:,.0f}**. Your assets comfortably outlive your life expectancy.")
+                elif final_nw > 0:
+                    st.warning(
+                        f"🟡 **Caution:** Projected Net Worth at timeline end is **${final_nw:,.0f}**. You are solvent, but with a narrow margin of safety.")
 
             if HAS_PLOTLY:
                 current_year = datetime.date.today().year
@@ -2272,6 +2233,7 @@ def render_simulation():
                 fig_cf = apply_chart_theme(fig_cf)
                 st.plotly_chart(fig_cf, use_container_width=True)
 
+            # --- MONTE CARLO SECTION ---
             st.divider()
             st.subheader("🎲 Monte Carlo Risk Analysis")
             st.markdown(
@@ -2285,66 +2247,68 @@ def render_simulation():
 
             with col_mc3:
                 st.markdown("<div style='height: 27px;'></div>", unsafe_allow_html=True)
-                if st.button("✨ Run Monte Carlo Simulation", type="primary", use_container_width=True):
-                    with st.spinner(f"Rendering {mc_runs} parallel market sequences (Multi-threaded)..."):
-                        success_count = 0
-                        all_nw_paths = []
-                        mc_progress = st.progress(0)
+                run_mc = st.button("✨ Run Monte Carlo Simulation", type="primary", use_container_width=True)
 
-                        random_sequences = [
-                            [random.gauss(sim_ctx['mkt'], mc_vol) for _ in range(sim_ctx['max_years'] + 1)] for _ in
-                            range(mc_runs)]
+            if run_mc:
+                with st.spinner(f"Rendering {mc_runs} parallel market sequences (Multi-threaded)..."):
+                    success_count = 0
+                    all_nw_paths = []
+                    mc_progress = st.progress(0)
 
-                        try:
-                            with ThreadPoolExecutor(max_workers=min(mc_runs, 8)) as executor:
-                                futures = [executor.submit(run_simulation, seq, sim_ctx) for seq in random_sequences]
+                    random_sequences = [[random.gauss(sim_ctx['mkt'], mc_vol) for _ in range(sim_ctx['max_years'] + 1)]
+                                        for _ in range(mc_runs)]
 
-                                for i, future in enumerate(futures):
-                                    res, _, _, _ = future.result()
-                                    if res:
-                                        nw_path = [step["Net Worth"] for step in res]
-                                        all_nw_paths.append(nw_path)
-                                        if res[-1].get("Unfunded Debt", 0) <= 0: success_count += 1
-                                    if i % max(1, mc_runs // 20) == 0: mc_progress.progress(min(1.0, (i + 1) / mc_runs))
-                        except Exception as e:
-                            st.error(f"Simulation failed during multi-threading: {e}")
-                        finally:
-                            mc_progress.empty()
+                    try:
+                        with ThreadPoolExecutor(max_workers=min(mc_runs, 8)) as executor:
+                            futures = [executor.submit(run_simulation, seq, sim_ctx) for seq in random_sequences]
 
-                        if all_nw_paths:
-                            success_rate = (success_count / len(all_nw_paths)) * 100
-                            st.session_state['mc_success_rate'] = success_rate
+                            for i, future in enumerate(futures):
+                                res, _, _, _ = future.result()
+                                if res:
+                                    nw_path = [step["Net Worth"] for step in res]
+                                    all_nw_paths.append(nw_path)
+                                    if res[-1].get("Unfunded Debt", 0) <= 0: success_count += 1
+                                if i % max(1, mc_runs // 20) == 0: mc_progress.progress(min(1.0, (i + 1) / mc_runs))
+                    except Exception as e:
+                        st.error(f"Simulation failed during multi-threading: {e}")
+                    finally:
+                        mc_progress.empty()
 
-                            path_len = len(all_nw_paths[0])
-                            current_year = datetime.date.today().year
-                            years_list = [sim_ctx['current_year'] + i for i in range(path_len)]
-                            p10, p50, p90 = [], [], []
+                    if all_nw_paths:
+                        success_rate = (success_count / len(all_nw_paths)) * 100
+                        st.session_state['mc_success_rate'] = success_rate
 
-                            for i in range(path_len):
-                                step_vals = sorted([path[i] for path in all_nw_paths])
-                                discount = (1 + sim_ctx['infl'] / 100) ** i if view_todays_dollars else 1.0
-                                p10.append(step_vals[int(len(all_nw_paths) * 0.10)] / discount)
-                                p50.append(step_vals[int(len(all_nw_paths) * 0.50)] / discount)
-                                p90.append(step_vals[int(len(all_nw_paths) * 0.90)] / discount)
+                        path_len = len(all_nw_paths[0])
+                        current_year = datetime.date.today().year
+                        years_list = [sim_ctx['current_year'] + i for i in range(path_len)]
+                        p10, p50, p90 = [], [], []
 
-                            st.markdown(
-                                f"<h3 style='text-align: center; color: {'#10b981' if success_rate > 80 else '#f59e0b' if success_rate > 50 else '#f43f5e'};'>Probability of Success: {success_rate:.1f}%</h3>",
-                                unsafe_allow_html=True)
+                        for i in range(path_len):
+                            step_vals = sorted([path[i] for path in all_nw_paths])
+                            discount = (1 + sim_ctx['infl'] / 100) ** i if view_todays_dollars else 1.0
+                            p10.append(step_vals[int(len(all_nw_paths) * 0.10)] / discount)
+                            p50.append(step_vals[int(len(all_nw_paths) * 0.50)] / discount)
+                            p90.append(step_vals[int(len(all_nw_paths) * 0.90)] / discount)
 
-                            if HAS_PLOTLY:
-                                fig_mc = go.Figure()
-                                fig_mc.add_trace(go.Scatter(x=years_list, y=p90, mode='lines',
-                                                            name='90th Percentile (Favorable Timeline)',
-                                                            line=dict(color='#10b981', dash='dot')))
-                                fig_mc.add_trace(go.Scatter(x=years_list, y=p50, mode='lines',
-                                                            name='50th Percentile (Median Expectation)',
-                                                            line=dict(color='#3b82f6', width=3)))
-                                fig_mc.add_trace(go.Scatter(x=years_list, y=p10, mode='lines',
-                                                            name='10th Percentile (Severe Contraction)',
-                                                            line=dict(color='#f43f5e', dash='dot')))
-                                fig_mc = apply_chart_theme(fig_mc, "Stochastic Net Worth Projections")
-                                st.plotly_chart(fig_mc, use_container_width=True)
+                        st.markdown(
+                            f"<h3 style='text-align: center; color: {'#10b981' if success_rate > 80 else '#f59e0b' if success_rate > 50 else '#f43f5e'};'>Probability of Success: {success_rate:.1f}%</h3>",
+                            unsafe_allow_html=True)
 
+                        if HAS_PLOTLY:
+                            fig_mc = go.Figure()
+                            fig_mc.add_trace(go.Scatter(x=years_list, y=p90, mode='lines',
+                                                        name='90th Percentile (Favorable Timeline)',
+                                                        line=dict(color='#10b981', dash='dot')))
+                            fig_mc.add_trace(go.Scatter(x=years_list, y=p50, mode='lines',
+                                                        name='50th Percentile (Median Expectation)',
+                                                        line=dict(color='#3b82f6', width=3)))
+                            fig_mc.add_trace(go.Scatter(x=years_list, y=p10, mode='lines',
+                                                        name='10th Percentile (Severe Contraction)',
+                                                        line=dict(color='#f43f5e', dash='dot')))
+                            fig_mc = apply_chart_theme(fig_mc, "Stochastic Net Worth Projections")
+                            st.plotly_chart(fig_mc, use_container_width=True)
+
+            # --- DATA AUDIT TABLES ---
             st.divider()
             csv = df_sim_nominal.to_csv(index=False).encode('utf-8')
             st.download_button(label="📥 Download Full Simulation (.csv)", data=csv,
@@ -2392,6 +2356,7 @@ def render_ai():
             "Shortfall Year": str(deplete_year) if deplete_year is not None else "None"
         }
 
+        # Compress 50 years of data into 5-year leaps so the AI can digest the timeline without context limits
         timeline_summary = []
         for idx, row in df_sim.iloc[::5].iterrows():
             timeline_summary.append({
@@ -2399,10 +2364,12 @@ def render_ai():
                 "Expenses": int(row["Annual Expenses"]), "Taxes": int(row["Annual Taxes"]),
                 "Liquid_Assets": int(row["Liquid Assets"]), "Net_Worth": int(row["Net Worth"])
             })
-        timeline_summary.append(
-            {"Age": int(df_sim.iloc[-1]["Age (Primary)"]), "Income": int(df_sim.iloc[-1]["Annual Income"]),
-             "Expenses": int(df_sim.iloc[-1]["Annual Expenses"]), "Taxes": int(df_sim.iloc[-1]["Annual Taxes"]),
-             "Liquid_Assets": int(df_sim.iloc[-1]["Liquid Assets"]), "Net_Worth": int(df_sim.iloc[-1]["Net Worth"])})
+        # Always append the final year
+        last_row = df_sim.iloc[-1]
+        timeline_summary.append({"Age": int(last_row["Age (Primary)"]), "Income": int(last_row["Annual Income"]),
+                                 "Expenses": int(last_row["Annual Expenses"]), "Taxes": int(last_row["Annual Taxes"]),
+                                 "Liquid_Assets": int(last_row["Liquid Assets"]),
+                                 "Net_Worth": int(last_row["Net Worth"])})
     else:
         sim_summary, timeline_summary = {}, []
 
@@ -2482,12 +2449,6 @@ with st.sidebar:
     completed = get_completion_score()
     st.progress(completed / 100)
     st.caption(f"<div style='text-align: center;'>Profile {completed}% Complete</div>", unsafe_allow_html=True)
-
-    if 'df_sim_display' in st.session_state and not st.session_state['df_sim_display'].empty:
-        nw = st.session_state['df_sim_display'].iloc[0]['Net Worth']
-        st.markdown(
-            f"<div style='text-align: center; margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 8px;'><span style='font-size: 0.8rem; color: #cbd5e1;'>Live Net Worth</span><br><b style='font-size: 1.2rem;'>${nw:,.0f}</b></div>",
-            unsafe_allow_html=True)
 
     st.markdown("<br><br>", unsafe_allow_html=True)
 
