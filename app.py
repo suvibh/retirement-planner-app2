@@ -2472,7 +2472,7 @@ PAGES = {
     "💵 Income Streams": render_income,
     "🏦 Assets & Debts": render_assets,
     "💸 Cash Flows": render_cashflows,
-    "📈 Simulation Parameters": render_simulation,
+    "📈 Simulation": render_simulation,
     "🤖 AI Advisor": render_ai,
     "📖 User Guide & FAQ": render_faq
 }
