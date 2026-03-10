@@ -27,20 +27,12 @@ st.set_page_config(page_title="AI Retirement Planner Pro", layout="wide", page_i
                    initial_sidebar_state="expanded")
 
 # --- GLOBAL CONSTANTS ---
-SS_WAGE_BASE_2026 = 168600
-ADDL_MED_TAX_THRESHOLD = 250000
-IRA_LIMIT_BASE = 7000
-PLAN_401K_LIMIT_BASE = 23500
-CATCHUP_401K_BASE = 7500
-CATCHUP_IRA_BASE = 1000
-
-SS_MFJ_TIER1_BASE = 32000
-SS_MFJ_TIER2_BASE = 44000
-SS_SINGLE_TIER1_BASE = 25000
-SS_SINGLE_TIER2_BASE = 34000
-
-MEDICARE_GAP_COST = 15000
-LTC_SHOCK_COST = 100000
+SS_WAGE_BASE_2026, ADDL_MED_TAX_THRESHOLD = 168600, 250000
+IRA_LIMIT_BASE, PLAN_401K_LIMIT_BASE = 7000, 23500
+CATCHUP_401K_BASE, CATCHUP_IRA_BASE = 7500, 1000
+SS_MFJ_TIER1_BASE, SS_MFJ_TIER2_BASE = 32000, 44000
+SS_SINGLE_TIER1_BASE, SS_SINGLE_TIER2_BASE = 25000, 34000
+MEDICARE_GAP_COST, LTC_SHOCK_COST = 15000, 100000
 SHORTFALL_PENALTY_RATE = 0.12  # 12% Annual Penalty on Unfunded Debt
 WIDOW_EXPENSE_MULTIPLIER = 0.60
 MEDICARE_CLIFF_SINGLE_DROP = 0.25  # 25% drop per spouse going on Medicare
@@ -51,40 +43,18 @@ BUDGET_CATEGORIES = ["Housing / Rent", "Transportation", "Food", "Utilities", "I
 # --- GOOGLE ANALYTICS INJECTION ---
 GA_MEASUREMENT_ID = st.secrets.get("GA_MEASUREMENT_ID", "")
 if GA_MEASUREMENT_ID:
-    ga_script = f"""
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id={html.escape(GA_MEASUREMENT_ID)}"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){{dataLayer.push(arguments);}}
-      gtag('js', new Date());
-      gtag('config', '{html.escape(GA_MEASUREMENT_ID)}');
-    </script>
-    """
-    st.components.v1.html(ga_script, width=0, height=0)
+    st.components.v1.html(
+        f"""<script async src="https://www.googletagmanager.com/gtag/js?id={html.escape(GA_MEASUREMENT_ID)}"></script><script>window.dataLayer = window.dataLayer || []; function gtag(){{dataLayer.push(arguments);}} gtag('js', new Date()); gtag('config', '{html.escape(GA_MEASUREMENT_ID)}');</script>""",
+        width=0, height=0)
 
 # --- DESIGN SYSTEM & CSS ---
-DESIGN_SYSTEM = """
+# Removed the `* { font-family: ... !important; }` rule that was breaking Streamlit's Material Icons
+st.markdown("""
 <style>
-:root {
-    --primary: #6366f1;
-    --primary-dark: #4f46e5;
-    --primary-light: #e0e7ff;
-    --success: #10b981;
-    --warning: #f59e0b;
-    --danger: #ef4444;
-    --surface: #ffffff;
-    --border: #e2e8f0;
-    --text-primary: #0f172a;
-    --text-secondary: #64748b;
-    --radius-sm: 8px;
-    --radius-md: 12px;
-    --radius-lg: 20px;
-    --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
-    --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
-}
+:root { --primary: #6366f1; --primary-dark: #4f46e5; --primary-light: #e0e7ff; --success: #10b981; --warning: #f59e0b; --danger: #ef4444; --surface: #ffffff; --border: #e2e8f0; --text-primary: #0f172a; --text-secondary: #64748b; --radius-sm: 8px; --radius-md: 12px; --radius-lg: 20px; --shadow-sm: 0 1px 3px rgba(0,0,0,0.08); --shadow-md: 0 4px 16px rgba(0,0,0,0.08); }
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-* { font-family: 'Inter', sans-serif !important; }
+html, body, p, div, span, h1, h2, h3, h4, h5, h6, label, input, button { font-family: 'Inter', sans-serif; }
+span[class*="material-symbols"] { font-family: 'Material Symbols Rounded' !important; }
 h1 { font-size: 2.2rem !important; font-weight: 900 !important; background: linear-gradient(135deg, var(--primary-dark), #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; }
 h2 { font-weight: 800 !important; color: var(--text-primary) !important; }
 h3 { font-weight: 700 !important; color: var(--text-primary) !important; }
@@ -102,20 +72,9 @@ h3 { font-weight: 700 !important; color: var(--text-primary) !important; }
 [data-testid="stProgress"] > div > div { background: linear-gradient(90deg, var(--primary), #7c3aed) !important; border-radius: 999px !important; }
 [data-testid="stPlotlyChart"] { border-radius: 16px !important; overflow: hidden !important; box-shadow: 0 2px 12px rgba(0,0,0,0.06) !important; background: white; border: 1px solid var(--border); padding: 10px; }
 div[data-testid="stExpander"] { background-color: white !important; border: 1px solid var(--border) !important; border-radius: var(--radius-md) !important; box-shadow: var(--shadow-sm) !important; }
-div.stButton > button { border-radius: 8px !important; font-weight: 600 !important; }
+@media (max-width: 768px) { [data-testid="column"] { min-width: 100% !important; } button { min-height: 48px !important; } [data-testid="stMetricValue"] { font-size: 1.4rem !important; } }
 </style>
-"""
-
-MOBILE_CSS = """
-<style>
-@media (max-width: 768px) {
-    [data-testid="column"] { min-width: 100% !important; }
-    button { min-height: 48px !important; }
-    [data-testid="stMetricValue"] { font-size: 1.4rem !important; }
-}
-</style>
-"""
-st.markdown(DESIGN_SYSTEM + MOBILE_CSS, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 
 # --- REUSABLE UI COMPONENTS ---
@@ -134,13 +93,7 @@ def apply_chart_theme(fig, title=""):
     return fig
 
 
-def stat_card(label, value, delta=None, color="indigo", icon=""):
-    delta_html = ""
-    if delta is not None:
-        color_d = "#10b981" if delta > 0 else "#ef4444"
-        arrow = "↑" if delta > 0 else "↓"
-        delta_html = f"<div style='color:{color_d}; font-size:0.8rem; font-weight:600;'>{arrow} {abs(delta):,.0f}</div>"
-
+def stat_card(label, value, color="indigo", icon=""):
     colors = {
         "indigo": ("linear-gradient(135deg,#6366f1,#4f46e5)", "#e0e7ff"),
         "emerald": ("linear-gradient(135deg,#10b981,#059669)", "#d1fae5"),
@@ -148,42 +101,24 @@ def stat_card(label, value, delta=None, color="indigo", icon=""):
         "rose": ("linear-gradient(135deg,#ef4444,#dc2626)", "#fee2e2"),
     }
     grad, _ = colors.get(color, colors["indigo"])
-
-    st.markdown(f"""
-    <div style='background:{grad}; padding:20px; border-radius:16px; color:white; box-shadow: 0 4px 14px rgba(0,0,0,0.1);'>
-        <div style='font-size:1.5rem; margin-bottom:4px;'>{html.escape(str(icon))}</div>
-        <div style='font-size:1.8rem; font-weight:900; letter-spacing:-0.5px;'>{html.escape(str(value))}</div>
-        <div style='font-size:0.85rem; opacity:0.9; margin-top:2px;'>{html.escape(str(label))}</div>
-        {delta_html}
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background:{grad}; padding:20px; border-radius:16px; color:white; box-shadow: 0 4px 14px rgba(0,0,0,0.1);'><div style='font-size:1.5rem; margin-bottom:4px;'>{html.escape(str(icon))}</div><div style='font-size:1.8rem; font-weight:900; letter-spacing:-0.5px;'>{html.escape(str(value))}</div><div style='font-size:0.85rem; opacity:0.9; margin-top:2px;'>{html.escape(str(label))}</div></div>",
+        unsafe_allow_html=True)
 
 
 def section_header(title, subtitle="", icon=""):
-    st.markdown(f"""
-    <div style='margin: 24px 0 16px 0;'>
-        <div style='display:flex; align-items:center; gap:10px;'>
-            <span style='font-size:1.4rem;'>{html.escape(str(icon))}</span>
-            <h2 style='margin:0; font-size:1.3rem; font-weight:800; color:#0f172a;'>{html.escape(str(title))}</h2>
-        </div>
-        {f"<p style='margin:4px 0 0 34px; color:#64748b; font-size:0.9rem;'>{html.escape(str(subtitle))}</p>" if subtitle else ""}
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='margin: 24px 0 16px 0;'><div style='display:flex; align-items:center; gap:10px;'><span style='font-size:1.4rem;'>{html.escape(str(icon))}</span><h2 style='margin:0; font-size:1.3rem; font-weight:800; color:#0f172a;'>{html.escape(str(title))}</h2></div>{f'<p style=\"margin:4px 0 0 34px; color:#64748b; font-size:0.9rem;\">{html.escape(str(subtitle))}</p>' if subtitle else ''}</div>",
+        unsafe_allow_html=True)
 
 
 def info_banner(text, type="info"):
-    configs = {
-        "info": ("#eff6ff", "#3b82f6", "#1d4ed8", "💡"),
-        "success": ("#f0fdf4", "#22c55e", "#15803d", "✅"),
-        "warning": ("#fffbeb", "#f59e0b", "#b45309", "⚠️"),
-        "danger": ("#fef2f2", "#ef4444", "#b91c1c", "🚨"),
-    }
+    configs = {"info": ("#eff6ff", "#3b82f6", "#1d4ed8", "💡"), "warning": ("#fffbeb", "#f59e0b", "#b45309", "⚠️"),
+               "danger": ("#fef2f2", "#ef4444", "#b91c1c", "🚨")}
     bg, border, text_color, emoji = configs.get(type, configs["info"])
-    st.markdown(f"""
-    <div style='background:{bg}; border-left:4px solid {border}; padding:12px 16px; border-radius:0 8px 8px 0; margin-bottom:16px;'>
-        <span style='color:{text_color}; font-size:0.9rem;'>{emoji} {html.escape(str(text))}</span>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background:{bg}; border-left:4px solid {border}; padding:12px 16px; border-radius:0 8px 8px 0; margin-bottom:16px;'><span style='color:{text_color}; font-size:0.9rem;'>{emoji} {html.escape(str(text))}</span></div>",
+        unsafe_allow_html=True)
 
 
 def retirement_health_score(score):
@@ -211,24 +146,16 @@ def render_status_bar(deplete_year, deplete_age, final_nw, mc_success_rate=None)
         bg, icon, msg, sub = "#fffbeb", "🟡", "Solvent but Tight", f"${final_nw:,.0f} margin at end of plan. Small changes could significantly improve outcome."
     else:
         bg, icon, msg, sub = "#fef2f2", "🔴", "Projected Insolvency", "Net worth goes negative before end of plan."
-
     mc_html = f"<span style='margin-left:16px; font-size:0.85rem; color:#64748b;'>Monte Carlo: <b>{mc_success_rate:.0f}%</b> success rate</span>" if mc_success_rate is not None else ""
-    st.markdown(f"""
-    <div style='background:{bg}; border-radius:12px; padding:16px 20px; display:flex; align-items:center; gap:12px; margin-bottom:20px; border: 1px solid #e2e8f0;'>
-        <span style='font-size:1.8rem;'>{icon}</span>
-        <div><div style='font-weight:800; font-size:1.1rem; color:#0f172a;'>{html.escape(msg)}</div><div style='font-size:0.9rem; color:#64748b; margin-top:2px;'>{html.escape(sub)}{mc_html}</div></div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background:{bg}; border-radius:12px; padding:16px 20px; display:flex; align-items:center; gap:12px; margin-bottom:20px; border: 1px solid #e2e8f0;'><span style='font-size:1.8rem;'>{icon}</span><div><div style='font-weight:800; font-size:1.1rem; color:#0f172a;'>{html.escape(msg)}</div><div style='font-size:0.9rem; color:#64748b; margin-top:2px;'>{html.escape(sub)}{mc_html}</div></div></div>",
+        unsafe_allow_html=True)
 
 
 def render_empty_state(section, icon):
-    st.markdown(f"""
-    <div style='text-align:center; padding:48px 24px; background:#f8fafc; border-radius:16px; border:2px dashed #cbd5e1; margin-bottom:20px;'>
-        <div style='font-size:3rem; margin-bottom:12px;'>{icon}</div>
-        <h3 style='color:#0f172a; margin:0 0 8px;'>No {html.escape(section)} Added Yet</h3>
-        <p style='color:#64748b; margin:0 0 20px; font-size:0.95rem;'>Use the table to add rows, or click the AI button to auto-populate based on your profile.</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='text-align:center; padding:48px 24px; background:#f8fafc; border-radius:16px; border:2px dashed #cbd5e1; margin-bottom:20px;'><div style='font-size:3rem; margin-bottom:12px;'>{icon}</div><h3 style='color:#0f172a; margin:0 0 8px;'>No {html.escape(section)} Added Yet</h3><p style='color:#64748b; margin:0 0 20px; font-size:0.95rem;'>Use the table to add rows, or click the AI button to auto-populate based on your profile.</p></div>",
+        unsafe_allow_html=True)
 
 
 def render_total(label, series):
@@ -242,7 +169,7 @@ def render_total(label, series):
 try:
     import extra_streamlit_components as stx
 except ImportError:
-    st.error("Missing dependency: pip install extra-streamlit-components")
+    st.error("Missing dependency: pip install extra-streamlit-components");
     st.stop()
 
 if 'firebase_enabled' not in st.session_state:
@@ -258,34 +185,29 @@ if 'firebase_enabled' not in st.session_state:
             st.warning("⚠️ Cloud Sync Disabled (Local Mode Active). Firebase initialization failed.")
 
 try:
-    if st.session_state['firebase_enabled']:
-        db = firestore.client()
+    if st.session_state['firebase_enabled']: db = firestore.client()
 except Exception:
     st.session_state['firebase_enabled'] = False
 
-FIREBASE_WEB_API_KEY = st.secrets.get("FIREBASE_WEB_API_KEY", "")
-GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
+FIREBASE_WEB_API_KEY, GEMINI_API_KEY = st.secrets.get("FIREBASE_WEB_API_KEY", ""), st.secrets.get("GEMINI_API_KEY", "")
 
 with st.spinner("Authenticating Session..."):
     cookie_manager = stx.CookieManager(key="auth_cookie_manager")
-    if cookie_manager.get_all() is None:
-        time.sleep(0.5)
+    if cookie_manager.get_all() is None: time.sleep(0.5)
 
 
-def sign_in(email, password):
-    return requests.post(
-        f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_WEB_API_KEY}",
-        json={"email": email, "password": password, "returnSecureToken": True}).json()
+def sign_in(email, password): return requests.post(
+    f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_WEB_API_KEY}",
+    json={"email": email, "password": password, "returnSecureToken": True}).json()
 
 
-def sign_up(email, password):
-    return requests.post(f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_WEB_API_KEY}",
-                         json={"email": email, "password": password, "returnSecureToken": True}).json()
+def sign_up(email, password): return requests.post(
+    f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_WEB_API_KEY}",
+    json={"email": email, "password": password, "returnSecureToken": True}).json()
 
 
 def load_user_data(email):
-    if email == "guest_demo" or not st.session_state['firebase_enabled']:
-        return {}
+    if email == "guest_demo" or not st.session_state['firebase_enabled']: return {}
     doc = db.collection('users').document(email).get()
     return doc.to_dict() if doc.exists else {}
 
@@ -304,17 +226,15 @@ def call_gemini_json(prompt, retries=3):
             res.raise_for_status()
             res_json = res.json()
             if "error" in res_json:
-                if attempt == retries - 1:
-                    st.error(f"⚠️ API Error: {res_json['error'].get('message')}")
-                    return None
-                time.sleep(2 ** attempt)
+                if attempt == retries - 1: st.error(f"⚠️ API Error: {res_json['error'].get('message')}"); return None
+                time.sleep(2 ** attempt);
                 continue
             text = res_json['candidates'][0]['content']['parts'][0]['text'].strip()
             text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
             text = re.sub(r"\n?```$", "", text).strip()
             parsed = json.loads(text)
-            if isinstance(parsed, dict) and len(parsed) == 1 and isinstance(list(parsed.values())[0], list):
-                return list(parsed.values())[0]
+            if isinstance(parsed, dict) and len(parsed) == 1 and isinstance(list(parsed.values())[0], list): return \
+            list(parsed.values())[0]
             return parsed
         except Exception:
             time.sleep(2 ** attempt)
@@ -325,8 +245,7 @@ def safe_num(val, default=0.0):
     if val is None or (isinstance(val, float) and math.isnan(val)) or val is pd.NA: return default
     try:
         clean_val = re.sub(r'[^\d.-]', '', str(val))
-        if clean_val == "": return default
-        return float(clean_val)
+        return float(clean_val) if clean_val else default
     except Exception:
         return default
 
@@ -360,42 +279,39 @@ if 'user_email' not in st.session_state:
     with c2:
         tab1, tab2 = st.tabs(["Secure Login", "New Account"])
         with tab1:
-            le = st.text_input("Email", key="le")
-            lp = st.text_input("Password", type="password", key="lp")
+            le, lp = st.text_input("Email", key="le"), st.text_input("Password", type="password", key="lp")
             if st.button("Sign In", type="primary", use_container_width=True):
                 res = sign_in(le, lp)
                 if "idToken" in res:
-                    st.session_state['user_email'] = res['email']
+                    st.session_state['user_email'] = res['email'];
                     st.session_state['user_data'] = load_user_data(res['email'])
                     cookie_manager.set("user_email", res['email'],
                                        expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
-                    time.sleep(0.2)
+                    time.sleep(0.2);
                     st.rerun()
                 else:
                     st.error("Login failed. Please check your email and password.")
         with tab2:
-            se = st.text_input("New Email", key="se")
-            sp = st.text_input("New Password", type="password", key="sp")
+            se, sp = st.text_input("Email", key="se"), st.text_input("Password", type="password", key="sp")
             if st.button("Create Account", type="primary", use_container_width=True):
                 if len(sp) >= 6:
                     res = sign_up(se, sp)
                     if "idToken" in res:
-                        st.session_state['user_email'] = res['email']
+                        st.session_state['user_email'] = res['email'];
                         st.session_state['user_data'] = {}
                         cookie_manager.set("user_email", res['email'],
                                            expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
-                        time.sleep(0.2)
+                        time.sleep(0.2);
                         st.rerun()
                 else:
-                    st.warning("Password must be at least 6 characters long.")
-
+                    st.warning("Min 6 characters.")
         st.divider()
         if st.button("🚀 Try the Demo (Guest Mode)", use_container_width=True):
-            st.session_state['user_email'] = "guest_demo"
+            st.session_state['user_email'] = "guest_demo";
             st.session_state['user_data'] = {}
             cookie_manager.set("user_email", "guest_demo",
                                expires_at=datetime.datetime.now() + datetime.timedelta(days=1))
-            st.toast("Guest mode active.", icon="⚠️")
+            st.toast("Guest mode active. Data will be lost upon refreshing.", icon="⚠️");
             st.rerun()
     st.stop()
 
@@ -425,9 +341,11 @@ def initialize_session_state():
         st.session_state['s_ret_age'] = int(p_info.get('spouse_retire_age', 65))
         st.session_state['my_life_exp'] = int(p_info.get('my_life_exp', 95))
         st.session_state['spouse_life_exp'] = int(p_info.get('spouse_life_exp', 95))
+
         st.session_state['kids_data'] = p_info.get('kids', [])
         st.session_state['curr_city_flow'] = p_info.get('current_city', '')
         st.session_state['retire_city_flow'] = ud.get('retire_city', st.session_state['curr_city_flow'])
+
         st.session_state['income_data'] = ud.get('income', [])
         st.session_state['real_estate_data'] = ud.get('real_estate', [])
         st.session_state['business_data'] = ud.get('business', [])
@@ -436,20 +354,19 @@ def initialize_session_state():
 
         life_exp = ud.get('lifetime_expenses', [])
         if not life_exp:
-            migrated = []
-            current_year = datetime.date.today().year
+            migrated, current_year = [], datetime.date.today().year
             for c in ud.get('current_expenses', []):
-                if c.get("Description"):
-                    migrated.append({"Description": c.get("Description"), "Category": c.get("Category", "Other"),
-                                     "Frequency": c.get("Frequency", "Monthly"), "Amount ($)": c.get("Amount ($)", 0),
-                                     "Start Phase": "Now", "Start Year": None, "End Phase": "At Retirement",
-                                     "End Year": None, "AI Estimate?": c.get("AI Estimate?", False)})
+                if c.get("Description"): migrated.append(
+                    {"Description": c.get("Description"), "Category": c.get("Category", "Other"),
+                     "Frequency": c.get("Frequency", "Monthly"), "Amount ($)": c.get("Amount ($)", 0),
+                     "Start Phase": "Now", "Start Year": None, "End Phase": "At Retirement", "End Year": None,
+                     "AI Estimate?": c.get("AI Estimate?", False)})
             for r in ud.get('retire_expenses', []):
-                if r.get("Description"):
-                    migrated.append({"Description": r.get("Description"), "Category": r.get("Category", "Other"),
-                                     "Frequency": r.get("Frequency", "Monthly"), "Amount ($)": r.get("Amount ($)", 0),
-                                     "Start Phase": "At Retirement", "Start Year": None, "End Phase": "End of Life",
-                                     "End Year": None, "AI Estimate?": r.get("AI Estimate?", False)})
+                if r.get("Description"): migrated.append(
+                    {"Description": r.get("Description"), "Category": r.get("Category", "Other"),
+                     "Frequency": r.get("Frequency", "Monthly"), "Amount ($)": r.get("Amount ($)", 0),
+                     "Start Phase": "At Retirement", "Start Year": None, "End Phase": "End of Life", "End Year": None,
+                     "AI Estimate?": r.get("AI Estimate?", False)})
             for m in ud.get('one_time_events', []):
                 if m.get("Description"):
                     try:
@@ -464,23 +381,22 @@ def initialize_session_state():
                                      "Frequency": m.get("Frequency", "One-Time"), "Amount ($)": m.get("Amount ($)", 0),
                                      "Start Phase": "Custom Year", "Start Year": sy_int, "End Phase": "Custom Year",
                                      "End Year": ey_int, "AI Estimate?": m.get("AI Estimate?", False)})
-
-            if migrated:
-                life_exp = migrated
-            else:
-                life_exp = [{"Description": "Groceries", "Category": "Food", "Frequency": "Monthly", "Amount ($)": 0,
-                             "Start Phase": "Now", "Start Year": None, "End Phase": "End of Life", "End Year": None,
-                             "AI Estimate?": False}]
+            life_exp = migrated if migrated else [
+                {"Description": "Groceries", "Category": "Food", "Frequency": "Monthly", "Amount ($)": 0,
+                 "Start Phase": "Now", "Start Year": None, "End Phase": "End of Life", "End Year": None,
+                 "AI Estimate?": False}]
         st.session_state['lifetime_expenses'] = life_exp
 
-        st.session_state['assumptions'] = ud.get('assumptions', {
-            "inflation": 3.0, "inflation_healthcare": 5.5, "inflation_education": 4.5,
-            "market_growth": 7.0, "income_growth": 3.0, "property_growth": 3.0, "rent_growth": 3.0,
-            "current_tax_rate": 5.0, "retire_tax_rate": 0.0, "roth_conversions": False,
-            "roth_target": "24%", "withdrawal_strategy": "Standard", "stress_test": False,
-            "glidepath": True, "medicare_gap": True, "medicare_cliff": True, "ltc_shock": False
-        })
-
+        st.session_state['assumptions'] = ud.get('assumptions', {"inflation": 3.0, "inflation_healthcare": 5.5,
+                                                                 "inflation_education": 4.5, "market_growth": 7.0,
+                                                                 "income_growth": 3.0, "property_growth": 3.0,
+                                                                 "rent_growth": 3.0, "current_tax_rate": 5.0,
+                                                                 "retire_tax_rate": 0.0, "roth_conversions": False,
+                                                                 "roth_target": "24%",
+                                                                 "withdrawal_strategy": "Standard",
+                                                                 "stress_test": False, "glidepath": True,
+                                                                 "medicare_gap": True, "medicare_cliff": True,
+                                                                 "ltc_shock": False})
         st.session_state['dirty'] = False
         st.session_state['migration_v1'] = True
 
@@ -488,8 +404,7 @@ def initialize_session_state():
 initialize_session_state()
 
 
-def mark_dirty():
-    st.session_state['dirty'] = True
+def mark_dirty(): st.session_state['dirty'] = True
 
 
 def get_completion_score():
@@ -504,8 +419,7 @@ def get_completion_score():
 
 def city_autocomplete(label, key_prefix, default_val=""):
     input_key = f"{key_prefix}_input"
-    if input_key not in st.session_state:
-        st.session_state[input_key] = default_val
+    if input_key not in st.session_state: st.session_state[input_key] = default_val
     current_val = st.text_input(label, key=input_key,
                                 help="Type a major city. The AI uses this to look up local costs of living, property values, and state taxes.",
                                 on_change=mark_dirty)
@@ -517,41 +431,34 @@ def city_autocomplete(label, key_prefix, default_val=""):
                 url = f"https://maps.googleapis.com/maps/api/place/autocomplete/json?input={current_val_clean}&types=(cities)&key={api_key}"
                 res = requests.get(url).json()
                 if res.get("status") == "OK":
-                    predictions = res.get("predictions", [])
-                    if not any(current_val_clean == p["description"] for p in predictions):
-                        st.caption("Did you mean:")
-                        for p in predictions[:3]:
-                            st.button(p["description"], key=f"{key_prefix}_{p['place_id']}",
-                                      on_click=lambda k=input_key, v=p["description"]: st.session_state.update(
-                                          {k: v, 'dirty': True}))
+                    st.caption("Did you mean:")
+                    for p in res.get("predictions", [])[:3]: st.button(p["description"],
+                                                                       key=f"{key_prefix}_{p['place_id']}",
+                                                                       on_click=lambda k=input_key, v=p[
+                                                                           "description"]: st.session_state.update(
+                                                                           {k: v, 'dirty': True}))
         except:
             pass
     return current_val
 
 
 def clean_df(df, primary_key):
-    if not isinstance(df, pd.DataFrame): return df
-    if df.empty: return []
+    if not isinstance(df, pd.DataFrame) or df.empty: return []
     valid_rows = []
     for r in df.to_dict('records'):
         clean_r = {}
         for vk, vv in r.items():
-            if pd.isna(vv) or vv is pd.NA:
-                clean_r[vk] = None
-            else:
-                clean_r[vk] = vv
+            clean_r[vk] = None if pd.isna(vv) or vv is pd.NA else vv
         if str(clean_r.get(primary_key, '')).strip() != "":
             valid_rows.append(clean_r)
     return valid_rows
 
 
 def save_profile():
-    if st.session_state['user_email'] == "guest_demo":
-        st.error("Persistent configurations disabled within the demonstration environment.")
-        return
-    if not st.session_state.get('firebase_enabled', True):
-        st.error("Cloud saving disabled due to connection issues.")
-        return
+    if st.session_state['user_email'] == "guest_demo": st.error(
+        "Persistent configurations disabled within the demonstration environment."); return
+    if not st.session_state.get('firebase_enabled', True): st.error(
+        "Cloud saving disabled due to connection issues."); return
 
     my_age = relativedelta(datetime.date.today(), st.session_state['my_dob']).years
     spouse_age = relativedelta(datetime.date.today(), st.session_state['spouse_dob']).years if st.session_state[
@@ -565,8 +472,7 @@ def save_profile():
             "spouse_life_exp": st.session_state['spouse_life_exp'], "current_city": st.session_state['curr_city_flow'],
             "has_spouse": st.session_state['has_spouse'], "spouse_name": st.session_state['spouse_name'],
             "spouse_dob": st.session_state['spouse_dob'].strftime("%Y-%m-%d") if st.session_state[
-                'has_spouse'] else None,
-            "spouse_age": spouse_age, "kids": st.session_state['kids_data']
+                'has_spouse'] else None, "spouse_age": spouse_age, "kids": st.session_state['kids_data']
         },
         "retire_city": st.session_state['retire_city_flow'],
         "income": clean_df(pd.DataFrame(st.session_state['income_data']), "Description"),
@@ -583,6 +489,66 @@ def save_profile():
     st.toast("✅ Complete Financial Blueprint Synchronized Successfully!")
 
 
+# --- SIMULATION CONTEXT BUILDER ---
+def build_sim_context():
+    current_year = datetime.date.today().year
+    my_age = relativedelta(datetime.date.today(), st.session_state['my_dob']).years
+    spouse_age = relativedelta(datetime.date.today(), st.session_state['spouse_dob']).years if st.session_state[
+        'has_spouse'] else 0
+    my_birth_year = st.session_state['my_dob'].year
+    spouse_birth_year = st.session_state['spouse_dob'].year if st.session_state['has_spouse'] else current_year
+
+    ret_age, s_ret_age = st.session_state['ret_age'], st.session_state['s_ret_age']
+    my_life_exp_val, spouse_life_exp_val = st.session_state['my_life_exp'], (
+        st.session_state['spouse_life_exp'] if st.session_state['has_spouse'] else 0)
+
+    primary_retire_year = my_birth_year + ret_age
+    spouse_retire_year = spouse_birth_year + s_ret_age if st.session_state['has_spouse'] else 9999
+    primary_end_year = my_birth_year + my_life_exp_val
+    spouse_end_year = spouse_birth_year + spouse_life_exp_val if st.session_state['has_spouse'] else current_year
+
+    max_year = max(primary_end_year, spouse_end_year)
+    max_years = max_year - current_year
+
+    primary_rmd_age = 73 if my_birth_year <= 1959 else 75
+    spouse_rmd_age = 73 if spouse_birth_year <= 1959 else 75
+
+    asm = st.session_state['assumptions']
+    df_re = pd.DataFrame(st.session_state['real_estate_data'])
+    owns_home = not df_re[df_re[
+                              "Is Primary Residence?"] == True].empty if not df_re.empty and "Is Primary Residence?" in df_re.columns else False
+    df_debt = pd.DataFrame(st.session_state['liabilities_data'])
+    debt_records = [d for d in df_debt.to_dict('records') if
+                    d.get("Debt Name") and safe_num(d.get("Current Balance ($)")) > 0] if not df_debt.empty else []
+
+    return {
+        'current_year': current_year, 'my_birth_year': my_birth_year, 'spouse_birth_year': spouse_birth_year,
+        'primary_end_year': primary_end_year, 'spouse_end_year': spouse_end_year,
+        'has_spouse': st.session_state['has_spouse'],
+        'primary_retire_year': primary_retire_year, 'spouse_retire_year': spouse_retire_year,
+        'primary_rmd_age': primary_rmd_age, 'spouse_rmd_age': spouse_rmd_age,
+        'mkt': float(asm.get('market_growth', 7.0)), 'infl': float(asm.get('inflation', 3.0)),
+        'infl_hc': float(asm.get('inflation_healthcare', 5.5)), 'infl_ed': float(asm.get('inflation_education', 4.5)),
+        'inc_g': float(asm.get('income_growth', 3.0)), 'prop_g': float(asm.get('property_growth', 3.0)),
+        'rent_g': float(asm.get('rent_growth', 3.0)), 'cur_t': float(asm.get('current_tax_rate', 5.0)),
+        'ret_t': float(asm.get('retire_tax_rate', 0.0)),
+        'stress_test': asm.get('stress_test', False), 'glidepath': asm.get('glidepath', True),
+        'medicare_gap': asm.get('medicare_gap', True), 'medicare_cliff': asm.get('medicare_cliff', True),
+        'ltc_shock': asm.get('ltc_shock', False),
+        'roth_conversions': asm.get('roth_conversions', False), 'roth_target': asm.get('roth_target', '24%'),
+        'active_withdrawal_strategy': asm.get('withdrawal_strategy', 'Standard'),
+        'owns_home': owns_home, 'kids_data': st.session_state['kids_data'],
+        'max_years': max_years, 'max_year': max_year, 'my_life_exp_val': my_life_exp_val,
+        'spouse_life_exp_val': spouse_life_exp_val,
+        'ast_records': scrub_records(st.session_state['liquid_assets_data']),
+        'debt_records': scrub_records(debt_records), 're_records': scrub_records(st.session_state['real_estate_data']),
+        'biz_records': scrub_records(st.session_state['business_data']),
+        'inc_records': scrub_records(st.session_state['income_data']),
+        'exp_records': scrub_records(st.session_state['lifetime_expenses']),
+        'my_age': my_age, 'spouse_age': spouse_age
+    }
+
+
 # --- MODULE LEVEL SIMULATION CORE (CACHED) ---
 def calc_federal_tax(ordinary_income, is_mfj, year_offset, inflation_rate):
     infl_factor = (1 + inflation_rate / 100) ** year_offset
@@ -595,8 +561,7 @@ def calc_federal_tax(ordinary_income, is_mfj, year_offset, inflation_rate):
                 (float('inf'), 0.37)]
     brackets = b_mfj if is_mfj else b_single
 
-    ord_tax = 0
-    prev_limit = 0
+    ord_tax, prev_limit = 0, 0
     for limit, rate in brackets:
         adj_limit = limit * infl_factor
         if taxable_ordinary > prev_limit:
@@ -639,7 +604,7 @@ def get_ss_multi(birth_year, claim_year):
         else:
             return 1.0 - (36 * (5 / 9 * 0.01)) - ((months_early - 36) * (5 / 12 * 0.01))
     elif claim_age > fra:
-        months_late = min((claim_age - fra) * 12, (70 - fra) * 12)
+        months_late = min((claim_age - fra) * 12, (70 - fra) * 12)  # Strict cap at age 70 relative to FRA
         return 1.0 + (months_late * (2 / 3 * 0.01))
     return 1.0
 
@@ -1293,6 +1258,7 @@ def run_simulation(mkt_sequence, ctx):
 
         if net_cash_flow > 0:
             yd["Cashflow: Surplus Reinvested"] = net_cash_flow
+            # Surplus Handling & RMD Reinvestment
             if unfunded_debt_bal > 0:
                 payoff = min(net_cash_flow, unfunded_debt_bal)
                 unfunded_debt_bal -= payoff
@@ -1377,6 +1343,11 @@ def run_simulation(mkt_sequence, ctx):
                         "Net Worth": net_worth})
         det_res.append(yd)
         nw_det_res.append(nw_yd)
+
+        # APPLY DEBT PENALTY FOR NEXT YEAR
+        prev_unfunded_debt_bal = unfunded_debt_bal
+        if unfunded_debt_bal > 0:
+            unfunded_debt_bal *= (1 + SHORTFALL_PENALTY_RATE)
 
     return sim_res, det_res, nw_det_res, milestones_by_year
 
@@ -1631,34 +1602,38 @@ def render_income():
     col_ai_inc, _ = st.columns([3, 1])
     with col_ai_inc:
         if st.button("✨ Auto-Estimate My Social Security (AI)", type="primary", use_container_width=True):
-            with st.spinner("Asking AI to estimate your Social Security benefits based on your age and income..."):
-                spouse_age = relativedelta(datetime.date.today(), st.session_state['spouse_dob']).years if \
-                st.session_state['has_spouse'] else 0
-                curr_inc = pd.to_numeric(edited_inc['Annual Amount ($)'], errors='coerce').fillna(0).sum()
-                if st.session_state['has_spouse']:
-                    prompt = f"User is {my_age} years old making ${curr_inc}/year. Spouse is {spouse_age} years old. Estimate realistic annual Social Security primary insurance amounts (PIA) at Full Retirement Age for both. Return JSON: {{'ss_amount_me': integer, 'ss_amount_spouse': integer}}"
-                else:
-                    prompt = f"User is {my_age} years old making ${curr_inc}/year. Estimate their annual Social Security primary insurance amount (PIA) at Full Retirement Age. Return JSON: {{'ss_amount_me': integer}}"
-                res = call_gemini_json(prompt)
-                if res:
-                    current_inc = edited_inc.to_dict('records')
-                    my_birth_year = st.session_state['my_dob'].year
-                    spouse_birth_year = st.session_state['spouse_dob'].year if st.session_state[
-                        'has_spouse'] else current_year
-                    if 'ss_amount_me' in res:
-                        current_inc.append(
-                            {"Description": "Estimated Social Security (Primary)", "Category": "Social Security",
-                             "Owner": "Me", "Annual Amount ($)": res['ss_amount_me'], "Start Year": my_birth_year + 67,
-                             "End Year": 2100, "Stop at Ret.?": False, "Override Growth (%)": None})
-                    if 'ss_amount_spouse' in res and st.session_state['has_spouse']:
-                        current_inc.append(
-                            {"Description": "Estimated Social Security (Spouse)", "Category": "Social Security",
-                             "Owner": "Spouse", "Annual Amount ($)": res['ss_amount_spouse'],
-                             "Start Year": spouse_birth_year + 67, "End Year": 2100, "Stop at Ret.?": False,
-                             "Override Growth (%)": None})
-                    st.session_state['income_data'] = current_inc
-                    mark_dirty()
-                    st.rerun()
+            try:
+                with st.spinner("Asking AI to estimate your Social Security benefits based on your age and income..."):
+                    spouse_age = relativedelta(datetime.date.today(), st.session_state['spouse_dob']).years if \
+                    st.session_state['has_spouse'] else 0
+                    curr_inc = pd.to_numeric(edited_inc['Annual Amount ($)'], errors='coerce').fillna(0).sum()
+                    if st.session_state['has_spouse']:
+                        prompt = f"User is {my_age} years old making ${curr_inc}/year. Spouse is {spouse_age} years old. Estimate realistic annual Social Security primary insurance amounts (PIA) at Full Retirement Age for both. Return JSON: {{'ss_amount_me': integer, 'ss_amount_spouse': integer}}"
+                    else:
+                        prompt = f"User is {my_age} years old making ${curr_inc}/year. Estimate their annual Social Security primary insurance amount (PIA) at Full Retirement Age. Return JSON: {{'ss_amount_me': integer}}"
+                    res = call_gemini_json(prompt)
+                    if res:
+                        current_inc = edited_inc.to_dict('records')
+                        my_birth_year = st.session_state['my_dob'].year
+                        spouse_birth_year = st.session_state['spouse_dob'].year if st.session_state[
+                            'has_spouse'] else current_year
+                        if 'ss_amount_me' in res:
+                            current_inc.append(
+                                {"Description": "Estimated Social Security (Primary)", "Category": "Social Security",
+                                 "Owner": "Me", "Annual Amount ($)": res['ss_amount_me'],
+                                 "Start Year": my_birth_year + 67, "End Year": 2100, "Stop at Ret.?": False,
+                                 "Override Growth (%)": None})
+                        if 'ss_amount_spouse' in res and st.session_state['has_spouse']:
+                            current_inc.append(
+                                {"Description": "Estimated Social Security (Spouse)", "Category": "Social Security",
+                                 "Owner": "Spouse", "Annual Amount ($)": res['ss_amount_spouse'],
+                                 "Start Year": spouse_birth_year + 67, "End Year": 2100, "Stop at Ret.?": False,
+                                 "Override Growth (%)": None})
+                        st.session_state['income_data'] = current_inc
+                        mark_dirty()
+                        st.rerun()
+            except Exception as e:
+                st.error(f"Failed to fetch estimates: {e}")
 
 
 def render_assets():
@@ -2341,6 +2316,8 @@ def render_simulation():
                         "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
             with t2:
                 st.subheader("Detailed Net Worth Log")
+                st.markdown(
+                    "Track the exact, year-by-year balance of every single asset account and liability to trace your drawdowns and growth.")
                 ast_c = sorted([c for c in df_nw.columns if c.startswith("Asset:")])
                 ord_nw = ["Year", "Age (Primary)", "Age (Spouse)"] + ast_c + ["Total Liquid Assets",
                                                                               "Total Real Estate Equity",
