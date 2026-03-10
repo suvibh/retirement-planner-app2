@@ -2445,7 +2445,7 @@ def render_simulation():
 
     st.divider()
 
-    view_todays_dollars = st.toggle("💵 View Charts in Today's Dollars", value=False,
+    view_todays_dollars = st.toggle("💵 View Charts in Today's Dollars", value=True,
                                     help="Removes the effect of inflation so you can easily understand what these big future numbers feel like today.")
 
     # --- SIMULATION ENGINE ---
