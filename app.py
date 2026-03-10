@@ -263,9 +263,6 @@ if 'onboarding_shown' not in st.session_state:
 current_year = datetime.date.today().year
 ud = st.session_state.get('user_data', {})
 p_info = ud.get('personal_info', {})
-if 'current_expenses' not in st.session_state: st.session_state['current_expenses'] = ud.get('current_expenses', [])
-if 'retire_expenses' not in st.session_state: st.session_state['retire_expenses'] = ud.get('retire_expenses', [])
-if 'one_time_events' not in st.session_state: st.session_state['one_time_events'] = ud.get('one_time_events', [])
 if 'assumptions' not in st.session_state: st.session_state['assumptions'] = ud.get('assumptions', {"inflation": 3.0,
                                                                                                    "inflation_healthcare": 5.5,
                                                                                                    "inflation_education": 4.5,
@@ -330,48 +327,52 @@ with c_logout:
 save_requested = False
 
 # --- 1. PERSONAL INFO ---
-with st.expander("👨‍👩‍👧‍👦 1. About You & Your Family", expanded=False):
+with st.expander("👨‍👩‍👧‍👦 1. Your Profile & Family Context", expanded=False):
     st.markdown(
-        '<div class="info-text">💡 <strong>Why we ask this:</strong> Your exact birth year helps us accurately calculate IRS rules like when you <em>must</em> start taking money out of retirement accounts (RMDs) and early withdrawal penalties. Adding a spouse lets us use the bigger "Married Filing Jointly" tax deduction, and listing kids helps the AI predict when childcare ends and college starts.</div>',
+        '<div class="info-text">💡 <strong>Why Date of Birth?</strong> Precision matters. Your exact birth year dictates your SECURE 2.0 RMD age (73 vs 75), IRS Catch-Up Contribution limits, and Social Security Full Retirement Age (FRA). Selecting "Include Spouse" activates the Married Filing Jointly (MFJ) Standard Deduction ($29,200) and wider tax brackets.</div>',
         unsafe_allow_html=True)
 
-    c1, c2 = st.columns(2)
-    my_name = c1.text_input("Your Name", value=p_info.get('name', ''))
+    tab_me, tab_spouse, tab_kids = st.tabs(["👤 About You", "💍 Spouse / Partner", "👶 Dependents"])
 
-    saved_dob = p_info.get('dob')
-    default_dob = datetime.datetime.strptime(saved_dob, "%Y-%m-%d").date() if saved_dob else subtract_years(
-        datetime.date.today(), int(p_info.get('age', 40)))
-    my_dob = c2.date_input("Your Date of Birth", value=default_dob, min_value=datetime.date(1920, 1, 1),
-                           max_value=datetime.date.today())
-    my_age = relativedelta(datetime.date.today(), my_dob).years
-    my_birth_year = my_dob.year
+    with tab_me:
+        c1, c2 = st.columns(2)
+        my_name = c1.text_input("Your Name", value=p_info.get('name', ''))
+        saved_dob = p_info.get('dob')
+        default_dob = datetime.datetime.strptime(saved_dob, "%Y-%m-%d").date() if saved_dob else subtract_years(
+            datetime.date.today(), int(p_info.get('age', 40)))
+        my_dob = c2.date_input("Your Date of Birth", value=default_dob, min_value=datetime.date(1920, 1, 1),
+                               max_value=datetime.date.today())
+        my_age = relativedelta(datetime.date.today(), my_dob).years
+        my_birth_year = my_dob.year
 
-    st.divider()
-    has_spouse = st.checkbox("Include a Spouse or Partner? (Enables joint tax brackets)",
-                             value=p_info.get('has_spouse', False))
-    spouse_name, spouse_dob, spouse_age, spouse_birth_year = "", None, 0, current_year
-    if has_spouse:
-        sc1, sc2 = st.columns(2)
-        spouse_name = sc1.text_input("Spouse/Partner Name", value=p_info.get('spouse_name', ''))
-        s_saved_dob = p_info.get('spouse_dob')
-        s_default_dob = datetime.datetime.strptime(s_saved_dob, "%Y-%m-%d").date() if s_saved_dob else subtract_years(
-            datetime.date.today(), int(p_info.get('spouse_age', 40)))
-        spouse_dob = sc2.date_input("Spouse Date of Birth", value=s_default_dob, min_value=datetime.date(1920, 1, 1),
-                                    max_value=datetime.date.today())
-        spouse_age = relativedelta(datetime.date.today(), spouse_dob).years
-        spouse_birth_year = spouse_dob.year
+    with tab_spouse:
+        has_spouse = st.checkbox("Include a Spouse or Partner? (Enables joint tax brackets)",
+                                 value=p_info.get('has_spouse', False))
+        spouse_name, spouse_dob, spouse_age, spouse_birth_year = "", None, 0, current_year
+        if has_spouse:
+            sc1, sc2 = st.columns(2)
+            spouse_name = sc1.text_input("Spouse/Partner Name", value=p_info.get('spouse_name', ''))
+            s_saved_dob = p_info.get('spouse_dob')
+            s_default_dob = datetime.datetime.strptime(s_saved_dob,
+                                                       "%Y-%m-%d").date() if s_saved_dob else subtract_years(
+                datetime.date.today(), int(p_info.get('spouse_age', 40)))
+            spouse_dob = sc2.date_input("Spouse Date of Birth", value=s_default_dob,
+                                        min_value=datetime.date(1920, 1, 1), max_value=datetime.date.today())
+            spouse_age = relativedelta(datetime.date.today(), spouse_dob).years
+            spouse_birth_year = spouse_dob.year
 
-    st.divider()
-    saved_kids = p_info.get('kids', [])
-    num_kids = st.number_input("Number of Kids/Dependents", 0, 10, len(saved_kids))
-    kids_data = []
-    if num_kids > 0: st.write("**Kids' Details**")
-    for i in range(num_kids):
-        k1, k2 = st.columns([3, 1])
-        kn = k1.text_input(f"Child {i + 1} Name", value=saved_kids[i]['name'] if i < len(saved_kids) else "",
-                           key=f"kn_{i}")
-        ka = k2.number_input(f"Age {i + 1}", 0, 25, saved_kids[i]['age'] if i < len(saved_kids) else 5, key=f"ka_{i}")
-        kids_data.append({"name": kn, "age": ka})
+    with tab_kids:
+        saved_kids = p_info.get('kids', [])
+        num_kids = st.number_input("Number of Kids/Dependents", 0, 10, len(saved_kids))
+        kids_data = []
+        if num_kids > 0: st.write("**Kids' Details**")
+        for i in range(num_kids):
+            k1, k2 = st.columns([3, 1])
+            kn = k1.text_input(f"Child {i + 1} Name", value=saved_kids[i]['name'] if i < len(saved_kids) else "",
+                               key=f"kn_{i}")
+            ka = k2.number_input(f"Age {i + 1}", 0, 25, saved_kids[i]['age'] if i < len(saved_kids) else 5,
+                                 key=f"ka_{i}")
+            kids_data.append({"name": kn, "age": ka})
 
     st.markdown('<div class="save-btn-marker"></div>', unsafe_allow_html=True)
     if st.button("💾 Save Profile", key="sv_1"):
@@ -479,7 +480,8 @@ with st.expander("🏦 3. Assets, Debts & Net Worth", expanded=False):
         edited_re = st.data_editor(
             df_re,
             column_config={
-                "Property Name": st.column_config.TextColumn("Property Name"),
+                "Property Name": st.column_config.TextColumn("Property Name",
+                                                             help="A simple label for your property (e.g. 'Beach House' or 'Main St')."),
                 "Is Primary Residence?": st.column_config.CheckboxColumn("Primary Home?", default=False),
                 "Market Value ($)": st.column_config.NumberColumn("Market Value ($)", step=10000, format="$%d"),
                 "Mortgage Balance ($)": st.column_config.NumberColumn("Mortgage Balance ($)", step=10000, format="$%d"),
@@ -631,10 +633,10 @@ with st.expander("💸 4. Lifetime Cash Flows (Budgets & Milestones)", expanded=
 
     c_loc1, c_loc2 = st.columns(2)
     with c_loc1:
-        curr_city = city_autocomplete("Current City", "curr_city", default_val=p_info.get('current_city', ''))
+        curr_city_flow = city_autocomplete("Current City", "curr_city_flow", default_val=p_info.get('current_city', ''))
     with c_loc2:
-        ret_city = city_autocomplete("Retirement City (Optional)", "retire_city",
-                                     default_val=ud.get('retire_city', curr_city))
+        ret_city_flow = city_autocomplete("Retirement City (Optional)", "retire_city_flow",
+                                          default_val=ud.get('retire_city', curr_city_flow))
 
     st.divider()
 
@@ -698,15 +700,15 @@ with st.expander("💸 4. Lifetime Cash Flows (Budgets & Milestones)", expanded=
     col_ai_cb, col_sv_cb = st.columns([3, 1])
     with col_ai_cb:
         st.markdown('<div class="ai-btn-marker"></div>', unsafe_allow_html=True)
-        if st.button("✨ Auto-Estimate Budget & Milestones for " + (curr_city if curr_city else "Your Area") + " (AI)",
-                     use_container_width=True):
+        if st.button("✨ Auto-Estimate Budget & Milestones for " + (
+        curr_city_flow if curr_city_flow else "Your Area") + " (AI)", use_container_width=True):
             with st.spinner("Analyzing localized CPI data, timelines, and family needs..."):
                 valid = edited_exp[edited_exp["Description"].astype(str) != ""].copy()
                 locked = valid[valid["AI Estimate?"] == False].to_dict('records')
                 locked_desc = [x['Description'] for x in locked]
                 wealth_ctx = f"The household has a current annual pre-tax income of ${curr_inc_total:,.0f} and liquid assets totaling ${liq_ast_total:,.0f}. VERY IMPORTANT: While you should scale the budget to reflect this wealth, assume these users are savvy spenders and aggressive savers (comfortable but smart with money), so avoid over-inflating lifestyle costs unnecessarily."
                 allowed_cats = ", ".join(budget_categories)
-                prompt = f"Current City: {curr_city}. Planned Retirement City: {ret_city}. Family: {k_ctx}. Current Year is {current_year}. {wealth_ctx} Generate a comprehensive list of missing living expenses AND expected future life milestones (like college or weddings). {ai_exclusion} CRITICAL INSTRUCTIONS: 1) Medical expenses (IRMAA, Medicare Cliff, Pre-Medicare gap, LTC) are handled automatically by the simulation engine; only provide modest baseline out-of-pocket healthcare costs. 2) Model 'Empty Nesting': phase out child-heavy groceries and utility expenses using 'Custom Year' End Phases when the youngest child turns 18, and create new lower-cost rows starting that same year. 3) Model Retirement Lifestyle Phases: split travel and entertainment into 'Go-Go Years' (high spend, starts at retirement, lasts 10 years, calculate costs based on {ret_city}), 'Slow-Go Years' (medium spend, lasts next 10 years), and 'No-Go Years' (low spend) using 'Custom Year' Start/End phases. Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (MUST be exactly one of: {allowed_cats}. If unsure, default to 'Other'), 'Frequency' (Monthly/Yearly/One-Time), 'Amount ($)' (number), 'Start Phase' (Now/At Retirement/Custom Year), 'Start Year' (integer), 'End Phase' (End of Life/At Retirement/Custom Year), 'End Year' (integer), and 'AI Estimate?' (true)."
+                prompt = f"Current City: {curr_city_flow}. Planned Retirement City: {ret_city_flow}. Family: {k_ctx}. Current Year is {current_year}. {wealth_ctx} Generate a comprehensive list of missing living expenses AND expected future life milestones (like college or weddings). {ai_exclusion} CRITICAL INSTRUCTIONS: 1) Medical expenses (IRMAA, Medicare Cliff, Pre-Medicare gap, LTC) are handled automatically by the simulation engine; only provide modest baseline out-of-pocket healthcare costs. 2) Model 'Empty Nesting': phase out child-heavy groceries and utility expenses using 'Custom Year' End Phases when the youngest child turns 18, and create new lower-cost rows starting that same year. 3) Model Retirement Lifestyle Phases: split travel and entertainment into 'Go-Go Years' (high spend, starts at retirement, lasts 10 years, calculate costs based on {ret_city_flow}), 'Slow-Go Years' (medium spend, lasts next 10 years), and 'No-Go Years' (low spend) using 'Custom Year' Start/End phases. Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (MUST be exactly one of: {allowed_cats}. If unsure, default to 'Other'), 'Frequency' (Monthly/Yearly/One-Time), 'Amount ($)' (number), 'Start Phase' (Now/At Retirement/Custom Year), 'Start Year' (integer), 'End Phase' (End of Life/At Retirement/Custom Year), 'End Year' (integer), and 'AI Estimate?' (true)."
                 res = call_gemini_json(prompt)
                 if res and isinstance(res, list) and len(res) > 0:
                     st.session_state['lifetime_expenses'] = locked + res
@@ -797,18 +799,18 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                                   f"What is the projected long-term annual college tuition inflation rate in the US? Return JSON: {{'inflation_education': float}}",
                                   ac5)
         prop_g = ai_number_input("Property Growth (%)", 'property_growth', 2.5,
-                                 f"Historical average annual real estate appreciation rate for {curr_city}? Return JSON: {{'property_growth': float}}",
+                                 f"Historical average annual real estate appreciation rate for {curr_city_flow}? Return JSON: {{'property_growth': float}}",
                                  ac6)
 
         ac7, ac8, ac9 = st.columns(3)
         rent_g = ai_number_input("Rent Growth (%)", 'rent_growth', 3.0,
-                                 f"Projected average annual rent increase rate for {curr_city}? Return JSON: {{'rent_growth': float}}",
+                                 f"Projected average annual rent increase rate for {curr_city_flow}? Return JSON: {{'rent_growth': float}}",
                                  ac7)
         cur_t = ai_number_input("Current State Tax (%)", 'current_tax_rate', 5.0,
-                                f"User lives in {curr_city} with ${curr_inc_total:,.0f} income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'current_tax_rate': float}}",
+                                f"User lives in {curr_city_flow} with ${curr_inc_total:,.0f} income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'current_tax_rate': float}}",
                                 ac8)
 
-        ret_city_state = st.session_state.get('retire_city_input', ret_city)
+        ret_city_state = st.session_state.get('retire_city_flow', ret_city_flow)
         ret_t = ai_number_input("Retire State Tax (%)", 'retire_tax_rate', 0.0,
                                 f"User plans to retire in {ret_city_state} with estimated retirement income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'retire_tax_rate': float}}",
                                 ac9)
@@ -926,7 +928,7 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
         # BASE STATE EXTRACTION (For reusability in Monte Carlo)
         base_sim_assets = [{"Account Name": a.get("Account Name"), "Type": a.get("Type"), "Owner": a.get("Owner", "Me"),
                             "bal": safe_num(a.get("Current Balance ($)")),
-                            "contrib": safe_num(a.get("Annual Additions ($/yr)")),
+                            "contrib": safe_num(a.get("Annual Contribution ($/yr)")),
                             "growth": safe_num(a.get("Est. Annual Growth (%)"), mkt),
                             "stop_at_ret": a.get("Stop Contrib at Ret.?", True)} for a in edited_ast.to_dict('records')
                            if a.get("Account Name")]
@@ -1039,7 +1041,8 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                 yd = {"Year": year, "Age (Primary)": my_current_age}
                 nw_yd = {"Year": year, "Age (Primary)": my_current_age}
 
-                annual_inc, annual_ss, pre_tax_ord, pre_tax_cg, earned_income = 0, 0, 0, 0, 0
+                annual_inc, annual_ss, pre_tax_ord, pre_tax_cg = 0, 0, 0, 0
+                earned_income_me, earned_income_spouse, match_income = 0, 0, 0
 
                 # Compound high-interest debt if we enter crisis mode
                 unfunded_debt_bal *= 1.18
@@ -1096,8 +1099,9 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                                 spouse_ss_amt = amt * spouse_ss_multi
                             continue
 
-                        # Hide 401(k) match from income completely, but it will still compound in the asset phase
+                        # Hide 401(k) match from income completely, but track it to avoid penalizing cash flows later
                         if cat_name == "Employer Match (401k/HSA)":
+                            match_income += amt
                             continue
 
                         if owner == "Me" and not is_my_alive: continue
@@ -1107,8 +1111,11 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                         annual_inc += amt
                         yd[f"Income: {cat_name}"] = yd.get(f"Income: {cat_name}", 0) + amt
                         pre_tax_ord += amt
-                        if cat_name in ["Base Salary (W-2)", "Bonus / Commission",
-                                        "Contractor (1099)"]: earned_income += amt
+                        if cat_name in ["Base Salary (W-2)", "Bonus / Commission", "Contractor (1099)"]:
+                            if owner in ["Me", "Joint"]:
+                                earned_income_me += amt
+                            elif owner == "Spouse":
+                                earned_income_spouse += amt
 
                 # Spousal SS Survivor Benefits
                 active_ss = 0
@@ -1165,15 +1172,16 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                     annual_inc += b['dist']
                     # QBI Deduction Proxy: ~20% of business pass-through income is generally tax-deductible in the US
                     pre_tax_ord += (b['dist'] * 0.80)
-                    yd["Income: Biz Dist"] = b['dist']
+                    yd["Income: Biz Dist"] = yd.get("Income: Biz Dist", 0) + b['dist']
 
                 for r in sim_re:
                     if year_offset > 0: r['rent'] *= (1 + r['r_growth'] / 100); r['exp'] *= (1 + infl / 100); r[
                         'val'] *= (1 + r['v_growth'] / 100)
                     annual_inc += r['rent']
-                    yd["Income: RE Rent"] = r['rent'] if r['rent'] > 0 else 0
+                    yd["Income: RE Rent"] = yd.get("Income: RE Rent", 0) + (r['rent'] if r['rent'] > 0 else 0)
                     re_exp_total += r['exp']
-                    yd["Expense: RE Upkeep/Tax"] = r['exp'] if r['exp'] > 0 else 0
+                    yd["Expense: RE Upkeep/Tax"] = yd.get("Expense: RE Upkeep/Tax", 0) + (
+                        r['exp'] if r['exp'] > 0 else 0)
 
                     interest_paid = 0
                     if r['debt'] > 0:
@@ -1181,7 +1189,7 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                         principal = max(0, r['pmt'] - interest_paid)
                         r['debt'] = max(0, r['debt'] - principal)
                         re_exp_total += r['pmt']
-                        yd["Expense: RE Mortgage"] = r['pmt']
+                        yd["Expense: RE Mortgage"] = yd.get("Expense: RE Mortgage", 0) + r['pmt']
                     re_equity += (r['val'] - r['debt'])
 
                     # Schedule E Proxy: Real Estate is taxed on NET income, not gross.
@@ -1320,7 +1328,7 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                         principal = max(0, d['pmt'] - interest)
                         d['bal'] = max(0, d['bal'] - principal)
                         total_exp += d['pmt']
-                        yd["Expense: Debt Payments"] = d['pmt']
+                        yd["Expense: Debt Payments"] = yd.get("Expense: Debt Payments", 0) + d['pmt']
                     debt_bal_total += d['bal']
 
                 # Asset Contributions
@@ -1457,20 +1465,23 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                 # Finalize Tax Setup
                 state_tax = pre_tax_ord * (state_tax_rate / 100.0)
 
-                # FICA Tax (Simplified approximation for earned income)
+                # FICA Tax applies per person against the SS wage base
                 fica_tax = 0
-                if earned_income > 0:
-                    ss_wage_base = 168600 * ((1 + infl / 100) ** year_offset)
-                    ss_tax = min(earned_income, ss_wage_base) * 0.062
-                    med_tax = earned_income * 0.0145
-                    addl_med_tax = max(0, earned_income - 250000) * 0.009
-                    fica_tax = ss_tax + med_tax + addl_med_tax
+                ss_wage_base = 168600 * ((1 + infl / 100) ** year_offset)
+                for ei in [earned_income_me, earned_income_spouse]:
+                    if ei > 0:
+                        ss_tax = min(ei, ss_wage_base) * 0.062
+                        med_tax = ei * 0.0145
+                        addl_med_tax = max(0, ei - 250000) * 0.009
+                        fica_tax += ss_tax + med_tax + addl_med_tax
 
                 total_tax = base_fed_tax + state_tax + fica_tax
 
                 # Robust Shortfall / Withdrawal Math
                 portfolio_income = 0
-                cash_outflows = total_exp + asset_contributions + total_tax
+                # We only deduct the EMPLOYEE portion of contributions from cash flow, not the Employer Match.
+                employee_contributions = max(0, asset_contributions - match_income)
+                cash_outflows = total_exp + employee_contributions + total_tax
                 net_cash_flow = annual_inc - cash_outflows
 
                 if net_cash_flow > 0:
@@ -2026,23 +2037,41 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
 st.markdown("---")
 st.markdown("### 🤖 AI Fiduciary Health Report")
 st.markdown(
-    '<div class="info-text">💡 Have our AI Fiduciary analyze your completed simulation to check for sequence of returns risk, tax inefficiencies, or shortfall dangers.</div>',
+    '<div class="info-text">💡 This engine extracts a 5-year interval timeseries snapshot of your entire financial life (Age, Net Worth, Liquid Cash, Income, Expenses, and Taxes). The AI acts as a fiduciary and analyzes your cash flows chronologically to provide tactical, phase-by-phase advice on Roth conversions, sequence of returns, and tax optimization.</div>',
     unsafe_allow_html=True)
 c_ai_rep, _ = st.columns([1, 2])
 with c_ai_rep:
     st.markdown('<div class="ai-btn-marker"></div>', unsafe_allow_html=True)
     if st.button("✨ Generate Comprehensive AI Report", use_container_width=True):
-        with st.spinner("AI acting as fiduciary advisor..."):
+        with st.spinner("AI extracting timeseries data and acting as fiduciary advisor..."):
             if 'sim_results' in locals() and len(sim_results) > 0:
                 sim_summary = {
                     "Current Age": my_age, "Retirement Age": ret_age, "Life Expectancy": my_life_exp_val,
                     "Current Net Worth": df_sim_nominal.iloc[0]['Net Worth'],
                     "Final Net Worth": df_sim_nominal.iloc[-1]['Net Worth'],
-                    "Shortfall Year": str(deplete_year) if deplete_year is not None else "None",
-                    "Avg Annual Income": df_sim_nominal['Annual Income'].mean(),
-                    "Avg Annual Expenses": df_sim_nominal['Annual Expenses'].mean()
+                    "Shortfall Year": str(deplete_year) if deplete_year is not None else "None"
                 }
-                prompt = f"Act as an expert fiduciary financial planner. Review this user's simulation summary: {json.dumps(sim_summary)}. Write a highly detailed, 3-paragraph professional analysis of their financial trajectory. Discuss their sequence of return risks, highlight strengths, and provide specific recommendations (e.g. increase savings, delay retirement, adjust spending). Return ONLY valid JSON exactly like this: {{\"analysis\": \"your markdown text here, using \\n for line breaks\"}}"
+
+                # Compress 50 years of data into 5-year leaps so the AI can digest the timeline without context limits
+                timeline_summary = []
+                for idx, row in df_sim_nominal.iloc[::5].iterrows():
+                    timeline_summary.append({
+                        "Age": int(row["Age"]),
+                        "Income": int(row["Annual Income"]),
+                        "Expenses": int(row["Annual Expenses"]),
+                        "Taxes": int(row["Annual Taxes"]),
+                        "Liquid_Assets": int(row["Liquid Assets"]),
+                        "Net_Worth": int(row["Net Worth"])
+                    })
+                # Always append the final year
+                last_row = df_sim_nominal.iloc[-1]
+                timeline_summary.append({"Age": int(last_row["Age"]), "Income": int(last_row["Annual Income"]),
+                                         "Expenses": int(last_row["Annual Expenses"]),
+                                         "Taxes": int(last_row["Annual Taxes"]),
+                                         "Liquid_Assets": int(last_row["Liquid Assets"]),
+                                         "Net_Worth": int(last_row["Net Worth"])})
+
+                prompt = f"Act as an expert fiduciary financial planner. Review this user's summary: {json.dumps(sim_summary)} and their chronological 5-year cash flow progression: {json.dumps(timeline_summary)}. Provide a highly detailed, year-by-year or phase-by-phase tactical analysis. Focus on specific strategies they can use to optimize their tax buckets (e.g., when exactly to execute Roth conversions before RMDs begin), sequence of withdrawals, and managing the gaps between retirement and Social Security/Medicare. Return ONLY valid JSON exactly like this: {{\"analysis\": \"your detailed markdown text here, using \\n for line breaks\"}}"
                 res = call_gemini_json(prompt)
                 if res and 'analysis' in res:
                     st.session_state['ai_analysis_report'] = res['analysis']
