@@ -4,7 +4,6 @@ import requests
 import json
 import datetime
 import time
-import copy
 import random
 from dateutil.relativedelta import relativedelta
 import warnings
@@ -31,6 +30,7 @@ ADDL_MED_TAX_THRESHOLD = 250000
 IRA_LIMIT_BASE = 7000
 PLAN_401K_LIMIT_BASE = 23500
 CATCHUP_401K_BASE = 7500
+CATCHUP_IRA_BASE = 1000
 MEDICARE_GAP_COST = 15000
 LTC_SHOCK_COST = 100000
 
@@ -66,8 +66,6 @@ st.markdown("""
     /* Hide marker containers to prevent layout spacing issues */
     div[data-testid="element-container"]:has(.ai-btn-marker),
     div[data-testid="stElementContainer"]:has(.ai-btn-marker),
-    div[data-testid="element-container"]:has(.save-btn-marker),
-    div[data-testid="stElementContainer"]:has(.save-btn-marker),
     div[data-testid="element-container"]:has(.main-save-btn-marker),
     div[data-testid="stElementContainer"]:has(.main-save-btn-marker) {
         display: none;
@@ -88,24 +86,6 @@ st.markdown("""
     div[data-testid="stElementContainer"]:has(.ai-btn-marker) + div[data-testid="stElementContainer"] button:hover {
         transform: translateY(-2px);
         box-shadow: 0 6px 20px 0 rgba(79, 70, 229, 0.39) !important;
-    }
-
-    /* Save Button subtle styling */
-    div[data-testid="element-container"]:has(.save-btn-marker) + div[data-testid="element-container"] button,
-    div[data-testid="stElementContainer"]:has(.save-btn-marker) + div[data-testid="stElementContainer"] button {
-        background-color: #f0fdf4 !important;
-        border: 1px solid #bbf7d0 !important;
-        color: #166534 !important;
-        font-weight: 600 !important;
-        border-radius: 8px !important;
-        transition: all 0.2s ease !important;
-    }
-    div[data-testid="element-container"]:has(.save-btn-marker) + div[data-testid="element-container"] button:hover,
-    div[data-testid="stElementContainer"]:has(.save-btn-marker) + div[data-testid="stElementContainer"] button:hover {
-        background-color: #dcfce7 !important;
-        border-color: #86efac !important;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(22, 101, 52, 0.15) !important;
     }
 
     /* Main Action Button (Bottom Save) */
@@ -336,8 +316,6 @@ with c_logout:
         st.session_state.clear()
         st.rerun()
 
-save_requested = False
-
 # --- 1. PERSONAL INFO ---
 with st.expander("👨‍👩‍👧‍👦 1. Your Profile & Family Context", expanded=False):
     st.markdown(
@@ -386,11 +364,6 @@ with st.expander("👨‍👩‍👧‍👦 1. Your Profile & Family Context", e
                                  key=f"ka_{i}")
             kids_data.append({"name": kn, "age": ka})
 
-    st.markdown('<div class="save-btn-marker"></div>', unsafe_allow_html=True)
-    if st.button("💾 Save Profile", key="sv_1"):
-        save_requested = True
-        st.toast("✅ Profile Saved!", icon="💾")
-
 # --- 2. INCOME ---
 with st.expander("💵 2. Your Income Streams", expanded=False):
     st.markdown(
@@ -434,10 +407,13 @@ with st.expander("💵 2. Your Income Streams", expanded=False):
     )
     render_total("Total Pre-Tax Income", f"${edited_inc['Annual Amount ($)'].sum():,.0f}")
 
-    col_ai_inc, col_sv_inc = st.columns([3, 1])
+    col_ai_inc, _ = st.columns([3, 1])
     with col_ai_inc:
         st.markdown('<div class="ai-btn-marker"></div>', unsafe_allow_html=True)
         if st.button("✨ Auto-Estimate My Social Security (AI)", width="stretch"):
+            # Save UI state before rerun
+            st.session_state['income'] = edited_inc.to_dict('records')
+
             with st.spinner("Asking AI to estimate your Social Security benefits based on your age and income..."):
                 curr_inc = sum([safe_num(x.get('Annual Amount ($)', 0)) for x in ud.get('income', [])])
                 if has_spouse:
@@ -460,11 +436,6 @@ with st.expander("💵 2. Your Income Streams", expanded=False):
                              "Override Growth (%)": None})
                     st.session_state['user_data']['income'] = current_inc
                     st.rerun()
-    with col_sv_inc:
-        st.markdown('<div class="save-btn-marker"></div>', unsafe_allow_html=True)
-        if st.button("💾 Save Income", key="sv_2", width="stretch"):
-            save_requested = True
-            st.toast("✅ Income Saved!", icon="💾")
 
 # --- 3. ASSETS, LIABILITIES & NET WORTH ---
 with st.expander("🏦 3. Assets, Debts & Net Worth", expanded=False):
@@ -506,6 +477,17 @@ with st.expander("🏦 3. Assets, Debts & Net Worth", expanded=False):
             }, num_rows="dynamic", width="stretch", hide_index=True, key="re_editor"
         )
 
+        # Validation Warning: Check if mortgage payments cover interest
+        for idx, r in edited_re.iterrows():
+            bal = safe_num(r.get('Mortgage Balance ($)'))
+            rate = safe_num(r.get('Interest Rate (%)'))
+            pmt = safe_num(r.get('Mortgage Payment ($)'))
+            if bal > 0 and rate > 0 and pmt > 0:
+                monthly_interest = (bal * (rate / 100.0)) / 12.0
+                if pmt < monthly_interest:
+                    st.warning(
+                        f"⚠️ Property '{r.get('Property Name', 'Unknown')}': Your monthly payment (${pmt:,.0f}) is less than the monthly interest generated (${monthly_interest:,.0f}). This loan balance will grow forever.")
+
     with tab_biz:
         df_biz = pd.DataFrame(ud.get('business', []))
         if df_biz.empty:
@@ -539,13 +521,17 @@ with st.expander("🏦 3. Assets, Debts & Net Worth", expanded=False):
             unsafe_allow_html=True)
         df_ast = pd.DataFrame(ud.get('liquid_assets', []))
         if df_ast.empty:
-            df_ast = pd.DataFrame([{"Account Name": "Primary 401(k)", "Type": "Traditional 401k/IRA", "Owner": "Me",
+            df_ast = pd.DataFrame([{"Account Name": "Primary 401(k)", "Type": "Traditional 401(k)", "Owner": "Me",
                                     "Current Balance ($)": 0, "Annual Contribution ($/yr)": 0,
                                     "Est. Annual Growth (%)": None, "Stop Contrib at Ret.?": True}])
         else:
             if "Annual Contribution ($)" in df_ast.columns: df_ast.rename(
                 columns={'Annual Contribution ($)': 'Annual Contribution ($/yr)'}, inplace=True)
             if "Stop Contrib at Ret.?" not in df_ast.columns: df_ast["Stop Contrib at Ret.?"] = True
+
+            # Smoothly migrate legacy types
+            df_ast['Type'] = df_ast['Type'].replace(
+                {'Traditional 401k/IRA': 'Traditional 401(k)', 'Roth 401k/IRA': 'Roth 401(k)'})
             df_ast = df_ast.reindex(
                 columns=["Account Name", "Type", "Owner", "Current Balance ($)", "Annual Contribution ($/yr)",
                          "Est. Annual Growth (%)", "Stop Contrib at Ret.?"])
@@ -555,8 +541,9 @@ with st.expander("🏦 3. Assets, Debts & Net Worth", expanded=False):
             column_config={
                 "Type": st.column_config.SelectboxColumn("Account Type",
                                                          options=["Checking/Savings", "HYSA", "Brokerage (Taxable)",
-                                                                  "Traditional 401k/IRA", "Roth 401k/IRA", "HSA",
-                                                                  "Crypto", "529 Plan", "Other"]),
+                                                                  "Traditional 401(k)", "Traditional IRA",
+                                                                  "Roth 401(k)", "Roth IRA", "HSA", "Crypto",
+                                                                  "529 Plan", "Other"]),
                 "Owner": st.column_config.SelectboxColumn("Whose Account?", options=["Me", "Spouse", "Joint"]),
                 "Current Balance ($)": st.column_config.NumberColumn("Current Balance ($)", step=5000, format="$%d"),
                 "Annual Contribution ($/yr)": st.column_config.NumberColumn("Your Contributions ($/yr)", step=1000,
@@ -568,6 +555,14 @@ with st.expander("🏦 3. Assets, Debts & Net Worth", expanded=False):
                                                                          help="Check this if you will stop saving into this account once the owner retires.")
             }, num_rows="dynamic", width="stretch", hide_index=True, key="assets_editor"
         )
+
+        # Validation Warning: Check if 401k/IRA contributions wildly exceed normal limits
+        for idx, a in edited_ast.iterrows():
+            if a.get('Type') in ['Traditional 401(k)', 'Roth 401(k)', 'Traditional IRA', 'Roth IRA']:
+                contrib = safe_num(a.get('Annual Contribution ($/yr)'))
+                if contrib > 31500:  # Broad threshold covering catchups
+                    st.warning(
+                        f"⚠️ Account '{a.get('Account Name', 'Unknown')}': Contribution of ${contrib:,.0f}/yr exceeds standard IRS maximums. The simulation engine will automatically cap these contributions to legal limits for accuracy.")
 
     with tab_debt:
         st.markdown(
@@ -609,11 +604,6 @@ with st.expander("🏦 3. Assets, Debts & Net Worth", expanded=False):
     st.markdown(
         f"<div style='text-align: center; padding: 15px; margin-top: 15px; background: #eff6ff; border-radius: 8px;'><h3 style='margin:0; color: #1e293b;'>Total Estimated Net Worth: <span style='color: #3b82f6;'>${net_worth:,.0f}</span></h3></div>",
         unsafe_allow_html=True)
-
-    st.markdown('<div class="save-btn-marker"></div>', unsafe_allow_html=True)
-    if st.button("💾 Save Assets & Debts", key="sv_3", width="stretch"):
-        save_requested = True
-        st.toast("✅ Assets & Debts Saved!", icon="💾")
 
 # --- AI CONTEXT PREP ---
 k_ctx_list = [f"{k['name']}:{k['age']}" for k in kids_data]
@@ -716,11 +706,14 @@ with st.expander("💸 4. Lifetime Cash Flows (Budgets & Milestones)", expanded=
         }, num_rows="dynamic", width="stretch", hide_index=True, key="exp_ed"
     )
 
-    col_ai_cb, col_sv_cb = st.columns([3, 1])
+    col_ai_cb, _ = st.columns([3, 1])
     with col_ai_cb:
         st.markdown('<div class="ai-btn-marker"></div>', unsafe_allow_html=True)
         if st.button("✨ Auto-Estimate Budget & Milestones for selected current and future locations (AI)",
                      width="stretch"):
+            # Save UI state before rerun
+            st.session_state['lifetime_expenses'] = edited_exp.to_dict('records')
+
             with st.spinner("Analyzing localized CPI data, timelines, and family needs..."):
                 valid = edited_exp[edited_exp["Description"].astype(str) != ""].copy()
                 locked = valid[valid["AI Estimate?"] == False].to_dict('records')
@@ -734,12 +727,6 @@ with st.expander("💸 4. Lifetime Cash Flows (Budgets & Milestones)", expanded=
                     st.rerun()
                 else:
                     st.error("⚠️ AI returned an invalid format. Please try again.")
-    with col_sv_cb:
-        st.markdown('<div class="save-btn-marker"></div>', unsafe_allow_html=True)
-        if st.button("💾 Save Cash Flows", key="sv_4", width="stretch"):
-            save_requested = True
-            st.session_state['lifetime_expenses'] = edited_exp.to_dict('records')
-            st.toast("✅ Cash Flows Saved!", icon="💾")
 
 # --- 5. INTERACTIVE DASHBOARD & SIMULATION ---
 with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expanded=True):
@@ -748,12 +735,14 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
 
     with tab_time:
         cc1, cc2, cc3, cc4 = st.columns(4)
-        ret_age = cc1.slider("Retirement Age", int(my_age), 100, int(p_info.get('retire_age', 65)))
-        s_ret_age = cc2.slider("Spouse Retire Age", int(spouse_age), 100,
-                               int(p_info.get('spouse_retire_age', 65))) if has_spouse else 65
-        my_life_exp = cc3.slider("Your Life Expectancy", 70, 115, int(p_info.get('my_life_exp', 95)))
-        spouse_life_exp = cc4.slider("Spouse Life Expectancy", 70, 115,
-                                     int(p_info.get('spouse_life_exp', 95))) if has_spouse else None
+        ret_age = cc1.slider("Retirement Age", max(int(my_age), 1), 100,
+                             max(int(my_age), int(p_info.get('retire_age', 65))))
+        s_ret_age = cc2.slider("Spouse Retire Age", max(int(spouse_age), 1), 100,
+                               max(int(spouse_age), int(p_info.get('spouse_retire_age', 65)))) if has_spouse else 65
+        my_life_exp = cc3.slider("Your Life Expectancy", max(70, ret_age), 115,
+                                 max(ret_age, int(p_info.get('my_life_exp', 95))))
+        spouse_life_exp = cc4.slider("Spouse Life Expectancy", max(70, s_ret_age), 115,
+                                     max(s_ret_age, int(p_info.get('spouse_life_exp', 95)))) if has_spouse else None
 
     # --- ASSUMPTIONS BLOCK ---
     with tab_macro:
@@ -863,13 +852,10 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                                        index=roth_target_idx,
                                        help="The AI will convert just enough Traditional funds each year to reach the very top of this selected tax bracket.")
 
-    st.markdown('<div class="save-btn-marker"></div>', unsafe_allow_html=True)
-    if st.button("💾 Save All Settings", key="sv_7"):
-        save_requested = True
-        st.session_state['assumptions']['roth_conversions'] = roth_conversions
-        st.session_state['assumptions']['roth_target'] = roth_target
-        st.session_state['assumptions']['withdrawal_strategy'] = active_withdrawal_strategy.split(' ')[0]
-        st.toast("✅ Settings Saved!", icon="💾")
+            # Record toggles to state
+            st.session_state['assumptions']['roth_conversions'] = roth_conversions
+            st.session_state['assumptions']['roth_target'] = roth_target
+            st.session_state['assumptions']['withdrawal_strategy'] = active_withdrawal_strategy.split(' ')[0]
 
     st.divider()
 
@@ -938,7 +924,8 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                 else:
                     return 1.0 - (36 * (5 / 9 * 0.01)) - ((months_early - 36) * (5 / 12 * 0.01))
             elif r_age > fra:
-                months_late = min((r_age - fra) * 12, 36)
+                months_late = min((r_age - fra) * 12,
+                                  36)  # Cap delayed retirement credits at age 70 (36 months after FRA 67)
                 return 1.0 + (months_late * (2 / 3 * 0.01))
             return 1.0
 
@@ -952,9 +939,6 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                              100: 6.4, 101: 6.0, 102: 5.6, 103: 5.2, 104: 4.9, 105: 4.6, 106: 4.3, 107: 4.1, 108: 3.9,
                              109: 3.7, 110: 3.5, 111: 3.4, 112: 3.3, 113: 3.1, 114: 3.0, 115: 2.9, 116: 2.8, 117: 2.7,
                              118: 2.5, 119: 2.3, 120: 2.0}
-
-        my_life_exp_val = my_life_exp if my_life_exp else 95
-        spouse_life_exp_val = spouse_life_exp if has_spouse and spouse_life_exp else 0
 
         primary_retire_year = my_birth_year + ret_age
         spouse_retire_year = spouse_birth_year + s_ret_age if has_spouse else 9999
@@ -1129,7 +1113,7 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                 # 4. RMDs (Calculated strictly on Prior Year Dec 31st Balance before any growth or contribs)
                 rmd_income = 0
                 for a in sim_assets:
-                    if a.get('Type') == 'Traditional 401k/IRA' and a['bal'] > 0:
+                    if a.get('Type') in ['Traditional 401(k)', 'Traditional IRA'] and a['bal'] > 0:
                         owner = a.get('Owner', 'Me')
                         owner_age = my_current_age if owner in ['Me', 'Joint'] else spouse_current_age
                         owner_alive = is_my_alive if owner in ['Me', 'Joint'] else is_spouse_alive
@@ -1362,7 +1346,7 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
 
                     if conversion_room > 0:
                         for a in sim_assets:
-                            if a.get('Type') == 'Traditional 401k/IRA' and a['bal'] > 0:
+                            if a.get('Type') in ['Traditional 401(k)', 'Traditional IRA'] and a['bal'] > 0:
                                 convert_amt = min(a['bal'], conversion_room - total_converted)
                                 if convert_amt > 0:
                                     a['bal'] -= convert_amt
@@ -1370,15 +1354,15 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
 
                                     roth_found = False
                                     for roth_a in sim_assets:
-                                        if roth_a.get('Type') == 'Roth 401k/IRA' and roth_a.get('Owner') == a.get(
-                                                'Owner'):
+                                        if roth_a.get('Type') in ['Roth 401(k)', 'Roth IRA'] and roth_a.get(
+                                                'Owner') == a.get('Owner'):
                                             roth_a['bal'] += convert_amt
                                             roth_found = True
                                             break
                                     if not roth_found:
                                         sim_assets.append({
                                             "Account Name": f"Converted Roth ({a.get('Owner')})",
-                                            "Type": "Roth 401k/IRA",
+                                            "Type": "Roth IRA",
                                             "Owner": a.get("Owner", "Me"),
                                             "bal": convert_amt,
                                             "contrib": 0.0,
@@ -1551,8 +1535,8 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                 plan_401k_limit = PLAN_401K_LIMIT_BASE * ((1 + ctx['infl'] / 100) ** year_offset)
                 catchup_401k = CATCHUP_401K_BASE * ((1 + ctx['infl'] / 100) ** year_offset)
 
-                # Distribute matches to Traditional 401k first, then Roth, then HSA
-                for acct_type_target in ['Traditional 401k/IRA', 'Roth 401k/IRA', 'HSA']:
+                # Distribute matches specifically to 401k first
+                for acct_type_target in ['Traditional 401(k)', 'Roth 401(k)', 'HSA']:
                     for a in sim_assets:
                         if a.get('Type') == acct_type_target:
                             owner = a.get('Owner', 'Me')
@@ -1563,7 +1547,8 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
 
                 for a in sim_assets:
                     custom_g = a.get('growth')
-                    is_glidepath_applicable = a.get('Type') in ['Traditional 401k/IRA', 'Brokerage (Taxable)']
+                    is_glidepath_applicable = a.get('Type') in ['Traditional 401(k)', 'Traditional IRA',
+                                                                'Brokerage (Taxable)']
                     is_cash_account = a.get('Type') in ['Checking/Savings', 'HYSA', 'Unallocated Cash']
 
                     if is_cash_account:
@@ -1586,8 +1571,12 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                             added_this_year = a['contrib']
 
                             # Soft cap IRS Limits
-                            if a.get('Type') in ['Traditional 401k/IRA', 'Roth 401k/IRA']:
+                            if a.get('Type') in ['Traditional 401(k)', 'Roth 401(k)']:
                                 limit = plan_401k_limit + (catchup_401k if owner_age >= 50 else 0)
+                                added_this_year = min(added_this_year, limit)
+                            elif a.get('Type') in ['Traditional IRA', 'Roth IRA']:
+                                limit = (IRA_LIMIT_BASE * ((1 + ctx['infl'] / 100) ** year_offset)) + (
+                                    CATCHUP_IRA_BASE if owner_age >= 50 else 0)
                                 added_this_year = min(added_this_year, limit)
 
                             user_out_of_pocket_contribs += added_this_year
@@ -1656,8 +1645,6 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                             irmaa_triggered = True
 
                 # 11. Robust Shortfall / Withdrawal Math
-                portfolio_income = 0
-
                 if user_out_of_pocket_contribs > 0:
                     yd["Expense: Portfolio Contributions"] = user_out_of_pocket_contribs
 
@@ -1752,7 +1739,7 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                         if shortfall > 0:
                             for a in sim_assets:
                                 if shortfall <= 0: break
-                                if a.get('Type') == 'Traditional 401k/IRA' and a['bal'] > 0:
+                                if a.get('Type') in ['Traditional 401(k)', 'Traditional IRA'] and a['bal'] > 0:
                                     if not tapped_trad:
                                         if year not in milestones_by_year: milestones_by_year[year] = []
                                         milestones_by_year[year].append(
@@ -1791,8 +1778,8 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                         if shortfall > 0:
                             for a in sim_assets:
                                 if shortfall <= 0: break
-                                if a.get('Type') in ['Roth 401k/IRA', 'HSA', 'Crypto', '529 Plan', 'Other'] and a[
-                                    'bal'] > 0:
+                                if a.get('Type') in ['Roth 401(k)', 'Roth IRA', 'HSA', 'Crypto', '529 Plan',
+                                                     'Other'] and a['bal'] > 0:
                                     if not tapped_roth:
                                         if year not in milestones_by_year: milestones_by_year[year] = []
                                         milestones_by_year[year].append(
@@ -1807,7 +1794,7 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
 
                                     rule_of_55 = (owner_retire_age >= 55 and owner_age >= owner_retire_age)
                                     penalty = 0.10 if (a.get(
-                                        'Type') == 'Roth 401k/IRA' and owner_age < 59.5 and not rule_of_55) else 0.0
+                                        'Type') == 'Roth 401(k)' and owner_age < 59.5 and not rule_of_55) else 0.0
 
                                     eff_tax = min(penalty, 0.99)
                                     req_gross = shortfall / max(0.01, (1.0 - eff_tax))
@@ -1833,8 +1820,8 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                         if shortfall > 0:
                             for a in sim_assets:
                                 if shortfall <= 0: break
-                                if a.get('Type') in ['Roth 401k/IRA', 'HSA', 'Crypto', '529 Plan', 'Other'] and a[
-                                    'bal'] > 0:
+                                if a.get('Type') in ['Roth 401(k)', 'Roth IRA', 'HSA', 'Crypto', '529 Plan',
+                                                     'Other'] and a['bal'] > 0:
                                     if not tapped_roth:
                                         if year not in milestones_by_year: milestones_by_year[year] = []
                                         milestones_by_year[year].append(
@@ -1849,7 +1836,7 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
 
                                     rule_of_55 = (owner_retire_age >= 55 and owner_age >= owner_retire_age)
                                     penalty = 0.10 if (a.get(
-                                        'Type') == 'Roth 401k/IRA' and owner_age < 59.5 and not rule_of_55) else 0.0
+                                        'Type') == 'Roth 401(k)' and owner_age < 59.5 and not rule_of_55) else 0.0
 
                                     eff_tax = min(penalty, 0.99)
                                     req_gross = shortfall / max(0.01, (1.0 - eff_tax))
@@ -1873,7 +1860,7 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                         if shortfall > 0:
                             for a in sim_assets:
                                 if shortfall <= 0: break
-                                if a.get('Type') == 'Traditional 401k/IRA' and a['bal'] > 0:
+                                if a.get('Type') in ['Traditional 401(k)', 'Traditional IRA'] and a['bal'] > 0:
                                     if not tapped_trad:
                                         if year not in milestones_by_year: milestones_by_year[year] = []
                                         milestones_by_year[year].append(
@@ -1944,12 +1931,12 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                                 {"desc": f"🎓 529 Plan Depleted: {a['Account Name']}", "amt": 0, "type": "system"})
                     prev_ast_bals[a['Account Name']] = a['bal']
 
-                sim_res.append(
-                    {"Year": year, "Age": my_current_age, "Annual Income": annual_inc, "Annual Expenses": total_exp,
-                     "Annual Taxes": yd["Expense: Taxes"], "Annual Net Savings": yd["Net Savings"],
-                     "Liquid Assets": liquid_assets_total,
-                     "Real Estate Equity": re_equity, "Business Equity": cur_biz_val,
-                     "Debt": -debt_bal_total, "Unfunded Debt": unfunded_debt_bal, "Net Worth": net_worth})
+                sim_res.append({"Year": year, "Age (Primary)": my_current_age, "Age (Spouse)": spouse_current_age,
+                                "Annual Income": annual_inc, "Annual Expenses": total_exp,
+                                "Annual Taxes": yd["Expense: Taxes"], "Annual Net Savings": yd["Net Savings"],
+                                "Liquid Assets": liquid_assets_total,
+                                "Real Estate Equity": re_equity, "Business Equity": cur_biz_val,
+                                "Debt": -debt_bal_total, "Unfunded Debt": unfunded_debt_bal, "Net Worth": net_worth})
                 det_res.append(yd)
                 nw_det_res.append(nw_yd)
 
@@ -1980,13 +1967,13 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
             final_nw = df_sim.iloc[-1]['Net Worth']
             shortfall_mask = df_sim['Unfunded Debt'] > 0
             deplete_year = df_sim[shortfall_mask]['Year'].min() if not df_sim[shortfall_mask].empty else None
-            deplete_age = df_sim[shortfall_mask]['Age'].min() if not df_sim[shortfall_mask].empty else None
+            deplete_age = df_sim[shortfall_mask]['Age (Primary)'].min() if not df_sim[shortfall_mask].empty else None
 
             c_status, c_ai_btn = st.columns([3, 2])
             with c_status:
                 if deplete_year is not None:
                     st.error(
-                        f"🔴 **Liquidity Crisis:** You completely exhaust your liquid cash in **Year {deplete_year}** (Age {deplete_age}) and begin accumulating high-interest shortfall debt.")
+                        f"🔴 **Liquidity Crisis:** You completely exhaust your liquid cash in **Year {int(deplete_year)}** (Age {int(deplete_age)}) and begin accumulating high-interest shortfall debt.")
                 elif final_nw >= 1000000:
                     st.success(
                         f"🟢 **On Track:** Projected Net Worth at timeline end is **${final_nw:,.0f}**. Your assets comfortably outlive your life expectancy.")
@@ -2003,12 +1990,12 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                 df_sim[cols_sim] = df_sim[cols_sim].div(discounts, axis=0)
 
                 cols_det = [c for c in df_det.columns if
-                            c not in ["Age (Primary)", "Age (Spouse)", "Year", "Age"] and pd.api.types.is_numeric_dtype(
+                            c not in ["Age (Primary)", "Age (Spouse)", "Year"] and pd.api.types.is_numeric_dtype(
                                 df_det[c])]
                 df_det[cols_det] = df_det[cols_det].div(discounts, axis=0)
 
                 cols_nw = [c for c in df_nw.columns if
-                           c not in ["Age (Primary)", "Age (Spouse)", "Year", "Age"] and pd.api.types.is_numeric_dtype(
+                           c not in ["Age (Primary)", "Age (Spouse)", "Year"] and pd.api.types.is_numeric_dtype(
                                df_nw[c])]
                 df_nw[cols_nw] = df_nw[cols_nw].div(discounts, axis=0)
 
@@ -2317,7 +2304,7 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                 exp_c = sorted([c for c in df_det.columns if c.startswith("Expense:")])
                 ord_det = ["Year", "Age (Primary)", "Age (Spouse)"] + inc_c + exp_c + ["Net Savings"]
                 st.dataframe(df_det[ord_det].set_index("Year").style.format(
-                    {c: "${:,.0f}" for c in ord_det if c not in ["Age (Primary)", "Age (Spouse)", "Year", "Age"]} | {
+                    {c: "${:,.0f}" for c in ord_det if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
                         "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), width="stretch")
 
             with t2:
@@ -2331,7 +2318,7 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                                                                               "Total Debt Liabilities",
                                                                               "Total Net Worth"]
                 st.dataframe(df_nw[ord_nw].set_index("Year").style.format(
-                    {c: "${:,.0f}" for c in ord_nw if c not in ["Age (Primary)", "Age (Spouse)", "Year", "Age"]} | {
+                    {c: "${:,.0f}" for c in ord_nw if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
                         "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), width="stretch")
 
 # --- 10. AI FIDUCIARY REPORT & WHAT-IF SIMULATOR ---
@@ -2343,7 +2330,7 @@ with st.expander("🤖 10. AI Fiduciary Health & What-If Simulator", expanded=Fa
     tab_report, tab_whatif = st.tabs(["📊 Comprehensive Health Report", "🔮 What-If Simulator"])
 
     # Store standard data extraction here so both tabs can securely access it
-    if 'sim_results' in locals() and len(sim_results) > 0:
+    if 'df_sim' in locals() and not df_sim.empty:
         sim_summary = {
             "Current Age": my_age, "Retirement Age": ret_age, "Life Expectancy": my_life_exp_val,
             "Current Net Worth": df_sim.iloc[0]['Net Worth'], "Final Net Worth": df_sim.iloc[-1]['Net Worth'],
@@ -2354,7 +2341,7 @@ with st.expander("🤖 10. AI Fiduciary Health & What-If Simulator", expanded=Fa
         timeline_summary = []
         for idx, row in df_sim.iloc[::5].iterrows():
             timeline_summary.append({
-                "Age": int(row["Age"]),
+                "Age": int(row["Age (Primary)"]),
                 "Income": int(row["Annual Income"]),
                 "Expenses": int(row["Annual Expenses"]),
                 "Taxes": int(row["Annual Taxes"]),
@@ -2363,7 +2350,7 @@ with st.expander("🤖 10. AI Fiduciary Health & What-If Simulator", expanded=Fa
             })
         # Always append the final year
         last_row = df_sim.iloc[-1]
-        timeline_summary.append({"Age": int(last_row["Age"]), "Income": int(last_row["Annual Income"]),
+        timeline_summary.append({"Age": int(last_row["Age (Primary)"]), "Income": int(last_row["Annual Income"]),
                                  "Expenses": int(last_row["Annual Expenses"]), "Taxes": int(last_row["Annual Taxes"]),
                                  "Liquid_Assets": int(last_row["Liquid Assets"]),
                                  "Net_Worth": int(last_row["Net Worth"])})
@@ -2415,44 +2402,45 @@ with st.expander("🤖 10. AI Fiduciary Health & What-If Simulator", expanded=Fa
 with st.expander("📖 11. How the Engine Works (FAQ)", expanded=False):
     st.markdown("""
     **Q: How does the simulation handle my employer 401(k) match?**
-    **A:** The engine separates your paycheck contributions from your employer's "free money." It removes the match from your spendable cash flow (so it doesn't falsely inflate your living expenses), but it mirrors the total combined amount to your assets so your balances grow correctly.
+    **A:** The engine completely separates your out-of-pocket paycheck contributions from your employer's "free money." It intelligently deducts ONLY your out-of-pocket contribution from your spendable cash flow, but it seamlessly routes the *combined total* (your contribution + employer match) directly into your 401(k) portfolio so your asset balances compound perfectly.
 
     **Q: Are my investment properties inflating my cash flow charts?**
-    **A:** No. Investment properties are treated in an isolated "Investment Bubble." The engine calculates the gross rent minus the exact mortgage (P&I) and upkeep. Only the *Net Profit* or *Net Loss* spills over into your primary cash flow charts. Your primary residence, however, acts as a standard living expense.
+    **A:** No. Investment properties are mathematically shielded in an isolated "Investment Bubble." The engine calculates the gross rent minus the exact amortized mortgage (Principal & Interest) and upkeep. Only the resulting *Net Profit* or *Net Loss* spills over into your primary cash flow charts. Your primary residence, however, acts as a standard living expense.
 
     **Q: What happens if my W-2 income exceeds my expenses and savings goals?**
-    **A:** The "Surplus Waterfall" automatically catches all unspent money. If you have "Shortfall Debt," it pays that down first. Next, it sweeps the remaining surplus into your Taxable Brokerage. If you don't have one, it flows into your HYSA/Savings. This ensures every penny works for you and compounds with market growth.
+    **A:** The engine deploys a highly realistic "Surplus Waterfall" that automatically catches all unspent money. If you have any outstanding "Shortfall Debt," it aggressively pays that down first. Next, it sweeps the remaining surplus into your Taxable Brokerage. If you don't have one, it defaults into your HYSA or Checking. This ensures every single penny works for you and compounds with market growth instead of vanishing.
 
     **Q: How do 529 Plans interact with college costs?**
-    **A:** The engine uses fuzzy-matching to connect your 529 Asset names (e.g., "Sarahna 529") with your milestone expenses (e.g., "Sarahna College"). It subtracts the tuition from the 529 balance and logs an offsetting tax-free withdrawal so your net cash flow isn't penalized until the 529 is empty.
+    **A:** The engine uses targeted logic to connect your 529 Asset account names (e.g., "Sarahna 529") with your corresponding milestone expenses (e.g., "Sarahna College"). It subtracts the tuition invoice directly from the 529 balance and logs an offsetting tax-free withdrawal. Your net cash flow is completely shielded from the college bill until the 529 plan runs dry.
 
     **Q: What happens to RMDs if a spouse passes away?**
-    **A:** Required Minimum Distributions (RMDs) pause for the deceased spouse's specific accounts, allowing them to continue growing tax-deferred. The surviving spouse can still draw down from those accounts seamlessly if the simulation requires cash to cover a shortfall.
+    **A:** Required Minimum Distributions (RMDs) are legally bound to the living owner. The engine automatically halts RMDs for the deceased spouse's specific accounts, allowing those funds to continue growing tax-deferred. The surviving spouse can still seamlessly draw down from those inherited accounts if the simulation requires emergency cash to cover a shortfall.
 
     **Q: How are Federal Taxes calculated? Do you just use a flat rate?**
-    **A:** No, the engine uses progressive 2026 IRS tax brackets. It dynamically calculates your Standard Deduction (adjusting for Single vs. Married Filing Jointly) and inflates the tax brackets every year based on your CPI assumption to prevent "bracket creep." It also separates ordinary income (W-2, RMDs, Rent) from Capital Gains (Brokerage withdrawals) for accurate tax treatment.
+    **A:** No, the engine utilizes a fully functional progressive IRS tax calculator modeled on 2026 brackets. It dynamically calculates your Standard Deduction (adjusting for Single vs. Married Filing Jointly) and heavily inflates the tax brackets every year based on your CPI assumptions to prevent "bracket creep." It correctly separates Ordinary Income (W-2, RMDs, Rent) from Capital Gains (Brokerage withdrawals) to emulate a highly accurate tax environment.
 
     **Q: What is the "Pre-Medicare Gap Proxy"?**
-    **A:** If you retire before age 65, you lose employer-sponsored healthcare but don't yet qualify for Medicare. The engine automatically injects a $15,000/year (adjusted for healthcare inflation) private insurance expense for each year between your retirement age and 65 to protect you from underestimating early retirement costs.
+    **A:** If you retire before age 65, you instantly lose employer-sponsored healthcare but do not yet qualify for federal Medicare. To protect you from underestimating this massive expense, the engine automatically injects a $15,000/year (adjusted for healthcare inflation) private insurance penalty for each gap year. Crucially, if your passive income qualifies you for ACA subsidies, the engine scales the penalty down dynamically.
 
     **Q: What is the Medicare IRMAA Surcharge?**
-    **A:** Medicare Part B & D premiums are income-based. If your taxable income (including RMDs, Roth Conversions, and business income) crosses certain IRS thresholds during retirement, the engine automatically calculates and applies the IRMAA penalty surcharge to your healthcare expenses.
+    **A:** Medicare Part B & D premiums are highly income-based. If your taxable income (including RMDs, Roth Conversions, and business distributions) crosses certain IRS MAGI thresholds during retirement, the engine automatically calculates and applies the rigid IRMAA penalty surcharge to your total healthcare expenses.
 
     **Q: How does the "Roth Conversion Optimizer" work?**
-    **A:** If enabled, the engine looks at your taxable income during your early retirement years (before RMDs and Social Security begin). It calculates exactly how much "room" you have left in your selected tax bracket (e.g., the 24% bracket). It then converts Traditional 401(k) funds to a Roth IRA to fill that space, explicitly checking if you have enough liquid cash in your savings/brokerage to pay the tax bill without going into debt.
+    **A:** If enabled, the engine evaluates your taxable income during your early retirement years (the "valley" before RMDs and Social Security begin). It calculates exactly how much "room" you have left before hitting the ceiling of your selected tax bracket. It then algorithmically converts Traditional 401(k) funds to a Roth IRA to fill that space, explicitly checking if you have enough liquid cash in your savings/brokerage to safely pay the resulting tax bill without triggering shortfall debt.
 
     **Q: How does the Monte Carlo risk analysis work?**
-    **A:** Real markets don't return exactly 7% every year. The Monte Carlo engine runs your exact financial profile through 100+ parallel realities, randomly varying the stock market return each year based on historical volatility (Standard Deviation). It then reports your Probability of Success—the percentage of simulations where your net worth stays above $0 until your life expectancy.
+    **A:** Real markets do not return a clean 7% every year. The Monte Carlo engine takes your completed financial blueprint and runs it through 100+ parallel realities. It mathematically scrambles your portfolio's annual return based on standard deviation (historical volatility). It then calculates your true "Probability of Success"—the percentage of alternate realities where your net worth survives the chaos until the day you die.
     """)
 
 # --- FINAL SAVE CORE ---
 st.markdown("---")
 st.markdown('<div class="main-save-btn-marker"></div>', unsafe_allow_html=True)
-if st.button("🚀 Save Full Profile to Cloud Server", type="primary", width="stretch", key="save_main") or save_requested:
+if st.button("🚀 Save Full Profile to Cloud Server", type="primary", width="stretch", key="save_main"):
     if st.session_state['user_email'] == "guest_demo":
         st.error("Persistent configurations disabled within the demonstration environment.")
     else:
         def clean(df, k):
+            if not isinstance(df, pd.DataFrame): return df
             if df.empty: return []
             rows = df[df[k].astype(str) != ""].to_dict('records')
             for r in rows:
@@ -2479,6 +2467,6 @@ if st.button("🚀 Save Full Profile to Cloud Server", type="primary", width="st
                             "retire_tax_rate": ret_t, "roth_conversions": roth_conversions, "roth_target": roth_target,
                             "withdrawal_strategy": active_withdrawal_strategy.split(' ')[0]}
         }
-        db.collection('users').document(st.session_state['user_email']).set(user_data, merge=True)
+        db.collection('users').document(st.session_state['user_email']).set(user_data)
         st.session_state['user_data'] = user_data
         st.success("✅ Complete Financial Blueprint Synchronized Successfully!")
