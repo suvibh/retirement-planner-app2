@@ -39,6 +39,8 @@ SHORTFALL_PENALTY_RATE = 0.12  # 12% Annual Penalty on Unfunded Debt
 WIDOW_EXPENSE_MULTIPLIER = 0.60
 MEDICARE_CLIFF_SINGLE_DROP = 0.25  # 25% drop per spouse going on Medicare
 ROTH_CASH_BUFFER_MARGIN = 0.95
+BUDGET_CATEGORIES = ["Housing / Rent", "Transportation", "Food", "Utilities", "Insurance", "Healthcare",
+                     "Entertainment", "Education", "Personal Care", "Subscriptions", "Travel", "Debt Payments", "Other"]
 
 # --- GOOGLE ANALYTICS INJECTION ---
 GA_MEASUREMENT_ID = st.secrets.get("GA_MEASUREMENT_ID", "")
@@ -518,7 +520,46 @@ def initialize_session_state():
         st.session_state['business_data'] = ud.get('business', [])
         st.session_state['liquid_assets_data'] = ud.get('liquid_assets', [])
         st.session_state['liabilities_data'] = ud.get('liabilities', [])
-        st.session_state['lifetime_expenses'] = ud.get('lifetime_expenses', [])
+
+        # Smart Migration for Expenses
+        life_exp = ud.get('lifetime_expenses', [])
+        if not life_exp:
+            migrated = []
+            current_year = datetime.date.today().year
+            for c in ud.get('current_expenses', []):
+                if c.get("Description"): migrated.append(
+                    {"Description": c.get("Description"), "Category": c.get("Category", "Other"),
+                     "Frequency": c.get("Frequency", "Monthly"), "Amount ($)": c.get("Amount ($)", 0),
+                     "Start Phase": "Now", "Start Year": None, "End Phase": "At Retirement", "End Year": None,
+                     "AI Estimate?": c.get("AI Estimate?", False)})
+            for r in ud.get('retire_expenses', []):
+                if r.get("Description"): migrated.append(
+                    {"Description": r.get("Description"), "Category": r.get("Category", "Other"),
+                     "Frequency": r.get("Frequency", "Monthly"), "Amount ($)": r.get("Amount ($)", 0),
+                     "Start Phase": "At Retirement", "Start Year": None, "End Phase": "End of Life", "End Year": None,
+                     "AI Estimate?": r.get("AI Estimate?", False)})
+            for m in ud.get('one_time_events', []):
+                if m.get("Description"):
+                    try:
+                        sy_int = int(str(m.get("Start Date (MM/YYYY)", "")).split('/')[-1])
+                    except:
+                        sy_int = current_year
+                    try:
+                        ey_int = int(str(m.get("End Date (MM/YYYY)", "")).split('/')[-1])
+                    except:
+                        ey_int = sy_int
+                    migrated.append({"Description": m.get("Description"), "Category": "Other",
+                                     "Frequency": m.get("Frequency", "One-Time"), "Amount ($)": m.get("Amount ($)", 0),
+                                     "Start Phase": "Custom Year", "Start Year": sy_int, "End Phase": "Custom Year",
+                                     "End Year": ey_int, "AI Estimate?": m.get("AI Estimate?", False)})
+
+            if migrated:
+                life_exp = migrated
+            else:
+                life_exp = [{"Description": "Groceries", "Category": "Food", "Frequency": "Monthly", "Amount ($)": 0,
+                             "Start Phase": "Now", "Start Year": None, "End Phase": "End of Life", "End Year": None,
+                             "AI Estimate?": False}]
+        st.session_state['lifetime_expenses'] = life_exp
 
         st.session_state['assumptions'] = ud.get('assumptions', {
             "inflation": 3.0, "inflation_healthcare": 5.5, "inflation_education": 4.5,
@@ -1911,16 +1952,16 @@ def render_income():
     info_banner(
         "Employer Match Note: List 401(k) matches here. The engine strips them from your spendable cash flow, but safely deposits them into your portfolios.")
 
-    df_inc = pd.DataFrame(st.session_state.get('income_data', ud.get('income', [])))
+    df_inc = pd.DataFrame(st.session_state.get('income_data', []))
+    current_year = datetime.date.today().year
+    my_age = relativedelta(datetime.date.today(), st.session_state['my_dob']).years
     if df_inc.empty:
-        my_age = relativedelta(datetime.date.today(), st.session_state['my_dob']).years
         df_inc = pd.DataFrame(
             [{"Description": "Base Salary", "Category": "Base Salary (W-2)", "Owner": "Me", "Annual Amount ($)": 0,
-              "Start Year": datetime.date.today().year, "End Year": datetime.date.today().year + max(0, 65 - my_age),
-              "Stop at Ret.?": True, "Override Growth (%)": None}])
+              "Start Year": current_year, "End Year": current_year + max(0, 65 - my_age), "Stop at Ret.?": True,
+              "Override Growth (%)": None}])
     else:
         if "Start Age" in df_inc.columns:
-            my_age = relativedelta(datetime.date.today(), st.session_state['my_dob']).years
             df_inc["Start Year"] = current_year + (pd.to_numeric(df_inc["Start Age"], errors='coerce') - my_age)
             df_inc["End Year"] = current_year + (pd.to_numeric(df_inc["End Age"], errors='coerce') - my_age)
             df_inc = df_inc.drop(columns=["Start Age", "End Age"])
@@ -1965,7 +2006,6 @@ def render_income():
             st.session_state['income_data'] = edited_inc.to_dict('records')
 
             with st.spinner("Asking AI to estimate your Social Security benefits based on your age and income..."):
-                my_age = relativedelta(datetime.date.today(), st.session_state['my_dob']).years
                 spouse_age = relativedelta(datetime.date.today(), st.session_state['spouse_dob']).years if \
                 st.session_state['has_spouse'] else 0
                 curr_inc = pd.to_numeric(edited_inc['Annual Amount ($)'], errors='coerce').fillna(0).sum()
@@ -1976,7 +2016,6 @@ def render_income():
                 res = call_gemini_json(prompt)
                 if res:
                     current_inc = edited_inc.to_dict('records')
-                    current_year = datetime.date.today().year
                     my_birth_year = st.session_state['my_dob'].year
                     spouse_birth_year = st.session_state['spouse_dob'].year if st.session_state[
                         'has_spouse'] else current_year
@@ -1991,7 +2030,6 @@ def render_income():
                              "Owner": "Spouse", "Annual Amount ($)": res['ss_amount_spouse'],
                              "Start Year": spouse_birth_year + 67, "End Year": 2100, "Stop at Ret.?": False,
                              "Override Growth (%)": None})
-                    st.session_state['user_data']['income'] = current_inc
                     st.session_state['income_data'] = current_inc
                     mark_dirty()
                     st.rerun()
@@ -2007,7 +2045,7 @@ def render_assets():
     with tab_re:
         info_banner(
             "Smart Mortgages: Enter your balance, rate, and payment. The math engine automatically pays it down and drops the expense once it hits zero.")
-        df_re = pd.DataFrame(st.session_state['real_estate_data'])
+        df_re = pd.DataFrame(st.session_state.get('real_estate_data', []))
         if df_re.empty:
             df_re = pd.DataFrame(
                 [{"Property Name": "Primary Home", "Is Primary Residence?": True, "Market Value ($)": 0,
@@ -2051,7 +2089,7 @@ def render_assets():
                         f"⚠️ Property '{r.get('Property Name', 'Unknown')}': Your monthly payment (${pmt:,.0f}) is less than the monthly interest generated (${monthly_interest:,.0f}). This loan balance will grow forever.")
 
     with tab_biz:
-        df_biz = pd.DataFrame(st.session_state['business_data'])
+        df_biz = pd.DataFrame(st.session_state.get('business_data', []))
         if df_biz.empty:
             df_biz = pd.DataFrame([{"Business Name": "", "Total Valuation ($)": 0, "Your Ownership (%)": 100,
                                     "Annual Distribution ($)": 0, "Override Val. Growth (%)": None,
@@ -2081,7 +2119,7 @@ def render_assets():
     with tab_ast:
         info_banner(
             "Contribution Engine Update: Put ONLY your own out-of-pocket contributions here. The AI engine automatically detects 'Employer Matches' from your Income table and securely routes them directly into your 401(k) behind the scenes!")
-        df_ast = pd.DataFrame(st.session_state['liquid_assets_data'])
+        df_ast = pd.DataFrame(st.session_state.get('liquid_assets_data', []))
         if df_ast.empty:
             df_ast = pd.DataFrame([{"Account Name": "Primary 401(k)", "Type": "Traditional 401(k)", "Owner": "Me",
                                     "Current Balance ($)": 0, "Annual Contribution ($/yr)": 0,
@@ -2130,7 +2168,7 @@ def render_assets():
     with tab_debt:
         info_banner(
             "Like mortgages, simply provide the balance, rate, and payment. We'll dynamically pay it down to zero.")
-        df_debt = pd.DataFrame(st.session_state['liabilities_data'])
+        df_debt = pd.DataFrame(st.session_state.get('liabilities_data', []))
         if df_debt.empty:
             df_debt = pd.DataFrame(
                 [{"Debt Name": "Auto Loan", "Type": "Auto Loan", "Current Balance ($)": 0, "Interest Rate (%)": 0.0,
@@ -2196,15 +2234,11 @@ def render_cashflows():
         if 'End Phase' in df_exp.columns and 'End Year' in df_exp.columns: df_exp.loc[
             df_exp['End Phase'] != 'Custom Year', 'End Year'] = None
 
-    budget_categories = ["Housing / Rent", "Transportation", "Food", "Utilities", "Insurance", "Healthcare",
-                         "Entertainment", "Education", "Personal Care", "Subscriptions", "Travel", "Debt Payments",
-                         "Other"]
-
     edited_exp = st.data_editor(
         df_exp,
         column_config={
             "Description": st.column_config.TextColumn("Description"),
-            "Category": st.column_config.SelectboxColumn("Category", options=budget_categories),
+            "Category": st.column_config.SelectboxColumn("Category", options=BUDGET_CATEGORIES),
             "Frequency": st.column_config.SelectboxColumn("Frequency", options=["Monthly", "Yearly", "One-Time"]),
             "Amount ($)": st.column_config.NumberColumn("Amount ($)", step=100, format="$%d"),
             "Start Phase": st.column_config.SelectboxColumn("Starts", options=["Now", "At Retirement", "Custom Year"]),
@@ -2232,6 +2266,7 @@ def render_cashflows():
                 locked_desc = [x['Description'] for x in locked]
 
                 # Reconstruct basic context
+                current_year = datetime.date.today().year
                 my_age = relativedelta(datetime.date.today(), st.session_state['my_dob']).years
                 spouse_age = relativedelta(datetime.date.today(), st.session_state['spouse_dob']).years if \
                 st.session_state['has_spouse'] else 0
@@ -2263,8 +2298,8 @@ def render_cashflows():
                     ai_exclusion = "STRICT RULE: DO NOT INCLUDE Mortgages, Auto Loans, or Debt Payments. HOWEVER, YOU MUST INCLUDE a realistic 'Housing / Rent' expense reflecting current local market rates."
 
                 wealth_ctx = f"The household has a current annual pre-tax income of ${curr_inc_total:,.0f} and liquid assets totaling ${liq_ast_total:,.0f}. VERY IMPORTANT: While you should scale the budget to reflect this wealth, assume these users are savvy spenders and aggressive savers (comfortable but smart with money), so avoid over-inflating lifestyle costs unnecessarily."
-                allowed_cats = ", ".join(budget_categories)
-                prompt = f"Current City: {curr_city_flow}. Planned Retirement City: {ret_city_flow}. Family: {f_ctx}. Current Year is {datetime.date.today().year}. {wealth_ctx} Generate a comprehensive list of missing living expenses AND expected future life milestones (like college or weddings). {ai_exclusion} CRITICAL INSTRUCTIONS: 1) Medical expenses (IRMAA, Medicare Cliff, Pre-Medicare gap, LTC) are handled automatically by the simulation engine; only provide modest baseline out-of-pocket healthcare costs. 2) Model 'Empty Nesting': phase out child-heavy groceries, utility expenses, and ANY K-12 extracurriculars/lessons using 'Custom Year' End Phases exactly when the youngest child turns 18. 3) ALL College/University expenses MUST be categorized strictly as 'Education' (not 'Other') so they receive the 5% education inflation penalty. NOTE: Start and End Years are INCLUSIVE. For a standard 4-year college, the End Year must be exactly 3 years after the Start Year (e.g., Start 2032, End 2035 is 4 years). 4) Model Retirement Lifestyle Phases: split travel and entertainment into 'Go-Go Years' (high spend, starts at retirement, lasts 10 years, calculate costs based on {ret_city_flow}), 'Slow-Go Years' (medium spend, lasts next 10 years), and 'No-Go Years' (low spend) using 'Custom Year' Start/End phases. 5) STRICT PHASE SHIFTING: Never overlap the same living expense category. If an expense changes at retirement, the 'Now' version MUST have 'End Phase' set to 'At Retirement', and the new version MUST have 'Start Phase' set to 'At Retirement'. If an expense continues unchanged forever, set it to 'Now' until 'End of Life'. Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (MUST be exactly one of: {allowed_cats}. If unsure, default to 'Other'), 'Frequency' (Monthly/Yearly/One-Time), 'Amount ($)' (number), 'Start Phase' (Now/At Retirement/Custom Year), 'Start Year' (integer, ONLY if 'Start Phase' is 'Custom Year', otherwise null), 'End Phase' (End of Life/At Retirement/Custom Year), 'End Year' (integer, ONLY if 'End Phase' is 'Custom Year', otherwise null), and 'AI Estimate?' (true)."
+                allowed_cats = ", ".join(BUDGET_CATEGORIES)
+                prompt = f"Current City: {curr_city_flow}. Planned Retirement City: {ret_city_flow}. Family: {f_ctx}. Current Year is {current_year}. {wealth_ctx} Generate a comprehensive list of missing living expenses AND expected future life milestones (like college or weddings). {ai_exclusion} CRITICAL INSTRUCTIONS: 1) Medical expenses (IRMAA, Medicare Cliff, Pre-Medicare gap, LTC) are handled automatically by the simulation engine; only provide modest baseline out-of-pocket healthcare costs. 2) Model 'Empty Nesting': phase out child-heavy groceries, utility expenses, and ANY K-12 extracurriculars/lessons using 'Custom Year' End Phases exactly when the youngest child turns 18. 3) ALL College/University expenses MUST be categorized strictly as 'Education' (not 'Other') so they receive the 5% education inflation penalty. NOTE: Start and End Years are INCLUSIVE. For a standard 4-year college, the End Year must be exactly 3 years after the Start Year (e.g., Start 2032, End 2035 is 4 years). 4) Model Retirement Lifestyle Phases: split travel and entertainment into 'Go-Go Years' (high spend, starts at retirement, lasts 10 years, calculate costs based on {ret_city_flow}), 'Slow-Go Years' (medium spend, lasts next 10 years), and 'No-Go Years' (low spend) using 'Custom Year' Start/End phases. 5) STRICT PHASE SHIFTING: Never overlap the same living expense category. If an expense changes at retirement, the 'Now' version MUST have 'End Phase' set to 'At Retirement', and the new version MUST have 'Start Phase' set to 'At Retirement'. If an expense continues unchanged forever, set it to 'Now' until 'End of Life'. Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (MUST be exactly one of: {allowed_cats}. If unsure, default to 'Other'), 'Frequency' (Monthly/Yearly/One-Time), 'Amount ($)' (number), 'Start Phase' (Now/At Retirement/Custom Year), 'Start Year' (integer, ONLY if 'Start Phase' is 'Custom Year', otherwise null), 'End Phase' (End of Life/At Retirement/Custom Year), 'End Year' (integer, ONLY if 'End Phase' is 'Custom Year', otherwise null), and 'AI Estimate?' (true)."
                 res = call_gemini_json(prompt)
                 if res and isinstance(res, list) and len(res) > 0:
                     st.session_state['lifetime_expenses'] = locked + res
@@ -2460,6 +2495,7 @@ def render_simulation():
 
             # APPLY DISCOUNTING IF TOGGLED (Vectorized execution for extreme performance)
             if view_todays_dollars:
+                current_year = datetime.date.today().year
                 discounts = (1 + sim_ctx['infl'] / 100) ** (df_sim['Year'] - current_year)
 
                 cols_sim = ["Annual Income", "Annual Expenses", "Annual Taxes", "Annual Net Savings", "Liquid Assets",
@@ -2477,6 +2513,7 @@ def render_simulation():
                 df_nw[cols_nw] = df_nw[cols_nw].div(discounts, axis=0)
 
             if HAS_PLOTLY:
+                current_year = datetime.date.today().year
                 # Pre-calculate Milestone Chart Markers
                 m_x_normal, m_y_normal, m_text_normal = [], [], []
                 m_x_system, m_y_system, m_text_system = [], [], []
@@ -2745,6 +2782,7 @@ def render_simulation():
                         st.session_state['mc_success_rate'] = success_rate  # Store for dashboard
 
                         path_len = len(all_nw_paths[0])
+                        current_year = datetime.date.today().year
                         years_list = [sim_ctx['current_year'] + i for i in range(path_len)]
                         p10, p50, p90 = [], [], []
 
