@@ -812,7 +812,6 @@ def run_simulation(mkt_sequence, ctx):
             'inc_g']} for b in ctx['biz_records'] if b.get("Business Name")]
 
     unfunded_debt_bal = 0
-    prev_unfunded_debt_bal = 0
     last_irmaa_tier = 0
 
     # Pre-calculate SS actual starting entitlements (Base Amount * FRA multiplier)
@@ -1425,9 +1424,7 @@ def run_simulation(mkt_sequence, ctx):
                                     "bal": convert_amt,
                                     "contrib": 0.0,
                                     "growth": a.get('growth'),
-                                    "stop_at_ret": True,
-                                    "approved_oop_contrib": 0,
-                                    "match_contrib_queue": 0
+                                    "stop_at_ret": True
                                 })
                         if total_converted >= conversion_room:
                             break
@@ -2172,35 +2169,10 @@ def render_assets():
         unsafe_allow_html=True)
 
 
-# --- AI CONTEXT PREP ---
-k_ctx_list = [f"{k['name']}:{k['age']}" for k in kids_data]
-k_ctx_str = ", ".join(k_ctx_list)
-
-primary_re = edited_re[edited_re["Is Primary Residence?"] == True]
-h_pmt = pd.to_numeric(primary_re["Mortgage Payment ($)"], errors='coerce').fillna(0).sum()
-h_exp = pd.to_numeric(primary_re["Monthly Expenses ($)"], errors='coerce').fillna(0).sum()
-owns_home = not primary_re.empty
-
-curr_inc_total = pd.to_numeric(edited_inc['Annual Amount ($)'], errors='coerce').fillna(0).sum()
-liq_ast_total = pd.to_numeric(edited_ast['Current Balance ($)'], errors='coerce').fillna(0).sum()
-
-if owns_home:
-    h_ctx = f"Primary housing costs are ${h_pmt + h_exp:,.0f}/mo (Already accounted for)."
-    ai_exclusion = "STRICT RULE: DO NOT INCLUDE Housing, Rent, Mortgages, Auto Loans, or Debt Payments in this list. They are explicitly tracked via balance sheet parameters."
-else:
-    h_ctx = "User is currently renting."
-    ai_exclusion = "STRICT RULE: DO NOT INCLUDE Mortgages, Auto Loans, or Debt Payments. HOWEVER, YOU MUST INCLUDE a realistic 'Housing / Rent' expense reflecting current local market rates."
-
-f_ctx = f"User({my_age})" + (
-    f", Spouse({spouse_name}:{spouse_age})" if has_spouse else "") + f", Dependents({k_ctx_str})"
-budget_categories = ["Housing / Rent", "Transportation", "Food", "Utilities", "Insurance", "Healthcare",
-                     "Entertainment", "Education", "Personal Care", "Subscriptions", "Travel", "Debt Payments", "Other"]
-
-# --- 4. LIFESTYLE CASH FLOWS ---
-with st.expander("💸 4. Lifetime Cash Flows (Budgets & Milestones)", expanded=False):
-    st.markdown(
-        '<div class="info-text">💡 <strong>Using the Cash Flow Engine:</strong> We highly recommend clicking the <strong>✨ Auto-Estimate Budget & Milestones (AI)</strong> button below first. The AI will generate a complete baseline of lifetime expenses and milestones based on your family profile, current city, and retirement city. Once populated, you can add your own custom rows, modify the AI\'s amounts, or delete anything that doesn\'t fit your lifestyle.<br><br><strong>Healthcare Note:</strong> Assume you are covered by employer-sponsored healthcare while working. The simulation engine automatically builds in major post-retirement medical costs (like Pre-Medicare coverage gaps, Medicare premium cliffs at age 65, IRMAA surcharges, and Long-Term Care). You only need to enter modest baseline out-of-pocket costs for healthcare here.</div>',
-        unsafe_allow_html=True)
+def render_cashflows():
+    section_header("Lifetime Cash Flows", "Map out budgets and milestones. Do not double-count housing or debt.", "💸")
+    info_banner(
+        "Healthcare Note: Assume you are covered by employer-sponsored healthcare while working. The engine automatically builds in Pre-Medicare coverage gaps, Medicare premium cliffs at age 65, and IRMAA surcharges.")
 
     c_loc1, c_loc2 = st.columns(2)
     with c_loc1:
@@ -2213,50 +2185,20 @@ with st.expander("💸 4. Lifetime Cash Flows (Budgets & Milestones)", expanded=
         st.session_state['retire_city_flow'] = ret_city_flow
 
     st.divider()
-
-    if 'lifetime_expenses' not in st.session_state:
-        migrated = []
-        for c in ud.get('current_expenses', []):
-            if c.get("Description"):
-                migrated.append({"Description": c.get("Description"), "Category": c.get("Category", "Other"),
-                                 "Frequency": c.get("Frequency", "Monthly"), "Amount ($)": c.get("Amount ($)", 0),
-                                 "Start Phase": "Now", "Start Year": None, "End Phase": "At Retirement",
-                                 "End Year": None, "AI Estimate?": c.get("AI Estimate?", False)})
-        for r in ud.get('retire_expenses', []):
-            if r.get("Description"):
-                migrated.append({"Description": r.get("Description"), "Category": r.get("Category", "Other"),
-                                 "Frequency": r.get("Frequency", "Monthly"), "Amount ($)": r.get("Amount ($)", 0),
-                                 "Start Phase": "At Retirement", "Start Year": None, "End Phase": "End of Life",
-                                 "End Year": None, "AI Estimate?": r.get("AI Estimate?", False)})
-        for m in ud.get('one_time_events', []):
-            if m.get("Description"):
-                try:
-                    sy_int = int(str(m.get("Start Date (MM/YYYY)", "")).split('/')[-1])
-                except:
-                    sy_int = current_year
-                try:
-                    ey_int = int(str(m.get("End Date (MM/YYYY)", "")).split('/')[-1])
-                except:
-                    ey_int = sy_int
-                migrated.append({"Description": m.get("Description"), "Category": "Other",
-                                 "Frequency": m.get("Frequency", "One-Time"), "Amount ($)": m.get("Amount ($)", 0),
-                                 "Start Phase": "Custom Year", "Start Year": sy_int, "End Phase": "Custom Year",
-                                 "End Year": ey_int, "AI Estimate?": m.get("AI Estimate?", False)})
-
-        if not migrated:
-            migrated = [{"Description": "Groceries", "Category": "Food", "Frequency": "Monthly", "Amount ($)": 0,
-                         "Start Phase": "Now", "Start Year": None, "End Phase": "End of Life", "End Year": None,
-                         "AI Estimate?": False}]
-        st.session_state['lifetime_expenses'] = migrated
-
     df_exp = pd.DataFrame(st.session_state['lifetime_expenses'])
+    if df_exp.empty: df_exp = pd.DataFrame(
+        [{"Description": "Groceries", "Category": "Food", "Frequency": "Monthly", "Amount ($)": 0, "Start Phase": "Now",
+          "Start Year": None, "End Phase": "End of Life", "End Year": None, "AI Estimate?": False}])
 
-    # Force clean nulls for non-custom phases to keep UI clean
     if not df_exp.empty:
-        if 'Start Phase' in df_exp.columns and 'Start Year' in df_exp.columns:
-            df_exp.loc[df_exp['Start Phase'] != 'Custom Year', 'Start Year'] = None
-        if 'End Phase' in df_exp.columns and 'End Year' in df_exp.columns:
-            df_exp.loc[df_exp['End Phase'] != 'Custom Year', 'End Year'] = None
+        if 'Start Phase' in df_exp.columns and 'Start Year' in df_exp.columns: df_exp.loc[
+            df_exp['Start Phase'] != 'Custom Year', 'Start Year'] = None
+        if 'End Phase' in df_exp.columns and 'End Year' in df_exp.columns: df_exp.loc[
+            df_exp['End Phase'] != 'Custom Year', 'End Year'] = None
+
+    budget_categories = ["Housing / Rent", "Transportation", "Food", "Utilities", "Insurance", "Healthcare",
+                         "Entertainment", "Education", "Personal Care", "Subscriptions", "Travel", "Debt Payments",
+                         "Other"]
 
     edited_exp = st.data_editor(
         df_exp,
