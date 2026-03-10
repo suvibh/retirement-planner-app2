@@ -708,7 +708,7 @@ with st.expander("💸 4. Lifetime Cash Flows (Budgets & Milestones)", expanded=
                 locked_desc = [x['Description'] for x in locked]
                 wealth_ctx = f"The household has a current annual pre-tax income of ${curr_inc_total:,.0f} and liquid assets totaling ${liq_ast_total:,.0f}. VERY IMPORTANT: While you should scale the budget to reflect this wealth, assume these users are savvy spenders and aggressive savers (comfortable but smart with money), so avoid over-inflating lifestyle costs unnecessarily."
                 allowed_cats = ", ".join(budget_categories)
-                prompt = f"Current City: {curr_city_flow}. Planned Retirement City: {ret_city_flow}. Family: {k_ctx}. Current Year is {current_year}. {wealth_ctx} Generate a comprehensive list of missing living expenses AND expected future life milestones (like college or weddings). {ai_exclusion} CRITICAL INSTRUCTIONS: 1) Medical expenses (IRMAA, Medicare Cliff, Pre-Medicare gap, LTC) are handled automatically by the simulation engine; only provide modest baseline out-of-pocket healthcare costs. 2) Model 'Empty Nesting': phase out child-heavy groceries, utility expenses, and ANY K-12 extracurriculars/lessons using 'Custom Year' End Phases exactly when the youngest child turns 18. 3) ALL College/University expenses MUST be categorized strictly as 'Education' (not 'Other') so they receive the 5% education inflation penalty. 4) Model Retirement Lifestyle Phases: split travel and entertainment into 'Go-Go Years' (high spend, starts at retirement, lasts 10 years, calculate costs based on {ret_city_flow}), 'Slow-Go Years' (medium spend, lasts next 10 years), and 'No-Go Years' (low spend) using 'Custom Year' Start/End phases. Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (MUST be exactly one of: {allowed_cats}. If unsure, default to 'Other'), 'Frequency' (Monthly/Yearly/One-Time), 'Amount ($)' (number), 'Start Phase' (Now/At Retirement/Custom Year), 'Start Year' (integer), 'End Phase' (End of Life/At Retirement/Custom Year), 'End Year' (integer), and 'AI Estimate?' (true)."
+                prompt = f"Current City: {curr_city_flow}. Planned Retirement City: {ret_city_flow}. Family: {k_ctx}. Current Year is {current_year}. {wealth_ctx} Generate a comprehensive list of missing living expenses AND expected future life milestones (like college or weddings). {ai_exclusion} CRITICAL INSTRUCTIONS: 1) Medical expenses (IRMAA, Medicare Cliff, Pre-Medicare gap, LTC) are handled automatically by the simulation engine; only provide modest baseline out-of-pocket healthcare costs. 2) Model 'Empty Nesting': phase out child-heavy groceries, utility expenses, and ANY K-12 extracurriculars/lessons using 'Custom Year' End Phases exactly when the youngest child turns 18. 3) ALL College/University expenses MUST be categorized strictly as 'Education' (not 'Other') so they receive the 5% education inflation penalty. NOTE: Start and End Years are INCLUSIVE. For a standard 4-year college, the End Year must be exactly 3 years after the Start Year (e.g., Start 2032, End 2035 is 4 years). 4) Model Retirement Lifestyle Phases: split travel and entertainment into 'Go-Go Years' (high spend, starts at retirement, lasts 10 years, calculate costs based on {ret_city_flow}), 'Slow-Go Years' (medium spend, lasts next 10 years), and 'No-Go Years' (low spend) using 'Custom Year' Start/End phases. Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (MUST be exactly one of: {allowed_cats}. If unsure, default to 'Other'), 'Frequency' (Monthly/Yearly/One-Time), 'Amount ($)' (number), 'Start Phase' (Now/At Retirement/Custom Year), 'Start Year' (integer), 'End Phase' (End of Life/At Retirement/Custom Year), 'End Year' (integer), and 'AI Estimate?' (true)."
                 res = call_gemini_json(prompt)
                 if res and isinstance(res, list) and len(res) > 0:
                     st.session_state['lifetime_expenses'] = locked + res
@@ -996,6 +996,11 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
             spouse_died_notified = False
             me_died_notified = False
 
+            # Track previous balances to detect exact payoff/depletion years
+            prev_debt_bals = {d['name']: d['bal'] for d in sim_debts}
+            prev_re_debts = {r['name']: r['debt'] for r in sim_re}
+            prev_ast_bals = {a['Account Name']: a['bal'] for a in sim_assets}
+
             for year_offset in range(max_years + 1):
                 year = current_year + year_offset
                 my_current_age = year - my_birth_year
@@ -1027,6 +1032,15 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                 if has_spouse and year == spouse_retire_year and is_spouse_alive:
                     if year not in milestones_by_year: milestones_by_year[year] = []
                     milestones_by_year[year].append({"desc": "🎓 Spouse Retires", "amt": 0, "type": "system"})
+
+                if is_my_alive and my_current_age == 65:
+                    if year not in milestones_by_year: milestones_by_year[year] = []
+                    milestones_by_year[year].append({"desc": "🏥 Medicare Kicks In (You)", "amt": 0, "type": "system"})
+
+                if has_spouse and is_spouse_alive and spouse_current_age == 65:
+                    if year not in milestones_by_year: milestones_by_year[year] = []
+                    milestones_by_year[year].append(
+                        {"desc": "🏥 Medicare Kicks In (Spouse)", "amt": 0, "type": "system"})
 
                 if is_my_alive and my_current_age == primary_rmd_age:
                     if year not in milestones_by_year: milestones_by_year[year] = []
@@ -1188,6 +1202,13 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                         interest_paid = r['debt'] * r['rate']
                         principal = max(0, r['pmt'] - interest_paid)
                         r['debt'] = max(0, r['debt'] - principal)
+
+                    # Trigger Mortgage Payoff Milestone
+                    if r['debt'] <= 0 and prev_re_debts.get(r['name'], 0) > 0:
+                        if year not in milestones_by_year: milestones_by_year[year] = []
+                        milestones_by_year[year].append(
+                            {"desc": f"🏡 Mortgage Paid Off: {r['name']}", "amt": 0, "type": "system"})
+                    prev_re_debts[r['name']] = r['debt']
 
                     re_equity += (r['val'] - r['debt'])
 
@@ -1352,6 +1373,14 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                         d['bal'] = max(0, d['bal'] - principal)
                         total_exp += d['pmt']
                         yd["Expense: Debt Payments"] = yd.get("Expense: Debt Payments", 0) + d['pmt']
+
+                    # Trigger Debt Payoff Milestone
+                    if d['bal'] <= 0 and prev_debt_bals.get(d['name'], 0) > 0:
+                        if year not in milestones_by_year: milestones_by_year[year] = []
+                        milestones_by_year[year].append(
+                            {"desc": f"🎉 Debt Paid Off: {d['name']}", "amt": 0, "type": "system"})
+                    prev_debt_bals[d['name']] = d['bal']
+
                     debt_bal_total += d['bal']
 
                 # Asset Contributions
@@ -1791,6 +1820,15 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                     yd["Expense: Unfunded Shortfall Debt Interest"] = unfunded_debt_bal
                 nw_yd["Total Net Worth"] = net_worth
 
+                # Check for 529 Depletion Milestones
+                for a in sim_assets:
+                    if a['bal'] <= 0 and prev_ast_bals.get(a['Account Name'], 0) > 0:
+                        if a.get('Type') == '529 Plan':
+                            if year not in milestones_by_year: milestones_by_year[year] = []
+                            milestones_by_year[year].append(
+                                {"desc": f"🎓 529 Plan Depleted: {a['Account Name']}", "amt": 0, "type": "system"})
+                    prev_ast_bals[a['Account Name']] = a['bal']
+
                 sim_res.append(
                     {"Year": year, "Age": my_current_age, "Annual Income": annual_inc, "Annual Expenses": total_exp,
                      "Annual Taxes": total_tax, "Annual Net Savings": yd["Net Savings"],
@@ -1849,6 +1887,7 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                             nw_detailed_results[i][k] /= discount
 
             df_sim = pd.DataFrame(sim_results)
+            df_nw = pd.DataFrame(nw_detailed_results).fillna(0)
 
             if HAS_PLOTLY:
                 # Pre-calculate Milestone Chart Markers
@@ -1889,21 +1928,38 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
 
                 st.write("#### Net Worth Composition (Smart Asset Drawdown)")
                 fig_nw = go.Figure()
-                fig_nw.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Liquid Assets"], mode='lines', stackgroup='one',
-                                            name='Liquid Assets', fillcolor='rgba(20, 184, 166, 0.5)',
-                                            line=dict(color='#14b8a6')))
+
+                # Plot individual granular asset buckets dynamically
+                ast_cols = [c for c in df_nw.columns if c.startswith("Asset: ")]
+                fill_colors = ['rgba(45, 212, 191, 0.6)', 'rgba(56, 189, 248, 0.6)', 'rgba(129, 140, 248, 0.6)',
+                               'rgba(167, 139, 250, 0.6)', 'rgba(232, 121, 249, 0.6)', 'rgba(251, 113, 133, 0.6)',
+                               'rgba(52, 211, 153, 0.6)', 'rgba(251, 191, 36, 0.6)', 'rgba(163, 230, 53, 0.6)',
+                               'rgba(250, 204, 21, 0.6)']
+                line_colors = ['#2dd4bf', '#38bdf8', '#818cf8', '#a78bfa', '#e879f9', '#fb7185', '#34d399', '#fbbf24',
+                               '#a3e635', '#facc15']
+
+                for i, col in enumerate(ast_cols):
+                    asset_name = col.replace("Asset: ", "")
+                    fig_nw.add_trace(go.Scatter(
+                        x=df_nw["Year"], y=df_nw[col], mode='lines', stackgroup='one', name=asset_name,
+                        fillcolor=fill_colors[i % len(fill_colors)],
+                        line=dict(color=line_colors[i % len(line_colors)], width=1.5)
+                    ))
+
                 fig_nw.add_trace(
-                    go.Scatter(x=df_sim["Year"], y=df_sim["Real Estate Equity"], mode='lines', stackgroup='one',
+                    go.Scatter(x=df_nw["Year"], y=df_nw["Total Real Estate Equity"], mode='lines', stackgroup='one',
                                name='Real Estate Equity', fillcolor='rgba(139, 92, 246, 0.5)',
-                               line=dict(color='#8b5cf6')))
+                               line=dict(color='#8b5cf6', width=1.5)))
                 fig_nw.add_trace(
-                    go.Scatter(x=df_sim["Year"], y=df_sim["Business Equity"], mode='lines', stackgroup='one',
-                               name='Business Equity', fillcolor='rgba(245, 158, 11, 0.5)', line=dict(color='#f59e0b')))
-                fig_nw.add_trace(go.Scatter(x=df_sim["Year"], y=-df_sim["Unfunded Debt"] - df_sim["Debt"], mode='lines',
-                                            stackgroup='two', name='Total Liabilities (Inc. Shortfalls)',
-                                            fillcolor='rgba(244, 63, 94, 0.5)', line=dict(color='#f43f5e')))
+                    go.Scatter(x=df_nw["Year"], y=df_nw["Total Business Equity"], mode='lines', stackgroup='one',
+                               name='Business Equity', fillcolor='rgba(245, 158, 11, 0.5)',
+                               line=dict(color='#f59e0b', width=1.5)))
                 fig_nw.add_trace(
-                    go.Scatter(x=df_sim["Year"], y=df_sim["Net Worth"], mode='lines', name='Total Net Worth',
+                    go.Scatter(x=df_nw["Year"], y=df_nw["Total Debt Liabilities"], mode='lines', stackgroup='two',
+                               name='Total Liabilities (Inc. Shortfalls)', fillcolor='rgba(244, 63, 94, 0.5)',
+                               line=dict(color='#f43f5e', width=1.5)))
+                fig_nw.add_trace(
+                    go.Scatter(x=df_nw["Year"], y=df_nw["Total Net Worth"], mode='lines', name='Total Net Worth',
                                line=dict(color='#111827', width=3, dash='dot')))
 
                 # Overlay Milestone Markers
@@ -2047,7 +2103,7 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                 st.subheader("Detailed Net Worth Log")
                 st.markdown(
                     "Track the exact, year-by-year balance of every single asset account and liability to trace your drawdowns and growth.")
-                df_nw = pd.DataFrame(nw_detailed_results).fillna(0)
+                # We already built df_nw above, no need to rebuild it here
                 ast_c = sorted([c for c in df_nw.columns if c.startswith("Asset:")])
                 ord_nw = ["Year", "Age (Primary)"] + ast_c + ["Total Liquid Assets", "Total Real Estate Equity",
                                                               "Total Business Equity", "Total Debt Liabilities",
