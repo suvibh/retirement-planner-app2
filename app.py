@@ -263,6 +263,9 @@ if 'onboarding_shown' not in st.session_state:
 current_year = datetime.date.today().year
 ud = st.session_state.get('user_data', {})
 p_info = ud.get('personal_info', {})
+if 'current_expenses' not in st.session_state: st.session_state['current_expenses'] = ud.get('current_expenses', [])
+if 'retire_expenses' not in st.session_state: st.session_state['retire_expenses'] = ud.get('retire_expenses', [])
+if 'one_time_events' not in st.session_state: st.session_state['one_time_events'] = ud.get('one_time_events', [])
 if 'assumptions' not in st.session_state: st.session_state['assumptions'] = ud.get('assumptions', {"inflation": 3.0,
                                                                                                    "inflation_healthcare": 5.5,
                                                                                                    "inflation_education": 4.5,
@@ -622,10 +625,10 @@ f_ctx = f"User({my_age})" + (
 budget_categories = ["Housing / Rent", "Transportation", "Food", "Utilities", "Insurance", "Healthcare",
                      "Entertainment", "Education", "Personal Care", "Subscriptions", "Travel", "Debt Payments", "Other"]
 
-# --- 4. LIFETIME CASH FLOWS ---
+# --- 4. LIFESTYLE CASH FLOWS ---
 with st.expander("💸 4. Lifetime Cash Flows (Budgets & Milestones)", expanded=False):
     st.markdown(
-        '<div class="info-text">💡 <strong>Unified Lifetime Cash Flows:</strong> Instead of separate budgets for "now" vs "retirement", enter all your expenses here and control exactly when they start and stop. Example: A car loan might "Start: Now" and "End: Custom Year (2028)".<br><br><strong>AI Estimator:</strong> Describe an event (e.g., "Child\'s College Tuition" or "Kitchen Remodel") and the AI will auto-calculate the dates and costs based on your family profile!</div>',
+        '<div class="info-text">💡 <strong>Unified Lifetime Cash Flows:</strong> Instead of separate budgets for "now" vs "retirement", enter all your expenses here and control exactly when they start and stop. Example: A car loan might "Start: Now" and "End: Custom Year (2028)".<br><br><strong>Healthcare Note:</strong> The simulation engine already handles major medical events (Medicare cliffs, Pre-Medicare gaps, IRMAA surcharges, and Long-Term Care). Only enter your baseline out-of-pocket medical costs here.<br><br><strong>AI Estimator:</strong> Click the AI button and it will automatically generate your baseline budget, phase out costs when kids leave home (Empty Nesting), and split your retirement into Go-Go, Slow-Go, and No-Go travel phases!</div>',
         unsafe_allow_html=True)
 
     # --- MIGRATION LOGIC (Old separate lists to unified list) ---
@@ -696,7 +699,7 @@ with st.expander("💸 4. Lifetime Cash Flows (Budgets & Milestones)", expanded=
                 locked_desc = [x['Description'] for x in locked]
                 wealth_ctx = f"The household has a current annual pre-tax income of ${curr_inc_total:,.0f} and liquid assets totaling ${liq_ast_total:,.0f}. VERY IMPORTANT: While you should scale the budget to reflect this wealth, assume these users are savvy spenders and aggressive savers (comfortable but smart with money), so avoid over-inflating lifestyle costs unnecessarily."
                 allowed_cats = ", ".join(budget_categories)
-                prompt = f"City: {curr_city}. Family: {k_ctx}. Current Year is {current_year}. {wealth_ctx} Generate a comprehensive list of missing living expenses AND expected future life milestones (like college or weddings). {ai_exclusion} Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (MUST be exactly one of: {allowed_cats}. If unsure, default to 'Other'), 'Frequency' (Monthly/Yearly/One-Time), 'Amount ($)' (number), 'Start Phase' (Now/At Retirement/Custom Year), 'Start Year' (integer), 'End Phase' (End of Life/At Retirement/Custom Year), 'End Year' (integer), and 'AI Estimate?' (true)."
+                prompt = f"City: {curr_city}. Family: {k_ctx}. Current Year is {current_year}. {wealth_ctx} Generate a comprehensive list of missing living expenses AND expected future life milestones (like college or weddings). {ai_exclusion} CRITICAL INSTRUCTIONS: 1) Medical expenses (IRMAA, Medicare Cliff, Pre-Medicare gap, LTC) are handled automatically by the simulation engine; only provide modest baseline out-of-pocket healthcare costs. 2) Model 'Empty Nesting': phase out child-heavy groceries and utility expenses using 'Custom Year' End Phases when the youngest child turns 18, and create new lower-cost rows starting that same year. 3) Model Retirement Lifestyle Phases: split travel and entertainment into 'Go-Go Years' (high spend, starts at retirement, lasts 10 years), 'Slow-Go Years' (medium spend, lasts next 10 years), and 'No-Go Years' (low spend) using 'Custom Year' Start/End phases. Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (MUST be exactly one of: {allowed_cats}. If unsure, default to 'Other'), 'Frequency' (Monthly/Yearly/One-Time), 'Amount ($)' (number), 'Start Phase' (Now/At Retirement/Custom Year), 'Start Year' (integer), 'End Phase' (End of Life/At Retirement/Custom Year), 'End Year' (integer), and 'AI Estimate?' (true)."
                 res = call_gemini_json(prompt)
                 if res and isinstance(res, list) and len(res) > 0:
                     st.session_state['lifetime_expenses'] = locked + res
@@ -724,6 +727,7 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
         spouse_life_exp = cc4.slider("Spouse Life Expectancy", 70, 115,
                                      int(p_info.get('spouse_life_exp', 95))) if has_spouse else None
 
+    # --- ASSUMPTIONS BLOCK ---
     with tab_macro:
         st.markdown(
             '<div class="info-text">💡 <strong>AI Estimation:</strong> Click the ✨ AI button next to any field to have the AI estimate a realistic, localized value based on historical data and your profile!</div>',
@@ -940,6 +944,24 @@ with st.expander("📈 5. Interactive Retirement Simulation & Analytics", expand
                          "v_growth": safe_num(b.get("Override Val. Growth (%)"), mkt),
                          "d_growth": safe_num(b.get("Override Dist. Growth (%)"), inc_g)} for b in
                         edited_biz.to_dict('records') if b.get("Business Name")]
+
+        curr_exp_by_cat = {}
+        for r in edited_c.to_dict('records'):
+            if r.get("Description") and (
+            r.get("Category") not in ["Housing / Rent", "Debt Payments"] if owns_home else r.get(
+                    "Category") != "Debt Payments"):
+                cat = r.get("Category", "Other")
+                amt = safe_num(r.get("Amount ($)")) * (12 if r.get("Frequency") == "Monthly" else 1)
+                curr_exp_by_cat[cat] = curr_exp_by_cat.get(cat, 0) + amt
+
+        ret_exp_by_cat = {}
+        for r in edited_r.to_dict('records'):
+            if r.get("Description") and (
+            r.get("Category") not in ["Housing / Rent", "Debt Payments"] if owns_home else r.get(
+                    "Category") != "Debt Payments"):
+                cat = r.get("Category", "Other")
+                amt = safe_num(r.get("Amount ($)")) * (12 if r.get("Frequency") == "Monthly" else 1)
+                ret_exp_by_cat[cat] = ret_exp_by_cat.get(cat, 0) + amt
 
         current_year = datetime.date.today().year
         my_life_exp_val = my_life_exp if my_life_exp else 95
