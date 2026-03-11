@@ -68,13 +68,11 @@ def mark_dirty():
 
 
 def get_completion_score():
-    score = 10
-    if st.session_state.get('my_name'): score += 10
+    score = 20
+    if st.session_state.get('my_name'): score += 20
     if len(st.session_state.get('income_data', [])) > 0: score += 20
     if len(st.session_state.get('liquid_assets_data', [])) > 0: score += 20
     if len(st.session_state.get('lifetime_expenses', [])) > 0: score += 20
-    if 'df_sim_nominal' in st.session_state and not st.session_state.get('df_sim_nominal',
-                                                                         pd.DataFrame()).empty: score += 20
     return min(100, score)
 
 
@@ -335,6 +333,27 @@ def call_gemini_json(prompt, retries=3):
     return None
 
 
+def call_gemini_text(prompt, retries=3):
+    if not GEMINI_API_KEY:
+        st.error("⚠️ GEMINI_API_KEY is missing. AI operations disabled.")
+        return None
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={GEMINI_API_KEY}"
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    for attempt in range(retries):
+        try:
+            res = requests.post(url, json=payload, timeout=20)
+            res.raise_for_status()
+            res_json = res.json()
+            if "error" in res_json:
+                if attempt == retries - 1: st.error(f"⚠️ API Error: {res_json['error'].get('message')}"); return None
+                time.sleep(2 ** attempt);
+                continue
+            return res_json['candidates'][0]['content']['parts'][0]['text']
+        except Exception:
+            time.sleep(2 ** attempt)
+    return None
+
+
 def initialize_session_state():
     if 'migration_v2' not in st.session_state:
         ud = st.session_state.get('user_data', {})
@@ -428,7 +447,7 @@ if 'user_email' not in st.session_state:
         tab1, tab2 = st.tabs(["Secure Login", "New Account"])
         with tab1:
             le, lp = st.text_input("Email", key="le"), st.text_input("Password", type="password", key="lp")
-            if st.button("Sign In", type="primary", use_container_width=True):
+            if st.button("Sign In", type="primary", width="stretch"):
                 res = sign_in(le, lp)
                 if "idToken" in res:
                     st.session_state['user_email'] = res['email'];
@@ -441,7 +460,7 @@ if 'user_email' not in st.session_state:
                     st.error("Login failed. Please check your email and password.")
         with tab2:
             se, sp = st.text_input("New Email", key="se"), st.text_input("New Password", type="password", key="sp")
-            if st.button("Create Account", type="primary", use_container_width=True):
+            if st.button("Create Account", type="primary", width="stretch"):
                 if len(sp) >= 6:
                     res = sign_up(se, sp)
                     if "idToken" in res:
@@ -454,7 +473,7 @@ if 'user_email' not in st.session_state:
                 else:
                     st.warning("Min 6 characters.")
         st.divider()
-        if st.button("🚀 Try the Demo (Guest Mode)", use_container_width=True):
+        if st.button("🚀 Try the Demo (Guest Mode)", width="stretch"):
             st.session_state['user_email'] = "guest_demo";
             st.session_state['user_data'] = {}
             cookie_manager.set("user_email", "guest_demo",
@@ -583,7 +602,7 @@ def run_simulation(mkt_sequence, ctx):
             else:
                 return 1.0 - (36 * (5 / 9 * 0.01)) - ((months_early - 36) * (5 / 12 * 0.01))
         elif claim_age > fra:
-            months_late = min((claim_age - fra) * 12, (70 - fra) * 12)  # Strict cap at age 70 relative to FRA
+            months_late = min((claim_age - fra) * 12, (70 - fra) * 12)
             return 1.0 + (months_late * (2 / 3 * 0.01))
         return 1.0
 
@@ -699,7 +718,6 @@ def run_simulation(mkt_sequence, ctx):
         if not is_my_alive and not is_spouse_alive:
             break
 
-        # Base Milestones
         if ctx['has_spouse'] and not is_spouse_alive and not spouse_died_notified:
             if year not in milestones_by_year: milestones_by_year[year] = []
             milestones_by_year[year].append(
@@ -1516,7 +1534,7 @@ def render_dashboard():
                                                link=dict(source=source, target=target, value=value,
                                                          color=link_colors))])
         fig_sankey.update_layout(height=800, margin=dict(l=0, r=0, t=30, b=0), font=dict(size=12))
-        st.plotly_chart(fig_sankey, use_container_width=True)
+        st.plotly_chart(fig_sankey, width="stretch")
 
 
 def render_profile():
@@ -1626,7 +1644,7 @@ def render_income():
 
     col_ai_inc, _ = st.columns([3, 1])
     with col_ai_inc:
-        if st.button("✨ Auto-Estimate My Social Security (AI)", type="primary", use_container_width=True):
+        if st.button("✨ Auto-Estimate My Social Security (AI)", type="primary", width="stretch"):
             try:
                 with st.spinner("Asking AI to estimate your Social Security benefits based on your age and income..."):
                     spouse_age = relativedelta(datetime.date.today(), st.session_state.get('spouse_dob',
@@ -1868,7 +1886,7 @@ def render_cashflows():
     col_ai_cb, _ = st.columns([3, 1])
     with col_ai_cb:
         if st.button("✨ Auto-Estimate Budget & Milestones for selected locations (AI)", type="primary",
-                     use_container_width=True):
+                     width="stretch"):
             try:
                 with st.spinner("Analyzing localized CPI data, timelines, and family needs..."):
                     valid = edited_exp[edited_exp["Description"].astype(str) != ""].copy()
@@ -1919,34 +1937,34 @@ def render_cashflows():
 def render_simulation():
     section_header("📈 Simulation", "Fine-tune your timeline and run Monte Carlo scenarios.")
 
+    tab_ages, tab_assumptions, tab_stress = st.tabs(
+        ["⏳ Timeline & Ages", "📊 Macro Assumptions", "🌪️ Stress Tests & Taxes"])
+
     my_age = relativedelta(datetime.date.today(), st.session_state.get('my_dob', datetime.date(1980, 1, 1))).years
     spouse_age = relativedelta(datetime.date.today(), st.session_state.get('spouse_dob', datetime.date(1982, 1,
                                                                                                        1))).years if st.session_state.get(
         'has_spouse') else 0
 
-    cc1, cc2, cc3, cc4 = st.columns(4)
-    ret_age = cc1.slider("Retirement Age", max(int(my_age), 1), 100,
-                         max(int(my_age), int(st.session_state.get('ret_age', 65))), key="sld_ret_age")
-    s_ret_age = cc2.slider("Spouse Retire Age", max(int(spouse_age), 1), 100,
-                           max(int(spouse_age), int(st.session_state.get('s_ret_age', 65))),
-                           key="sld_s_ret_age") if st.session_state.get('has_spouse') else 65
-    my_life_exp = cc3.slider("Your Life Expectancy", max(70, ret_age), 115,
-                             max(ret_age, int(st.session_state.get('my_life_exp', 95))), key="sld_life_exp")
-    spouse_life_exp = cc4.slider("Spouse Life Expectancy", max(70, s_ret_age), 115,
-                                 max(s_ret_age, int(st.session_state.get('spouse_life_exp', 95))),
-                                 key="sld_s_life_exp") if st.session_state.get('has_spouse') else 0
+    with tab_ages:
+        cc1, cc2, cc3, cc4 = st.columns(4)
+        ret_age = cc1.slider("Retirement Age", max(int(my_age), 1), 100,
+                             max(int(my_age), int(st.session_state.get('ret_age', 65))), key="sld_ret_age")
+        s_ret_age = cc2.slider("Spouse Retire Age", max(int(spouse_age), 1), 100,
+                               max(int(spouse_age), int(st.session_state.get('s_ret_age', 65))),
+                               key="sld_s_ret_age") if st.session_state.get('has_spouse') else 65
+        my_life_exp = cc3.slider("Your Life Expectancy", max(70, ret_age), 115,
+                                 max(ret_age, int(st.session_state.get('my_life_exp', 95))), key="sld_life_exp")
+        spouse_life_exp = cc4.slider("Spouse Life Expectancy", max(70, s_ret_age), 115,
+                                     max(s_ret_age, int(st.session_state.get('spouse_life_exp', 95))),
+                                     key="sld_s_life_exp") if st.session_state.get('has_spouse') else 0
 
-    if ret_age < my_age: info_banner("Retirement age cannot be lower than current age.", "warning")
-    if my_life_exp < ret_age: info_banner("Life expectancy cannot be lower than retirement age.", "warning")
+        if ret_age < my_age: info_banner("Retirement age cannot be lower than current age.", "warning")
+        if my_life_exp < ret_age: info_banner("Life expectancy cannot be lower than retirement age.", "warning")
 
-    if st.session_state.get('ret_age') != ret_age: update_state('ret_age', ret_age)
-    if st.session_state.get('s_ret_age') != s_ret_age: update_state('s_ret_age', s_ret_age)
-    if st.session_state.get('my_life_exp') != my_life_exp: update_state('my_life_exp', my_life_exp)
-    if st.session_state.get('spouse_life_exp') != spouse_life_exp: update_state('spouse_life_exp', spouse_life_exp)
-
-    st.markdown(
-        """<div class='card' style='margin-bottom: 24px;'><h3 style='margin-top:0;'>Macroeconomic Assumptions</h3>""",
-        unsafe_allow_html=True)
+        if st.session_state.get('ret_age') != ret_age: update_state('ret_age', ret_age)
+        if st.session_state.get('s_ret_age') != s_ret_age: update_state('s_ret_age', s_ret_age)
+        if st.session_state.get('my_life_exp') != my_life_exp: update_state('my_life_exp', my_life_exp)
+        if st.session_state.get('spouse_life_exp') != spouse_life_exp: update_state('spouse_life_exp', spouse_life_exp)
 
     def ai_number_input(label, state_key, prompt, col):
         with col:
@@ -1956,7 +1974,7 @@ def render_simulation():
 
             sub_c2.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
             if sub_c2.button("✨ AI", key=f"btn_{state_key}", help=f"AI Estimate for {label}", type="primary",
-                             use_container_width=True):
+                             width="stretch"):
                 try:
                     with st.spinner("AI estimating..."):
                         enhanced_prompt = prompt + " CRITICAL INSTRUCTION: You MUST return the value as a percentage number between 0 and 100 (e.g., return 5.5 for 5.5%, DO NOT return 0.055)."
@@ -1981,90 +1999,95 @@ def render_simulation():
                 mark_dirty()
             return val
 
-    ac1, ac2, ac3 = st.columns(3)
-    mkt = ai_number_input("Market Growth (%)", 'market_growth',
-                          f"What is a realistic conservative long-term annual market growth rate for a diversified retirement portfolio? Return JSON: {{'market_growth': float}}",
-                          ac1)
-    infl = ai_number_input("General CPI Inflation (%)", 'inflation',
-                           f"What is the projected long-term average general US CPI inflation rate? Return JSON: {{'inflation': float}}",
-                           ac2)
-    inc_g = ai_number_input("Income Growth (%)", 'income_growth',
-                            f"What is a realistic annual salary growth/merit increase rate? Return JSON: {{'income_growth': float}}",
-                            ac3)
+    with tab_assumptions:
+        st.markdown(
+            """<div class='card' style='margin-bottom: 24px;'><h3 style='margin-top:0;'>Macroeconomic Assumptions</h3></div>""",
+            unsafe_allow_html=True)
+        ac1, ac2, ac3 = st.columns(3)
+        mkt = ai_number_input("Market Growth (%)", 'market_growth',
+                              f"What is a realistic conservative long-term annual market growth rate for a diversified retirement portfolio? Return JSON: {{'market_growth': float}}",
+                              ac1)
+        infl = ai_number_input("General CPI Inflation (%)", 'inflation',
+                               f"What is the projected long-term average general US CPI inflation rate? Return JSON: {{'inflation': float}}",
+                               ac2)
+        inc_g = ai_number_input("Income Growth (%)", 'income_growth',
+                                f"What is a realistic annual salary growth/merit increase rate? Return JSON: {{'income_growth': float}}",
+                                ac3)
 
-    ac4, ac5, ac6 = st.columns(3)
-    curr_city_flow = st.session_state.get('curr_city_flow', '')
-    curr_city_flow_clean = re.sub(r'[^a-zA-Z0-9, ]', '', str(curr_city_flow))[:100]
-    infl_hc = ai_number_input("Healthcare Inflation (%)", 'inflation_healthcare',
-                              f"What is the projected long-term annual healthcare cost inflation rate in the US? Return JSON: {{'inflation_healthcare': float}}",
-                              ac4)
-    infl_ed = ai_number_input("Education Inflation (%)", 'inflation_education',
-                              f"What is the projected long-term annual college tuition inflation rate in the US? Return JSON: {{'inflation_education': float}}",
-                              ac5)
-    prop_g = ai_number_input("Property Growth (%)", 'property_growth',
-                             f"Historical average annual real estate appreciation rate for {curr_city_flow_clean}? Return JSON: {{'property_growth': float}}",
-                             ac6)
+        ac4, ac5, ac6 = st.columns(3)
+        curr_city_flow = st.session_state.get('curr_city_flow', '')
+        curr_city_flow_clean = re.sub(r'[^a-zA-Z0-9, ]', '', str(curr_city_flow))[:100]
+        infl_hc = ai_number_input("Healthcare Inflation (%)", 'inflation_healthcare',
+                                  f"What is the projected long-term annual healthcare cost inflation rate in the US? Return JSON: {{'inflation_healthcare': float}}",
+                                  ac4)
+        infl_ed = ai_number_input("Education Inflation (%)", 'inflation_education',
+                                  f"What is the projected long-term annual college tuition inflation rate in the US? Return JSON: {{'inflation_education': float}}",
+                                  ac5)
+        prop_g = ai_number_input("Property Growth (%)", 'property_growth',
+                                 f"Historical average annual real estate appreciation rate for {curr_city_flow_clean}? Return JSON: {{'property_growth': float}}",
+                                 ac6)
 
-    ac7, ac8, ac9 = st.columns(3)
-    ret_city_flow = st.session_state.get('retire_city_flow', '')
-    ret_city_flow_clean = re.sub(r'[^a-zA-Z0-9, ]', '', str(ret_city_flow))[:100]
-    curr_inc_total = pd.to_numeric(pd.DataFrame(st.session_state.get('income_data', []))['Annual Amount ($)'],
-                                   errors='coerce').fillna(0).sum() if st.session_state.get('income_data') else 0
-    rent_g = ai_number_input("Rent Growth (%)", 'rent_growth',
-                             f"Projected average annual rent increase rate for {curr_city_flow_clean}? Return JSON: {{'rent_growth': float}}",
-                             ac7)
-    cur_t = ai_number_input("Current State Tax (%)", 'current_tax_rate',
-                            f"User lives in {curr_city_flow_clean} with ${curr_inc_total:,.0f} income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'current_tax_rate': float}}",
-                            ac8)
-    ret_t = ai_number_input("Retire State Tax (%)", 'retire_tax_rate',
-                            f"User plans to retire in {ret_city_flow_clean} with estimated retirement income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'retire_tax_rate': float}}",
-                            ac9)
-    st.markdown("</div>", unsafe_allow_html=True)
+        ac7, ac8, ac9 = st.columns(3)
+        ret_city_flow = st.session_state.get('retire_city_flow', '')
+        ret_city_flow_clean = re.sub(r'[^a-zA-Z0-9, ]', '', str(ret_city_flow))[:100]
+        curr_inc_total = pd.to_numeric(pd.DataFrame(st.session_state.get('income_data', []))['Annual Amount ($)'],
+                                       errors='coerce').fillna(0).sum() if st.session_state.get('income_data') else 0
+        rent_g = ai_number_input("Rent Growth (%)", 'rent_growth',
+                                 f"Projected average annual rent increase rate for {curr_city_flow_clean}? Return JSON: {{'rent_growth': float}}",
+                                 ac7)
+        cur_t = ai_number_input("Current State Tax (%)", 'current_tax_rate',
+                                f"User lives in {curr_city_flow_clean} with ${curr_inc_total:,.0f} income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'current_tax_rate': float}}",
+                                ac8)
+        ret_t = ai_number_input("Retire State Tax (%)", 'retire_tax_rate',
+                                f"User plans to retire in {ret_city_flow_clean} with estimated retirement income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'retire_tax_rate': float}}",
+                                ac9)
 
-    st.markdown(
-        """<div class='card' style='margin-bottom: 24px;'><h3 style='margin-top:0;'>Tax Engine & Stress Tests</h3>""",
-        unsafe_allow_html=True)
-    sc1, sc2 = st.columns(2)
+    with tab_stress:
+        st.markdown(
+            """<div class='card' style='margin-bottom: 24px;'><h3 style='margin-top:0;'>Tax Engine & Stress Tests</h3></div>""",
+            unsafe_allow_html=True)
+        sc1, sc2 = st.columns(2)
 
-    def update_asm_toggle(key, val):
-        if st.session_state.get('assumptions', {}).get(key) != val:
-            new_asm = st.session_state.get('assumptions', {}).copy()
-            new_asm[key] = val
-            st.session_state['assumptions'] = new_asm
-            mark_dirty()
+        def update_asm_toggle(key, val):
+            if st.session_state.get('assumptions', {}).get(key) != val:
+                new_asm = st.session_state.get('assumptions', {}).copy()
+                new_asm[key] = val
+                st.session_state['assumptions'] = new_asm
+                mark_dirty()
 
-    with sc1:
-        medicare_gap = st.toggle("🏥 Model Pre-Medicare Gap",
-                                 value=st.session_state.get('assumptions', {}).get('medicare_gap', True))
-        update_asm_toggle('medicare_gap', medicare_gap)
-        medicare_cliff = st.toggle("🏥 Apply Medicare Cliff (Drop Healthcare at 65)",
-                                   value=st.session_state.get('assumptions', {}).get('medicare_cliff', True))
-        update_asm_toggle('medicare_cliff', medicare_cliff)
-        glidepath = st.toggle("📉 Apply Investment Glidepath",
-                              value=st.session_state.get('assumptions', {}).get('glidepath', True))
-        update_asm_toggle('glidepath', glidepath)
-        stress_test = st.toggle("📉 Apply -25% Market Crash at Retirement",
-                                value=st.session_state.get('assumptions', {}).get('stress_test', False))
-        update_asm_toggle('stress_test', stress_test)
-        ltc_shock = st.toggle("🛏️ Long-Term Care (LTC) Shock",
-                              value=st.session_state.get('assumptions', {}).get('ltc_shock', False))
-        update_asm_toggle('ltc_shock', ltc_shock)
+        with sc1:
+            medicare_gap = st.toggle("🏥 Model Pre-Medicare Gap",
+                                     value=st.session_state.get('assumptions', {}).get('medicare_gap', True))
+            update_asm_toggle('medicare_gap', medicare_gap)
+            medicare_cliff = st.toggle("🏥 Apply Medicare Cliff (Drop Healthcare at 65)",
+                                       value=st.session_state.get('assumptions', {}).get('medicare_cliff', True))
+            update_asm_toggle('medicare_cliff', medicare_cliff)
+            glidepath = st.toggle("📉 Apply Investment Glidepath",
+                                  value=st.session_state.get('assumptions', {}).get('glidepath', True))
+            update_asm_toggle('glidepath', glidepath)
+            stress_test = st.toggle("📉 Apply -25% Market Crash at Retirement",
+                                    value=st.session_state.get('assumptions', {}).get('stress_test', False))
+            update_asm_toggle('stress_test', stress_test)
+            ltc_shock = st.toggle("🛏️ Long-Term Care (LTC) Shock",
+                                  value=st.session_state.get('assumptions', {}).get('ltc_shock', False))
+            update_asm_toggle('ltc_shock', ltc_shock)
 
-    with sc2:
-        active_withdrawal_strategy = st.selectbox("Shortfall Withdrawal Sequence",
-                                                  options=["Standard (Taxable -> 401k -> Roth)",
-                                                           "Roth Preferred (Taxable -> Roth -> 401k)"],
-                                                  index=0 if "Standard" in st.session_state.get('assumptions', {}).get(
-                                                      'withdrawal_strategy', 'Standard') else 1)
-        roth_conversions = st.toggle("🔄 Enable Roth Conversion Optimizer",
-                                     value=st.session_state.get('assumptions', {}).get('roth_conversions', False))
-        roth_target_idx = ["12%", "22%", "24%", "32%"].index(
-            st.session_state.get('assumptions', {}).get('roth_target', "24%"))
-        roth_target = st.selectbox("Target Bracket to Fill", options=["12%", "22%", "24%", "32%"],
-                                   index=roth_target_idx)
-        update_asm_toggle('roth_conversions', roth_conversions)
-        update_asm_toggle('roth_target', roth_target)
-        update_asm_toggle('withdrawal_strategy', active_withdrawal_strategy.split(' ')[0])
+        with sc2:
+            active_withdrawal_strategy = st.selectbox("Shortfall Withdrawal Sequence",
+                                                      options=["Standard (Taxable -> 401k -> Roth)",
+                                                               "Roth Preferred (Taxable -> Roth -> 401k)"],
+                                                      index=0 if "Standard" in st.session_state.get('assumptions',
+                                                                                                    {}).get(
+                                                          'withdrawal_strategy', 'Standard') else 1)
+            roth_conversions = st.toggle("🔄 Enable Roth Conversion Optimizer",
+                                         value=st.session_state.get('assumptions', {}).get('roth_conversions', False))
+            roth_target_idx = ["12%", "22%", "24%", "32%"].index(
+                st.session_state.get('assumptions', {}).get('roth_target', "24%"))
+            roth_target = st.selectbox("Target Bracket to Fill", options=["12%", "22%", "24%", "32%"],
+                                       index=roth_target_idx)
+            update_asm_toggle('roth_conversions', roth_conversions)
+            update_asm_toggle('roth_target', roth_target)
+            update_asm_toggle('withdrawal_strategy', active_withdrawal_strategy.split(' ')[0])
 
     st.divider()
     view_todays_dollars = st.toggle("💵 View Charts in Today's Dollars", value=True,
@@ -2207,7 +2230,7 @@ def render_simulation():
                                                           name='Critical Alerts', hoverinfo='text', text=m_text_alert))
 
                 fig_nw = apply_chart_theme(fig_nw)
-                st.plotly_chart(fig_nw, use_container_width=True)
+                st.plotly_chart(fig_nw, width="stretch")
 
                 st.write("#### Annual Cash Flow & Progressive Taxes")
                 fig_cf = go.Figure()
@@ -2238,7 +2261,7 @@ def render_simulation():
                                                           name='Critical Alerts', hoverinfo='text', text=m_text_alert))
 
                 fig_cf = apply_chart_theme(fig_cf)
-                st.plotly_chart(fig_cf, use_container_width=True)
+                st.plotly_chart(fig_cf, width="stretch")
 
             # --- MONTE CARLO SECTION ---
             st.divider()
@@ -2254,7 +2277,7 @@ def render_simulation():
 
             with col_mc3:
                 st.markdown("<div style='height: 27px;'></div>", unsafe_allow_html=True)
-                run_mc = st.button("✨ Run Monte Carlo Simulation", type="primary", use_container_width=True)
+                run_mc = st.button("✨ Run Monte Carlo Simulation", type="primary", width="stretch")
 
             if run_mc:
                 with st.spinner(f"Rendering {mc_runs} parallel market sequences (Multi-threaded)..."):
@@ -2313,7 +2336,7 @@ def render_simulation():
                                                         name='10th Percentile (Severe Contraction)',
                                                         line=dict(color='#f43f5e', dash='dot')))
                             fig_mc = apply_chart_theme(fig_mc, "Stochastic Net Worth Projections")
-                            st.plotly_chart(fig_mc, use_container_width=True)
+                            st.plotly_chart(fig_mc, width="stretch")
 
             # --- DATA AUDIT TABLES ---
             st.divider()
@@ -2330,11 +2353,9 @@ def render_simulation():
                 ord_det = ["Year", "Age (Primary)", "Age (Spouse)"] + inc_c + exp_c + ["Net Savings"]
                 st.dataframe(df_det[ord_det].set_index("Year").style.format(
                     {c: "${:,.0f}" for c in ord_det if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
-                        "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
+                        "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), width="stretch")
             with t2:
                 st.subheader("Detailed Net Worth Log")
-                st.markdown(
-                    "Track the exact, year-by-year balance of every single asset account and liability to trace your drawdowns and growth.")
                 ast_c = sorted([c for c in df_nw.columns if c.startswith("Asset:")])
                 ord_nw = ["Year", "Age (Primary)", "Age (Spouse)"] + ast_c + ["Total Liquid Assets",
                                                                               "Total Real Estate Equity",
@@ -2343,7 +2364,7 @@ def render_simulation():
                                                                               "Total Net Worth"]
                 st.dataframe(df_nw[ord_nw].set_index("Year").style.format(
                     {c: "${:,.0f}" for c in ord_nw if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
-                        "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
+                        "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), width="stretch")
 
 
 def render_ai():
@@ -2382,14 +2403,14 @@ def render_ai():
 
     tab_report, tab_whatif = st.tabs(["📊 Comprehensive Health Report", "🔮 What-If Simulator"])
     with tab_report:
-        if st.button("✨ Generate Comprehensive AI Report", type="primary", use_container_width=True, key="btn_report"):
+        if st.button("✨ Generate Comprehensive AI Report", type="primary", width="stretch", key="btn_report"):
             if sim_summary:
                 try:
                     with st.spinner("AI extracting timeseries data and acting as fiduciary advisor..."):
-                        prompt = f"Act as an expert fiduciary financial planner. Review this user's summary: {json.dumps(sim_summary)} and their chronological 5-year cash flow progression: {json.dumps(timeline_summary)}. Provide a highly detailed, year-by-year or phase-by-phase tactical analysis. Focus on specific strategies they can use to optimize their tax buckets (e.g., when exactly to execute Roth conversions before RMDs begin), sequence of withdrawals, and managing the gaps between retirement and Social Security/Medicare. Return ONLY valid JSON exactly like this: {{\"analysis\": \"your detailed markdown text here, using \\n for line breaks\"}}"
-                        res = call_gemini_json(prompt)
-                        if res and 'analysis' in res:
-                            st.session_state['ai_analysis_report'] = res['analysis']
+                        prompt = f"Act as an expert fiduciary financial planner. Review this user's summary: {json.dumps(sim_summary)} and their chronological 5-year cash flow progression: {json.dumps(timeline_summary)}. Provide a highly detailed, year-by-year or phase-by-phase tactical analysis. Focus on specific strategies they can use to optimize their tax buckets (e.g., when exactly to execute Roth conversions before RMDs begin), sequence of withdrawals, and managing the gaps between retirement and Social Security/Medicare. Format your response in clean Markdown."
+                        res = call_gemini_text(prompt)
+                        if res:
+                            st.session_state['ai_analysis_report'] = res
                         else:
                             st.error("⚠️ AI Analysis failed to generate.")
                 finally:
@@ -2404,14 +2425,14 @@ def render_ai():
         what_if_query = st.text_area(
             "Ask the AI to simulate a scenario (e.g., 'What if I sold my rental property in 2030 and put the cash in my brokerage?' or 'What if I added $50k in income starting in 2029?')",
             key="what_if_text")
-        if st.button("✨ Run What-If Analysis (AI)", type="primary", use_container_width=True, key="btn_whatif"):
+        if st.button("✨ Run What-If Analysis (AI)", type="primary", width="stretch", key="btn_whatif"):
             if sim_summary and what_if_query:
                 try:
                     with st.spinner("AI processing alternative timelines and computing what-if scenario..."):
-                        prompt = f"Act as an expert fiduciary financial planner. Review this user's baseline simulation summary: {json.dumps(sim_summary)} and their chronological 5-year cash flow progression: {json.dumps(timeline_summary)}. The user wants to run the following 'what-if' scenario: '{what_if_query}'. Analyze how this change would mathematically and strategically impact their net worth, cash flow, and tax strategy compared to the baseline. Provide a highly detailed, reasonable estimate and tactical breakdown of this scenario. Return ONLY valid JSON exactly like this: {{\"analysis\": \"your detailed markdown text here, using \\n for line breaks\"}}"
-                        res = call_gemini_json(prompt)
-                        if res and 'analysis' in res:
-                            st.session_state['what_if_analysis_report'] = res['analysis']
+                        prompt = f"Act as an expert fiduciary financial planner. Review this user's baseline simulation summary: {json.dumps(sim_summary)} and their chronological 5-year cash flow progression: {json.dumps(timeline_summary)}. The user wants to run the following 'what-if' scenario: '{what_if_query}'. Analyze how this change would mathematically and strategically impact their net worth, cash flow, and tax strategy compared to the baseline. Provide a highly detailed, reasonable estimate and tactical breakdown of this scenario. Format your response in clean Markdown."
+                        res = call_gemini_text(prompt)
+                        if res:
+                            st.session_state['what_if_analysis_report'] = res
                         else:
                             st.error("⚠️ AI Analysis failed to generate.")
                 finally:
@@ -2460,10 +2481,10 @@ with st.sidebar:
     st.markdown("<br><br>", unsafe_allow_html=True)
 
     save_btn_label = "⚠️ Save Changes" if st.session_state.get('dirty', False) else "🚀 Save Profile"
-    if st.button(save_btn_label, type="primary", use_container_width=True):
+    if st.button(save_btn_label, type="primary", width="stretch"):
         save_profile()
 
-    if st.button("Logout", type="secondary", use_container_width=True):
+    if st.button("Logout", type="secondary", width="stretch"):
         cookie_manager.delete("user_email")
         st.session_state.clear()
         st.rerun()
