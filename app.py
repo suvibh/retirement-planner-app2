@@ -124,7 +124,7 @@ def clean_df(df, primary_key):
         clean_r = {}
         for vk, vv in r.items():
             clean_r[vk] = None if pd.isna(vv) or vv is pd.NA else vv
-        if primary_key not in clean_r or str(clean_r.get(primary_key, '')).strip() != "":
+        if primary_key in clean_r and str(clean_r.get(primary_key, '')).strip() != "":
             valid_rows.append(clean_r)
     return valid_rows
 
@@ -166,15 +166,15 @@ def scrub_records(records):
 
 def apply_chart_theme(fig, title=""):
     fig.update_layout(
-        title=dict(text=title, font=dict(size=18, weight=800, color="#0f172a")),
+        title=dict(text=title, font=dict(size=16, weight=700, color="#0f172a")),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Plus Jakarta Sans", color="#64748b", size=13),
-        hovermode="x unified",
-        hoverlabel=dict(bgcolor="white", bordercolor="#e2e8f0", font_size=14, font_family="Plus Jakarta Sans"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1, bgcolor="rgba(0,0,0,0)"),
-        xaxis=dict(showgrid=False, zeroline=False, color="#94a3b8", showline=True, linecolor="#e2e8f0"),
-        yaxis=dict(showgrid=True, gridcolor="#f1f5f9", zeroline=False, tickformat="$,.0f", color="#94a3b8"),
-        margin=dict(l=0, r=0, t=60, b=0)
+        font=dict(family="Inter", color="#64748b", size=12), hovermode="x unified",
+        hoverlabel=dict(bgcolor="white", bordercolor="#e2e8f0", font_size=13, font_family="Inter"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor="rgba(0,0,0,0)",
+                    font=dict(size=12)),
+        xaxis=dict(showgrid=False, zeroline=False, color="#94a3b8", tickfont=dict(size=11)),
+        yaxis=dict(gridcolor="#f1f5f9", zeroline=False, tickformat="$,.0f", color="#94a3b8", tickfont=dict(size=11)),
+        margin=dict(l=0, r=0, t=50, b=0)
     )
     return fig
 
@@ -199,17 +199,12 @@ def stat_card(label, value, color="indigo", icon=""):
 
 
 def section_header(title, subtitle="", icon=""):
-    st.markdown(f"""
-    <div style='margin: 32px 0 24px 0;'>
-        <div style='display:flex; align-items:center; gap:12px;'>
-            <div style='background: linear-gradient(135deg, #e0e7ff 0%, #f3e8ff 100%); width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.5);'>
-                {html.escape(str(icon))}
-            </div>
-            <h2 style='margin:0; font-size:1.5rem; font-weight:800; color:#0f172a; letter-spacing: -0.5px;'>{html.escape(str(title))}</h2>
-        </div>
-        {f"<p style='margin: 8px 0 0 52px; color:#64748b; font-size:0.95rem; line-height: 1.5;'>{html.escape(str(subtitle))}</p>" if subtitle else ""}
-    </div>
-    """, unsafe_allow_html=True)
+    icon_html = f"<div style='background: linear-gradient(135deg, #e0e7ff 0%, #f3e8ff 100%); width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.5);'>{html.escape(str(icon))}</div>" if icon else ""
+    margin_left = "52px" if icon else "0px"
+    subtitle_html = f"<p style='margin: 8px 0 0 {margin_left}; color:#64748b; font-size:0.95rem; line-height: 1.5;'>{html.escape(str(subtitle))}</p>" if subtitle else ""
+    st.markdown(
+        f"<div style='margin: 32px 0 24px 0;'><div style='display:flex; align-items:center; gap:12px;'>{icon_html}<h2 style='margin:0; font-size:1.5rem; font-weight:800; color:#0f172a; letter-spacing: -0.5px;'>{html.escape(str(title))}</h2></div>{subtitle_html}</div>",
+        unsafe_allow_html=True)
 
 
 def info_banner(text, type="info"):
@@ -223,22 +218,6 @@ def info_banner(text, type="info"):
     <div style='background:{bg}; border-left:4px solid {border}; padding:14px 18px; border-radius:8px; margin-bottom:20px; display: flex; align-items: flex-start; gap: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>
         <span style='font-size:1.1rem; line-height: 1.2;'>{emoji}</span>
         <span style='color:{text_color}; font-size:0.95rem; font-weight: 500; line-height: 1.5;'>{html.escape(str(text))}</span>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-def retirement_health_score(score):
-    color = "#10b981" if score > 75 else "#f59e0b" if score > 50 else "#ef4444"
-    label = "Excellent" if score > 75 else "Needs Work" if score > 50 else "At Risk"
-    st.markdown(f"""
-    <div style='text-align:center; padding:20px; background:white; border-radius:16px; border:1px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);'>
-        <svg width='140' height='140' viewBox='0 0 140 140'>
-            <circle cx='70' cy='70' r='56' fill='none' stroke='#f1f5f9' stroke-width='12'/>
-            <circle cx='70' cy='70' r='56' fill='none' stroke='{color}' stroke-width='12' stroke-dasharray='{2 * 3.14159 * 56}' stroke-dashoffset='{2 * 3.14159 * 56 * (1 - score / 100)}' stroke-linecap='round' transform='rotate(-90 70 70)'/>
-            <text x='70' y='66' text-anchor='middle' font-size='26' font-weight='900' fill='{color}'>{score}</text>
-            <text x='70' y='84' text-anchor='middle' font-size='11' font-weight='600' fill='#64748b'>{label}</text>
-        </svg>
-        <div style='color:#0f172a; font-weight:700; font-size:0.95rem; margin-top:8px;'>Monte Carlo Success</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -646,10 +625,7 @@ def initialize_session_state():
                                      "Frequency": m.get("Frequency", "One-Time"), "Amount ($)": m.get("Amount ($)", 0),
                                      "Start Phase": "Custom Year", "Start Year": sy_int, "End Phase": "Custom Year",
                                      "End Year": ey_int, "AI Estimate?": m.get("AI Estimate?", False)})
-            life_exp = migrated if migrated else [
-                {"Description": "Groceries", "Category": "Food", "Frequency": "Monthly", "Amount ($)": 0,
-                 "Start Phase": "Now", "Start Year": None, "End Phase": "End of Life", "End Year": None,
-                 "AI Estimate?": False}]
+            life_exp = migrated if migrated else []
         st.session_state['lifetime_expenses'] = life_exp
 
         st.session_state['assumptions'] = ud.get('assumptions', {"inflation": 3.0, "inflation_healthcare": 5.5,
@@ -666,7 +642,6 @@ def initialize_session_state():
         st.session_state['initialized'] = True
 
 
-# --- AUTH LAYER EXECUTION ---
 if 'user_email' not in st.session_state:
     saved_email = cookie_manager.get(cookie="user_email")
     if saved_email and not st.session_state.get('logged_out_flag'):
@@ -1877,9 +1852,8 @@ def render_income():
     my_age = relativedelta(datetime.date.today(), st.session_state.get('my_dob', datetime.date(1980, 1, 1))).years
     if df_inc.empty:
         df_inc = pd.DataFrame(
-            [{"Description": "Base Salary", "Category": "Base Salary (W-2)", "Owner": "Me", "Annual Amount ($)": 0,
-              "Start Year": current_year, "End Year": current_year + max(0, 65 - my_age), "Stop at Ret.?": True,
-              "Override Growth (%)": None}])
+            columns=["Description", "Category", "Owner", "Annual Amount ($)", "Start Year", "End Year", "Stop at Ret.?",
+                     "Override Growth (%)"])
     else:
         if "Start Age" in df_inc.columns:
             df_inc["Start Year"] = current_year + (pd.to_numeric(df_inc["Start Age"], errors='coerce') - my_age)
@@ -1893,6 +1867,8 @@ def render_income():
 
     edited_inc = st.data_editor(
         df_inc,
+        column_order=["Description", "Category", "Owner", "Annual Amount ($)", "Start Year", "End Year",
+                      "Stop at Ret.?", "Override Growth (%)"],
         column_config={
             "Description": st.column_config.TextColumn("Description"),
             "Category": st.column_config.SelectboxColumn("Category", options=["Base Salary (W-2)", "Bonus / Commission",
@@ -1907,7 +1883,7 @@ def render_income():
             "Stop at Ret.?": st.column_config.CheckboxColumn("Stop at Retirement?",
                                                              help="If checked, automatically turns off when the owner reaches retirement."),
             "Override Growth (%)": st.column_config.NumberColumn("Custom Growth (%)", step=0.1, format="%.1f%%")
-        }, num_rows="dynamic", use_container_width=True, hide_index=True, key="inc_editor", on_change=mark_dirty
+        }, num_rows="dynamic", use_container_width=True, key="inc_editor", on_change=mark_dirty
     )
     st.session_state['income_data'] = edited_inc.to_dict('records')
 
@@ -1943,7 +1919,8 @@ def render_income():
                             prompt = f"User is {my_age} years old making ${curr_inc}/year. Estimate their annual Social Security primary insurance amount (PIA) at Full Retirement Age. Return JSON: {{'ss_amount_me': integer}}"
                         res = call_gemini_json(prompt)
                         if res:
-                            current_inc = edited_inc.to_dict('records')
+                            current_inc = [row for row in edited_inc.to_dict('records') if
+                                           row.get("Category") != "Social Security"]
                             my_birth_year = st.session_state.get('my_dob', datetime.date(1980, 1, 1)).year
                             spouse_birth_year = st.session_state.get('spouse_dob', datetime.date(1982, 1,
                                                                                                  1)).year if st.session_state.get(
@@ -1982,10 +1959,9 @@ def render_assets():
         df_re = pd.DataFrame(st.session_state.get('real_estate_data', []))
         if df_re.empty:
             df_re = pd.DataFrame(
-                [{"Property Name": "Primary Home", "Is Primary Residence?": True, "Market Value ($)": 0,
-                  "Mortgage Balance ($)": 0, "Interest Rate (%)": 0.0, "Mortgage Payment ($)": 0,
-                  "Monthly Expenses ($)": 0, "Monthly Rent ($)": 0, "Override Prop Growth (%)": None,
-                  "Override Rent Growth (%)": None}])
+                columns=["Property Name", "Is Primary Residence?", "Market Value ($)", "Mortgage Balance ($)",
+                         "Interest Rate (%)", "Mortgage Payment ($)", "Monthly Expenses ($)", "Monthly Rent ($)",
+                         "Override Prop Growth (%)", "Override Rent Growth (%)"])
         else:
             df_re = df_re.reindex(
                 columns=["Property Name", "Is Primary Residence?", "Market Value ($)", "Mortgage Balance ($)",
@@ -1994,6 +1970,9 @@ def render_assets():
 
         edited_re = st.data_editor(
             df_re,
+            column_order=["Property Name", "Is Primary Residence?", "Market Value ($)", "Mortgage Balance ($)",
+                          "Interest Rate (%)", "Mortgage Payment ($)", "Monthly Expenses ($)", "Monthly Rent ($)",
+                          "Override Prop Growth (%)", "Override Rent Growth (%)"],
             column_config={
                 "Property Name": st.column_config.TextColumn("Property Name",
                                                              help="A simple label for your property (e.g. 'Beach House' or 'Main St')."),
@@ -2007,7 +1986,7 @@ def render_assets():
                 "Override Prop Growth (%)": st.column_config.NumberColumn("Property Growth (%)", step=0.1,
                                                                           format="%.1f%%"),
                 "Override Rent Growth (%)": st.column_config.NumberColumn("Rent Growth (%)", step=0.1, format="%.1f%%")
-            }, num_rows="dynamic", use_container_width=True, hide_index=True, key="re_editor", on_change=mark_dirty
+            }, num_rows="dynamic", use_container_width=True, key="re_editor", on_change=mark_dirty
         )
         st.session_state['real_estate_data'] = edited_re.to_dict('records')
 
@@ -2024,9 +2003,9 @@ def render_assets():
     with tab_biz:
         df_biz = pd.DataFrame(st.session_state.get('business_data', []))
         if df_biz.empty:
-            df_biz = pd.DataFrame([{"Business Name": "", "Total Valuation ($)": 0, "Your Ownership (%)": 100,
-                                    "Annual Distribution ($)": 0, "Override Val. Growth (%)": None,
-                                    "Override Dist. Growth (%)": None}])
+            df_biz = pd.DataFrame(
+                columns=["Business Name", "Total Valuation ($)", "Your Ownership (%)", "Annual Distribution ($)",
+                         "Override Val. Growth (%)", "Override Dist. Growth (%)"])
         else:
             if "Override Val. Growth (%)" not in df_biz.columns: df_biz["Override Val. Growth (%)"] = None
             if "Override Dist. Growth (%)" not in df_biz.columns: df_biz["Override Dist. Growth (%)"] = None
@@ -2036,6 +2015,8 @@ def render_assets():
 
         edited_biz = st.data_editor(
             df_biz,
+            column_order=["Business Name", "Total Valuation ($)", "Your Ownership (%)", "Annual Distribution ($)",
+                          "Override Val. Growth (%)", "Override Dist. Growth (%)"],
             column_config={
                 "Total Valuation ($)": st.column_config.NumberColumn("Total Value ($)", step=10000, format="$%d"),
                 "Annual Distribution ($)": st.column_config.NumberColumn("Annual Income ($)", step=1000, format="$%d"),
@@ -2045,7 +2026,7 @@ def render_assets():
                                                                           help="Private assets do not follow portfolio glidepaths. Set a static growth rate."),
                 "Override Dist. Growth (%)": st.column_config.NumberColumn("Income Growth (%)", step=0.1,
                                                                            format="%.1f%%")
-            }, num_rows="dynamic", use_container_width=True, hide_index=True, key="biz_editor", on_change=mark_dirty
+            }, num_rows="dynamic", use_container_width=True, key="biz_editor", on_change=mark_dirty
         )
         st.session_state['business_data'] = edited_biz.to_dict('records')
 
@@ -2054,9 +2035,9 @@ def render_assets():
             "Contribution Engine Update: Put ONLY your own out-of-pocket contributions here. The AI engine automatically detects 'Employer Matches' from your Income table and securely routes them directly into your 401(k) behind the scenes!")
         df_ast = pd.DataFrame(st.session_state.get('liquid_assets_data', []))
         if df_ast.empty:
-            df_ast = pd.DataFrame([{"Account Name": "Primary 401(k)", "Type": "Traditional 401(k)", "Owner": "Me",
-                                    "Current Balance ($)": 0, "Annual Contribution ($/yr)": 0,
-                                    "Est. Annual Growth (%)": None, "Stop Contrib at Ret.?": True}])
+            df_ast = pd.DataFrame(
+                columns=["Account Name", "Type", "Owner", "Current Balance ($)", "Annual Contribution ($/yr)",
+                         "Est. Annual Growth (%)", "Stop Contrib at Ret.?"])
         else:
             if "Annual Contribution ($)" in df_ast.columns: df_ast.rename(
                 columns={'Annual Contribution ($)': 'Annual Contribution ($/yr)'}, inplace=True)
@@ -2070,6 +2051,8 @@ def render_assets():
 
         edited_ast = st.data_editor(
             df_ast,
+            column_order=["Account Name", "Type", "Owner", "Current Balance ($)", "Annual Contribution ($/yr)",
+                          "Est. Annual Growth (%)", "Stop Contrib at Ret.?"],
             column_config={
                 "Type": st.column_config.SelectboxColumn("Account Type",
                                                          options=["Checking/Savings", "HYSA", "Brokerage (Taxable)",
@@ -2085,7 +2068,7 @@ def render_assets():
                                                                         help="Leave blank to use global market growth assumptions."),
                 "Stop Contrib at Ret.?": st.column_config.CheckboxColumn("Stop Adding at Ret.?",
                                                                          help="Check this if you will stop saving into this account once the owner retires.")
-            }, num_rows="dynamic", use_container_width=True, hide_index=True, key="assets_editor", on_change=mark_dirty
+            }, num_rows="dynamic", use_container_width=True, key="assets_editor", on_change=mark_dirty
         )
         st.session_state['liquid_assets_data'] = edited_ast.to_dict('records')
 
@@ -2102,19 +2085,19 @@ def render_assets():
         df_debt = pd.DataFrame(st.session_state.get('liabilities_data', []))
         if df_debt.empty:
             df_debt = pd.DataFrame(
-                [{"Debt Name": "Auto Loan", "Type": "Auto Loan", "Current Balance ($)": 0, "Interest Rate (%)": 0.0,
-                  "Monthly Payment ($)": 0}])
+                columns=["Debt Name", "Type", "Current Balance ($)", "Interest Rate (%)", "Monthly Payment ($)"])
         else:
             df_debt = df_debt.reindex(
                 columns=["Debt Name", "Type", "Current Balance ($)", "Interest Rate (%)", "Monthly Payment ($)"])
 
         edited_debt = st.data_editor(
             df_debt,
+            column_order=["Debt Name", "Type", "Current Balance ($)", "Interest Rate (%)", "Monthly Payment ($)"],
             column_config={
                 "Current Balance ($)": st.column_config.NumberColumn("Current Balance ($)", step=1000, format="$%d"),
                 "Interest Rate (%)": st.column_config.NumberColumn("Interest Rate (%)", step=0.001, format="%.3f%%"),
                 "Monthly Payment ($)": st.column_config.NumberColumn("Monthly Payment ($)", step=100, format="$%d")
-            }, num_rows="dynamic", use_container_width=True, hide_index=True, key="debt_editor", on_change=mark_dirty
+            }, num_rows="dynamic", use_container_width=True, key="debt_editor", on_change=mark_dirty
         )
         st.session_state['liabilities_data'] = edited_debt.to_dict('records')
 
@@ -2161,8 +2144,8 @@ def render_cashflows():
     st.divider()
     df_exp = pd.DataFrame(st.session_state.get('lifetime_expenses', []))
     if df_exp.empty: df_exp = pd.DataFrame(
-        [{"Description": "Groceries", "Category": "Food", "Frequency": "Monthly", "Amount ($)": 0, "Start Phase": "Now",
-          "Start Year": None, "End Phase": "End of Life", "End Year": None, "AI Estimate?": False}])
+        columns=["Description", "Category", "Frequency", "Amount ($)", "Start Phase", "Start Year", "End Phase",
+                 "End Year", "AI Estimate?"])
     if not df_exp.empty:
         if 'Start Phase' in df_exp.columns and 'Start Year' in df_exp.columns: df_exp.loc[
             df_exp['Start Phase'] != 'Custom Year', 'Start Year'] = None
@@ -2171,6 +2154,8 @@ def render_cashflows():
 
     edited_exp = st.data_editor(
         df_exp,
+        column_order=["Description", "Category", "Frequency", "Amount ($)", "Start Phase", "Start Year", "End Phase",
+                      "End Year", "AI Estimate?"],
         column_config={
             "Description": st.column_config.TextColumn("Description"),
             "Category": st.column_config.SelectboxColumn("Category", options=BUDGET_CATEGORIES),
@@ -2184,7 +2169,7 @@ def render_cashflows():
             "End Year": st.column_config.NumberColumn("End Year (If Custom)", format="%d", min_value=1900,
                                                       max_value=2100),
             "AI Estimate?": st.column_config.CheckboxColumn("🤖 AI?")
-        }, num_rows="dynamic", use_container_width=True, hide_index=True, key="exp_ed", on_change=mark_dirty
+        }, num_rows="dynamic", use_container_width=True, key="exp_ed", on_change=mark_dirty
     )
     st.session_state['lifetime_expenses'] = edited_exp.to_dict('records')
 
@@ -2228,7 +2213,11 @@ def render_cashflows():
                         curr_city_flow_clean = re.sub(r'[^a-zA-Z0-9, ]', '', str(curr_city_flow))[:100]
                         ret_city_flow_clean = re.sub(r'[^a-zA-Z0-9, ]', '', str(ret_city_flow))[:100]
 
-                        ai_exclusion = "STRICT RULE: DO NOT INCLUDE Housing, Rent, Mortgages, Auto Loans, or Debt Payments in this list. They are explicitly tracked via balance sheet parameters." if owns_home else "STRICT RULE: DO NOT INCLUDE Mortgages, Auto Loans, or Debt Payments. HOWEVER, YOU MUST INCLUDE a realistic 'Housing / Rent' expense reflecting current local market rates."
+                        if owns_home:
+                            ai_exclusion = "STRICT RULE: DO NOT INCLUDE Housing, Rent, Mortgages, Auto Loans, or Debt Payments in this list. They are explicitly tracked via balance sheet parameters."
+                        else:
+                            ai_exclusion = "STRICT RULE: DO NOT INCLUDE Mortgages, Auto Loans, or Debt Payments. CRITICAL INSTRUCTION: You MUST INCLUDE a realistic 'Housing / Rent' expense (Category: 'Housing / Rent') reflecting current local rental market rates for their family size, as they currently do not own a home."
+
                         wealth_ctx = f"The household has a current annual pre-tax income of ${curr_inc_total:,.0f} and liquid assets totaling ${liq_ast_total:,.0f}. VERY IMPORTANT: While you should scale the budget to reflect this wealth, assume these users are savvy spenders and aggressive savers (comfortable but smart with money), so avoid over-inflating lifestyle costs unnecessarily."
                         allowed_cats = ", ".join(BUDGET_CATEGORIES)
                         prompt = f"Current City: {curr_city_flow_clean}. Planned Retirement City: {ret_city_flow_clean}. Family: {f_ctx}. Current Year is {current_year}. {wealth_ctx} Generate a comprehensive list of missing living expenses AND expected future life milestones (like college or weddings). {ai_exclusion} CRITICAL INSTRUCTIONS: 1) Medical expenses (IRMAA, Medicare Cliff, Pre-Medicare gap, LTC) are handled automatically by the simulation engine; only provide modest baseline out-of-pocket healthcare costs. 2) Model 'Empty Nesting': phase out child-heavy groceries, utility expenses, and ANY K-12 extracurriculars/lessons using 'Custom Year' End Phases exactly when the youngest child turns 18. 3) ALL College/University expenses MUST be categorized strictly as 'Education' (not 'Other') so they receive the 5% education inflation penalty. NOTE: Start and End Years are INCLUSIVE. For a standard 4-year college, the End Year must be exactly 3 years after the Start Year (e.g., Start 2032, End 2035 is 4 years). 4) Model Retirement Lifestyle Phases: split travel and entertainment into 'Go-Go Years' (high spend, starts at retirement, lasts 10 years, calculate costs based on {ret_city_flow_clean}), 'Slow-Go Years' (medium spend, lasts next 10 years), and 'No-Go Years' (low spend) using 'Custom Year' Start/End phases. 5) STRICT PHASE SHIFTING: Never overlap the same living expense category. If an expense changes at retirement, the 'Now' version MUST have 'End Phase' set to 'At Retirement', and the new version MUST have 'Start Phase' set to 'At Retirement'. If an expense continues unchanged forever, set it to 'Now' until 'End of Life'. Skip these items as they are already accounted for: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (MUST be exactly one of: {allowed_cats}. If unsure, default to 'Other'), 'Frequency' (Monthly/Yearly/One-Time), 'Amount ($)' (number), 'Start Phase' (Now/At Retirement/Custom Year), 'Start Year' (integer, ONLY if 'Start Phase' is 'Custom Year', otherwise null), 'End Phase' (End of Life/At Retirement/Custom Year), 'End Year' (integer, ONLY if 'End Phase' is 'Custom Year', otherwise null), and 'AI Estimate?' (true)."
@@ -2241,7 +2230,7 @@ def render_cashflows():
 
 
 def render_simulation():
-    section_header("📈 Simulation", "Fine-tune your timeline and run Monte Carlo scenarios.")
+    section_header("Simulation", "Fine-tune your timeline and run Monte Carlo scenarios.", "📈")
 
     def ai_number_input(label, state_key, prompt, col):
         with col:
@@ -2432,6 +2421,12 @@ def render_simulation():
                            c not in ["Age (Primary)", "Age (Spouse)", "Year"] and pd.api.types.is_numeric_dtype(
                                df_nw[c])]
                 df_nw[cols_nw] = df_nw[cols_nw].div(discounts, axis=0)
+
+            # Scrub -0.0 artifacts
+            numeric_cols_det = [c for c in df_det.columns if pd.api.types.is_numeric_dtype(df_det[c])]
+            df_det[numeric_cols_det] = df_det[numeric_cols_det].round(0) + 0.0
+            numeric_cols_nw = [c for c in df_nw.columns if pd.api.types.is_numeric_dtype(df_nw[c])]
+            df_nw[numeric_cols_nw] = df_nw[numeric_cols_nw].round(0) + 0.0
 
             st.session_state['df_sim_display'] = df_sim
 
