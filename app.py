@@ -124,7 +124,7 @@ def clean_df(df, primary_key):
         clean_r = {}
         for vk, vv in r.items():
             clean_r[vk] = None if pd.isna(vv) or vv is pd.NA else vv
-        if primary_key in clean_r and str(clean_r.get(primary_key, '')).strip() != "":
+        if primary_key not in clean_r or str(clean_r.get(primary_key, '')).strip() != "":
             valid_rows.append(clean_r)
     return valid_rows
 
@@ -218,6 +218,22 @@ def info_banner(text, type="info"):
     <div style='background:{bg}; border-left:4px solid {border}; padding:14px 18px; border-radius:8px; margin-bottom:20px; display: flex; align-items: flex-start; gap: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>
         <span style='font-size:1.1rem; line-height: 1.2;'>{emoji}</span>
         <span style='color:{text_color}; font-size:0.95rem; font-weight: 500; line-height: 1.5;'>{html.escape(str(text))}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def retirement_health_score(score):
+    color = "#10b981" if score > 75 else "#f59e0b" if score > 50 else "#ef4444"
+    label = "Excellent" if score > 75 else "Needs Work" if score > 50 else "At Risk"
+    st.markdown(f"""
+    <div style='text-align:center; padding:20px; background:white; border-radius:16px; border:1px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);'>
+        <svg width='140' height='140' viewBox='0 0 140 140'>
+            <circle cx='70' cy='70' r='56' fill='none' stroke='#f1f5f9' stroke-width='12'/>
+            <circle cx='70' cy='70' r='56' fill='none' stroke='{color}' stroke-width='12' stroke-dasharray='{2 * 3.14159 * 56}' stroke-dashoffset='{2 * 3.14159 * 56 * (1 - score / 100)}' stroke-linecap='round' transform='rotate(-90 70 70)'/>
+            <text x='70' y='66' text-anchor='middle' font-size='26' font-weight='900' fill='{color}' font-family='Inter'>{score}</text>
+            <text x='70' y='84' text-anchor='middle' font-size='11' font-weight='600' fill='#64748b'>{label}</text>
+        </svg>
+        <div style='color:#0f172a; font-weight:700; font-size:0.95rem; margin-top:8px;'>Monte Carlo Success</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -409,6 +425,21 @@ th {
 .stButton > button[kind="primary"]:hover {
     box-shadow: 0 6px 12px -2px rgba(79, 70, 229, 0.4) !important;
     transform: translateY(-1px) !important;
+}
+
+/* AI Buttons specifically targeted to maintain color when taken out of st.empty */
+button:has(p:contains("✨")), button:has(span:contains("✨")) {
+    background: linear-gradient(135deg, #4f46e5 0%, #0ea5e9 100%) !important;
+    color: white !important;
+    border: none !important;
+    box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3) !important;
+}
+button:has(p:contains("✨")):hover, button:has(span:contains("✨")):hover {
+    box-shadow: 0 6px 12px -2px rgba(79, 70, 229, 0.4) !important;
+    transform: translateY(-1px) !important;
+}
+button:has(p:contains("✨")) p, button:has(span:contains("✨")) span {
+    color: white !important;
 }
 
 /* Plotly Containers */
@@ -1741,10 +1772,17 @@ def render_dashboard():
         stat_card("End of Plan Net Worth", f"${final_nw:,.0f}", color="rose", icon="🏁")
 
     st.divider()
-    sankey_title = "#### 🌊 Year 1 Cash Flow Snapshot" + (
-        " (Today's $)" if st.session_state.get('view_todays_dollars', True) else "")
-    st.write(sankey_title)
-    row = df_det_nominal.iloc[0].copy()
+
+    # --- DYNAMIC SANKEY SLIDER ---
+    c_sank1, c_sank2 = st.columns([3, 1])
+    with c_sank1:
+        st.write("#### 🌊 Cash Flow Visualizer")
+    with c_sank2:
+        sankey_year = st.slider("Select Year", min_value=int(df_det_nominal['Year'].min()),
+                                max_value=int(df_det_nominal['Year'].max()), value=int(df_det_nominal['Year'].min()),
+                                label_visibility="collapsed")
+
+    row = df_det_nominal[df_det_nominal['Year'] == sankey_year].iloc[0].copy()
 
     if st.session_state.get('view_todays_dollars', True):
         discount = (1 + sim_ctx['infl'] / 100) ** (row['Year'] - sim_ctx['current_year'])
@@ -1768,8 +1806,9 @@ def render_dashboard():
         source.append(i);
         target.append(middle_idx);
         value.append(v)
-        node_colors.append('#f43f5e' if 'Shortfall Debt' in k else '#10b981')
-        link_colors.append('rgba(244, 63, 94, 0.4)' if 'Shortfall Debt' in k else 'rgba(16, 185, 129, 0.4)')
+        node_colors.append('#f43f5e' if 'Shortfall Debt' in k or 'Withdrawal' in k else '#10b981')
+        link_colors.append(
+            'rgba(244, 63, 94, 0.4)' if 'Shortfall Debt' in k or 'Withdrawal' in k else 'rgba(16, 185, 129, 0.4)')
 
     node_colors.append('#3b82f6')
 
@@ -2143,6 +2182,29 @@ def render_cashflows():
 
     st.divider()
     df_exp = pd.DataFrame(st.session_state.get('lifetime_expenses', []))
+
+    # Calculate pre/post retirement averages safely
+    pre_ret_monthly = 0
+    post_ret_monthly = 0
+    if not df_exp.empty:
+        for idx, row in df_exp.iterrows():
+            amt = safe_num(row.get("Amount ($)", 0))
+            if row.get("Frequency") == "Yearly": amt = amt / 12.0
+
+            if row.get("Frequency") != "One-Time" and row.get("Start Phase") != "Custom Year":
+                if row.get("Start Phase") == "Now" and row.get("End Phase") in ["At Retirement", "End of Life"]:
+                    pre_ret_monthly += amt
+                if (row.get("Start Phase") == "At Retirement" and row.get("End Phase") == "End of Life") or (
+                        row.get("Start Phase") == "Now" and row.get("End Phase") == "End of Life"):
+                    post_ret_monthly += amt
+
+    c_met1, c_met2 = st.columns(2)
+    c_met1.metric("Avg. Monthly Burn (Pre-Retirement)", f"${pre_ret_monthly:,.0f}",
+                  help="Ignores short-term custom-year expenses.")
+    c_met2.metric("Avg. Monthly Burn (Post-Retirement)", f"${post_ret_monthly:,.0f}",
+                  help="Ignores short-term custom-year expenses.")
+    st.divider()
+
     if df_exp.empty: df_exp = pd.DataFrame(
         columns=["Description", "Category", "Frequency", "Amount ($)", "Start Phase", "Start Year", "End Phase",
                  "End Year", "AI Estimate?"])
@@ -2236,29 +2298,28 @@ def render_simulation():
         with col:
             sub_c1, sub_c2 = st.columns([5, 2])
             widget_key = f"in_{state_key}"
-            input_placeholder = sub_c1.empty()
 
-            sub_c2.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-            if sub_c2.button("✨ AI", key=f"btn_{state_key}", help=f"AI Estimate for {label}", type="primary",
-                             use_container_width=True):
-                if check_ai_rate_limit():
-                    res = None
-                    try:
-                        with st.spinner("AI estimating..."):
-                            enhanced_prompt = prompt + " CRITICAL INSTRUCTION: You MUST return the value as a percentage number between 0 and 100 (e.g., return 5.5 for 5.5%, DO NOT return 0.055). Return ONLY a JSON object."
-                            res = call_gemini_json(enhanced_prompt)
-                            if res and state_key in res:
-                                new_val = float(res[state_key])
-                                if 0 < new_val < 0.30: new_val *= 100.0
-                                new_assumptions = st.session_state.get('assumptions', {}).copy()
-                                new_assumptions[state_key] = new_val
-                                st.session_state['assumptions'] = new_assumptions
-                                mark_dirty()
-                    finally:
-                        if res: st.rerun()
+            with sub_c2:
+                st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+                if st.button("✨ AI", key=f"btn_{state_key}", help=f"AI Estimate for {label}", use_container_width=True):
+                    if check_ai_rate_limit():
+                        res = None
+                        try:
+                            with st.spinner("AI estimating..."):
+                                enhanced_prompt = prompt + " CRITICAL INSTRUCTION: You MUST return the value as a percentage number between 0 and 100 (e.g., return 5.5 for 5.5%, DO NOT return 0.055). Return ONLY a JSON object."
+                                res = call_gemini_json(enhanced_prompt)
+                                if res and state_key in res:
+                                    new_val = float(res[state_key])
+                                    if 0 < new_val < 0.30: new_val *= 100.0
+                                    new_assumptions = st.session_state.get('assumptions', {}).copy()
+                                    new_assumptions[state_key] = new_val
+                                    st.session_state['assumptions'] = new_assumptions
+                                    mark_dirty()
+                        finally:
+                            if res: st.rerun()
 
-            val = input_placeholder.number_input(label, step=0.1, key=widget_key, value=float(
-                st.session_state.get('assumptions', {}).get(state_key, 0.0)))
+            val = sub_c1.number_input(label, step=0.1, key=widget_key,
+                                      value=float(st.session_state.get('assumptions', {}).get(state_key, 0.0)))
             if val != st.session_state.get('assumptions', {}).get(state_key):
                 new_assumptions = st.session_state.get('assumptions', {}).copy()
                 new_assumptions[state_key] = val
