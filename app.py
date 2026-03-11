@@ -8,6 +8,7 @@ import random
 import math
 import html
 import re
+import concurrent.futures
 from dateutil.relativedelta import relativedelta
 import warnings
 import firebase_admin
@@ -107,7 +108,8 @@ def clean_df(df, primary_key):
         clean_r = {}
         for vk, vv in r.items():
             clean_r[vk] = None if pd.isna(vv) or vv is pd.NA else vv
-        if str(clean_r.get(primary_key, '')).strip() != "":
+        # Retain row if primary key has data, or if primary key column is missing entirely (avoids AI drift deletion)
+        if primary_key not in clean_r or str(clean_r.get(primary_key, '')).strip() != "":
             valid_rows.append(clean_r)
     return valid_rows
 
@@ -222,7 +224,43 @@ def render_total(label, series):
         unsafe_allow_html=True)
 
 
-# --- 1. FIREBASE & SESSION CORE ---
+# --- DESIGN SYSTEM & CSS ---
+st.markdown("""
+<style>
+:root {
+    --primary: #6366f1; --primary-dark: #4f46e5; --primary-light: #e0e7ff; 
+    --success: #10b981; --warning: #f59e0b; --danger: #ef4444; 
+    --surface: #ffffff; --border: #e2e8f0; --text-primary: #0f172a; --text-secondary: #64748b; 
+    --radius-sm: 8px; --radius-md: 12px; --radius-lg: 20px; 
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.08); --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
+}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+h1, h2, h3, h4, h5, h6, p, label, .stMarkdown { font-family: 'Inter', sans-serif !important; }
+h1 { font-size: 2.2rem !important; font-weight: 900 !important; background: linear-gradient(135deg, var(--primary-dark), #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; }
+h2 { font-weight: 800 !important; color: var(--text-primary) !important; }
+h3 { font-weight: 700 !important; color: var(--text-primary) !important; }
+[data-testid="stSidebar"] { background: var(--text-primary) !important; border-right: none !important; }
+[data-testid="stSidebar"] h2, [data-testid="stSidebar"] span, [data-testid="stSidebar"] p { color: white !important; }
+[data-testid="stSidebar"] .stRadio label { padding: 10px 16px !important; border-radius: var(--radius-sm) !important; transition: background 0.15s ease !important; cursor: pointer !important; }
+[data-testid="stSidebar"] .stRadio label:hover { background: rgba(255,255,255,0.1) !important; }
+[data-testid="stMetric"] { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: var(--radius-md) !important; padding: 20px !important; box-shadow: var(--shadow-sm) !important; }
+[data-testid="stMetricValue"] { color: var(--primary-dark) !important; font-size: 1.75rem !important; font-weight: 800 !important; }
+[data-testid="stDataEditor"] { border-radius: var(--radius-md) !important; border: 1px solid var(--border) !important; overflow: hidden !important; box-shadow: var(--shadow-sm) !important; }
+[data-testid="stDataEditor"] tr:hover td { background: #f8fafc !important; }
+[data-testid="stTabs"] button { font-weight: 600 !important; border-radius: var(--radius-sm) var(--radius-sm) 0 0 !important; }
+[data-testid="stTextInput"] input, [data-testid="stNumberInput"] input { border-radius: var(--radius-sm) !important; border-color: var(--border) !important; font-size: 0.95rem !important; transition: border-color 0.15s ease, box-shadow 0.15s ease !important; }
+[data-testid="stTextInput"] input:focus, [data-testid="stNumberInput"] input:focus { border-color: var(--primary) !important; box-shadow: 0 0 0 3px var(--primary-light) !important; }
+[data-testid="stProgress"] > div > div { background: linear-gradient(90deg, var(--primary), #7c3aed) !important; border-radius: 999px !important; }
+[data-testid="stPlotlyChart"] { border-radius: 16px !important; overflow: hidden !important; box-shadow: 0 2px 12px rgba(0,0,0,0.06) !important; background: white; border: 1px solid var(--border); padding: 10px; }
+div[data-testid="stExpander"] { background-color: white !important; border: 1px solid var(--border) !important; border-radius: var(--radius-md) !important; box-shadow: var(--shadow-sm) !important; }
+div.stButton > button { border-radius: 8px !important; font-weight: 600 !important; }
+.card { background: white; padding: 20px; border-radius: 12px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
+.info-text { font-size: 0.9rem; color: #64748b; }
+@media (max-width: 768px) { [data-testid="column"] { min-width: 100% !important; } button { min-height: 48px !important; } [data-testid="stMetricValue"] { font-size: 1.4rem !important; } }
+</style>
+""", unsafe_allow_html=True)
+
+# --- 2. FIREBASE & SESSION INIT ---
 if 'firebase_enabled' not in st.session_state:
     st.session_state['firebase_enabled'] = True
     if not firebase_admin._apps:
@@ -328,7 +366,14 @@ def call_gemini_json(prompt, retries=3):
             if isinstance(parsed, dict) and len(parsed) == 1 and isinstance(list(parsed.values())[0], list): return \
             list(parsed.values())[0]
             return parsed
-        except Exception:
+        except requests.exceptions.RequestException as e:
+            if attempt == retries - 1: st.error(f"⚠️ Network Error connecting to AI: {e}")
+            time.sleep(2 ** attempt)
+        except json.JSONDecodeError:
+            if attempt == retries - 1: st.error("⚠️ AI returned invalid JSON formatting. Please try again.")
+            time.sleep(2 ** attempt)
+        except Exception as e:
+            if attempt == retries - 1: st.error(f"⚠️ Unexpected AI Error: {e}")
             time.sleep(2 ** attempt)
     return None
 
@@ -349,13 +394,20 @@ def call_gemini_text(prompt, retries=3):
                 time.sleep(2 ** attempt);
                 continue
             return res_json['candidates'][0]['content']['parts'][0]['text']
-        except Exception:
+        except requests.exceptions.RequestException as e:
+            if attempt == retries - 1: st.error(f"⚠️ Network Error connecting to AI: {e}")
+            time.sleep(2 ** attempt)
+        except KeyError:
+            if attempt == retries - 1: st.error("⚠️ Unexpected AI response format.")
+            time.sleep(2 ** attempt)
+        except Exception as e:
+            if attempt == retries - 1: st.error(f"⚠️ Unexpected AI Error: {e}")
             time.sleep(2 ** attempt)
     return None
 
 
 def initialize_session_state():
-    if 'migration_v2' not in st.session_state:
+    if not st.session_state.get('initialized', False):
         ud = st.session_state.get('user_data', {})
         p_info = ud.get('personal_info', {})
 
@@ -428,7 +480,7 @@ def initialize_session_state():
                                                                  "medicare_gap": True, "medicare_cliff": True,
                                                                  "ltc_shock": False})
         st.session_state['dirty'] = False
-        st.session_state['migration_v2'] = True
+        st.session_state['initialized'] = True
 
 
 # --- AUTH LAYER EXECUTION ---
@@ -881,8 +933,6 @@ def run_simulation(mkt_sequence, ctx):
                 ss_started_spouse = True
 
         if active_ss > 0:
-            annual_inc += active_ss
-            annual_ss += active_ss
             yd["Income: Social Security"] = active_ss
 
             ss_provisional_income = pre_tax_ord + (active_ss * 0.5)
@@ -903,6 +953,8 @@ def run_simulation(mkt_sequence, ctx):
                     taxable_ss = min(0.85 * active_ss,
                                      0.85 * (ss_provisional_income - SS_SINGLE_TIER2_BASE) + min(0.5 * active_ss, 4500))
             pre_tax_ord += taxable_ss
+            annual_inc += active_ss
+            annual_ss += active_ss
 
         # Business & Real Estate
         cur_biz_val, re_equity, total_exp, biz_income_total = 0, 0, 0, 0
@@ -915,19 +967,18 @@ def run_simulation(mkt_sequence, ctx):
             biz_income_total += b['dist']
             yd["Income: Biz Dist"] = yd.get("Income: Biz Dist", 0) + b['dist']
 
-        # QBI Shield
-        qbi_deduction = 0
-        if biz_income_total > 0:
+        def get_qbi(pto):
+            if biz_income_total <= 0: return 0
             infl_factor = (1 + ctx['infl'] / 100) ** year_offset
             qbi_threshold = (383900 if active_mfj else 191950) * infl_factor
             qbi_phaseout = (483900 if active_mfj else 241950) * infl_factor
-            if pre_tax_ord < qbi_threshold:
-                qbi_deduction = biz_income_total * 0.20
-            elif pre_tax_ord < qbi_phaseout:
-                qbi_deduction = biz_income_total * 0.20 * (
-                            (qbi_phaseout - pre_tax_ord) / (qbi_phaseout - qbi_threshold))
-            else:
-                qbi_deduction = 0
+            if pto < qbi_threshold:
+                return biz_income_total * 0.20
+            elif pto < qbi_phaseout:
+                return biz_income_total * 0.20 * ((qbi_phaseout - pto) / (qbi_phaseout - qbi_threshold))
+            return 0
+
+        pre_conversion_qbi = get_qbi(pre_tax_ord)
 
         for r in sim_re:
             if year_offset > 0:
@@ -974,7 +1025,7 @@ def run_simulation(mkt_sequence, ctx):
 
             pre_tax_ord += max(0, r['rent'] - r['exp'] - interest_paid)
 
-        tax_base_ord = max(0, pre_tax_ord - qbi_deduction)
+        tax_base_ord_pre = max(0, pre_tax_ord - pre_conversion_qbi)
 
         # Expenses
         for ev in ctx['exp_records']:
@@ -1108,10 +1159,10 @@ def run_simulation(mkt_sequence, ctx):
             debt_bal_total += d['bal']
 
         # Pass 1: Base Taxes & Contributions
-        base_fed_tax_pre_conversion, marginal_rate_pre_conversion = calc_federal_tax(tax_base_ord, active_mfj,
+        base_fed_tax_pre_conversion, marginal_rate_pre_conversion = calc_federal_tax(tax_base_ord_pre, active_mfj,
                                                                                      year_offset, ctx['infl'])
         state_tax_rate = ctx['cur_t'] if not is_retired else ctx['ret_t']
-        base_state_tax_pre_conversion = tax_base_ord * (state_tax_rate / 100.0)
+        base_state_tax_pre_conversion = tax_base_ord_pre * (state_tax_rate / 100.0)
 
         user_out_of_pocket_contribs = 0
         person_401k_contribs = {'Me': 0, 'Spouse': 0, 'Joint': 0}
@@ -1173,7 +1224,7 @@ def run_simulation(mkt_sequence, ctx):
                                                                                                        "32%": 243725}
             target_limit = b_limits.get(ctx['roth_target'], 383900) * infl_factor + std_deduction
 
-            conversion_room = max(0, target_limit - tax_base_ord)
+            conversion_room = max(0, target_limit - tax_base_ord_pre)
             available_cash = sum(a['bal'] for a in sim_assets if
                                  a.get('Type') in ['Checking/Savings', 'HYSA', 'Brokerage (Taxable)',
                                                    'Unallocated Cash'])
@@ -1218,8 +1269,11 @@ def run_simulation(mkt_sequence, ctx):
 
             if total_converted > 0:
                 pre_tax_ord += total_converted
-                tax_base_ord += total_converted
                 yd["Roth Conversion Amount"] = total_converted
+
+        # Recalculate QBI and Tax Base After Conversions
+        final_qbi = get_qbi(pre_tax_ord)
+        tax_base_ord = max(0, pre_tax_ord - final_qbi)
 
         # Execute Mid-Year Growth
         for a in sim_assets:
@@ -1248,6 +1302,7 @@ def run_simulation(mkt_sequence, ctx):
             1 if is_spouse_alive and spouse_current_age >= 65 else 0)
         if num_medicare > 0:
             magi_for_irmaa = pre_tax_ord
+            # 2026 Approximate IRS Thresholds for Medicare Part B & D IRMAA Surcharges
             infl_f = (1 + ctx['infl'] / 100) ** year_offset
             t1, t2, t3, t4, t5 = 103000 * infl_f * (2 if active_mfj else 1), 129000 * infl_f * (
                 2 if active_mfj else 1), 161000 * infl_f * (2 if active_mfj else 1), 193000 * infl_f * (
@@ -1433,7 +1488,6 @@ def render_dashboard():
         st.error("Simulation returned no data. Please check your profile and start dates.")
         return
 
-    # Build Display DF
     df_sim = df_sim_nominal.copy()
     if st.session_state.get('view_todays_dollars', True):
         discounts = (1 + sim_ctx['infl'] / 100) ** (df_sim['Year'] - sim_ctx['current_year'])
@@ -1721,7 +1775,6 @@ def render_assets():
         )
         st.session_state['real_estate_data'] = edited_re.to_dict('records')
 
-        # Validation Warning: Check if mortgage payments cover interest
         for idx, r in edited_re.iterrows():
             bal = safe_num(r.get('Mortgage Balance ($)'))
             rate = safe_num(r.get('Interest Rate (%)'))
@@ -1830,12 +1883,20 @@ def render_assets():
         )
         st.session_state['liabilities_data'] = edited_debt.to_dict('records')
 
+    # Render overall metrics outside the tabs
     re_eq = pd.to_numeric(edited_re['Market Value ($)'], errors='coerce').fillna(0).sum() - pd.to_numeric(
         edited_re['Mortgage Balance ($)'], errors='coerce').fillna(0).sum()
     biz_eq = (pd.to_numeric(edited_biz['Total Valuation ($)'], errors='coerce').fillna(0) * (
                 pd.to_numeric(edited_biz['Your Ownership (%)'], errors='coerce').fillna(0) / 100)).sum()
     liq_ast = pd.to_numeric(edited_ast['Current Balance ($)'], errors='coerce').fillna(0).sum()
     total_debt = pd.to_numeric(edited_debt['Current Balance ($)'], errors='coerce').fillna(0).sum()
+
+    st.divider()
+    c_met1, c_met2, c_met3, c_met4 = st.columns(4)
+    c_met1.metric("Real Estate Equity", f"${re_eq:,.0f}")
+    c_met2.metric("Business Equity", f"${biz_eq:,.0f}")
+    c_met3.metric("Liquid Assets", f"${liq_ast:,.0f}")
+    c_met4.metric("Other Debt", f"${total_debt:,.0f}")
 
 
 def render_cashflows():
@@ -1937,35 +1998,6 @@ def render_cashflows():
 def render_simulation():
     section_header("📈 Simulation", "Fine-tune your timeline and run Monte Carlo scenarios.")
 
-    tab_ages, tab_assumptions, tab_stress = st.tabs(
-        ["⏳ Timeline & Ages", "📊 Macro Assumptions", "🌪️ Stress Tests & Taxes"])
-
-    my_age = relativedelta(datetime.date.today(), st.session_state.get('my_dob', datetime.date(1980, 1, 1))).years
-    spouse_age = relativedelta(datetime.date.today(), st.session_state.get('spouse_dob', datetime.date(1982, 1,
-                                                                                                       1))).years if st.session_state.get(
-        'has_spouse') else 0
-
-    with tab_ages:
-        cc1, cc2, cc3, cc4 = st.columns(4)
-        ret_age = cc1.slider("Retirement Age", max(int(my_age), 1), 100,
-                             max(int(my_age), int(st.session_state.get('ret_age', 65))), key="sld_ret_age")
-        s_ret_age = cc2.slider("Spouse Retire Age", max(int(spouse_age), 1), 100,
-                               max(int(spouse_age), int(st.session_state.get('s_ret_age', 65))),
-                               key="sld_s_ret_age") if st.session_state.get('has_spouse') else 65
-        my_life_exp = cc3.slider("Your Life Expectancy", max(70, ret_age), 115,
-                                 max(ret_age, int(st.session_state.get('my_life_exp', 95))), key="sld_life_exp")
-        spouse_life_exp = cc4.slider("Spouse Life Expectancy", max(70, s_ret_age), 115,
-                                     max(s_ret_age, int(st.session_state.get('spouse_life_exp', 95))),
-                                     key="sld_s_life_exp") if st.session_state.get('has_spouse') else 0
-
-        if ret_age < my_age: info_banner("Retirement age cannot be lower than current age.", "warning")
-        if my_life_exp < ret_age: info_banner("Life expectancy cannot be lower than retirement age.", "warning")
-
-        if st.session_state.get('ret_age') != ret_age: update_state('ret_age', ret_age)
-        if st.session_state.get('s_ret_age') != s_ret_age: update_state('s_ret_age', s_ret_age)
-        if st.session_state.get('my_life_exp') != my_life_exp: update_state('my_life_exp', my_life_exp)
-        if st.session_state.get('spouse_life_exp') != spouse_life_exp: update_state('spouse_life_exp', spouse_life_exp)
-
     def ai_number_input(label, state_key, prompt, col):
         with col:
             sub_c1, sub_c2 = st.columns([5, 2])
@@ -1998,6 +2030,35 @@ def render_simulation():
                 st.session_state['assumptions'] = new_assumptions
                 mark_dirty()
             return val
+
+    tab_ages, tab_assumptions, tab_stress = st.tabs(
+        ["⏳ Timeline & Ages", "📊 Macro Assumptions", "🌪️ Stress Tests & Taxes"])
+
+    my_age = relativedelta(datetime.date.today(), st.session_state.get('my_dob', datetime.date(1980, 1, 1))).years
+    spouse_age = relativedelta(datetime.date.today(), st.session_state.get('spouse_dob', datetime.date(1982, 1,
+                                                                                                       1))).years if st.session_state.get(
+        'has_spouse') else 0
+
+    with tab_ages:
+        cc1, cc2, cc3, cc4 = st.columns(4)
+        ret_age = cc1.slider("Retirement Age", max(int(my_age), 1), 100,
+                             max(int(my_age), int(st.session_state.get('ret_age', 65))), key="sld_ret_age")
+        s_ret_age = cc2.slider("Spouse Retire Age", max(int(spouse_age), 1), 100,
+                               max(int(spouse_age), int(st.session_state.get('s_ret_age', 65))),
+                               key="sld_s_ret_age") if st.session_state.get('has_spouse') else 65
+        my_life_exp = cc3.slider("Your Life Expectancy", max(70, ret_age), 115,
+                                 max(ret_age, int(st.session_state.get('my_life_exp', 95))), key="sld_life_exp")
+        spouse_life_exp = cc4.slider("Spouse Life Expectancy", max(70, s_ret_age), 115,
+                                     max(s_ret_age, int(st.session_state.get('spouse_life_exp', 95))),
+                                     key="sld_s_life_exp") if st.session_state.get('has_spouse') else 0
+
+        if ret_age < my_age: info_banner("Retirement age cannot be lower than current age.", "warning")
+        if my_life_exp < ret_age: info_banner("Life expectancy cannot be lower than retirement age.", "warning")
+
+        if st.session_state.get('ret_age') != ret_age: update_state('ret_age', ret_age)
+        if st.session_state.get('s_ret_age') != s_ret_age: update_state('s_ret_age', s_ret_age)
+        if st.session_state.get('my_life_exp') != my_life_exp: update_state('my_life_exp', my_life_exp)
+        if st.session_state.get('spouse_life_exp') != spouse_life_exp: update_state('spouse_life_exp', spouse_life_exp)
 
     with tab_assumptions:
         st.markdown(
@@ -2290,15 +2351,17 @@ def render_simulation():
 
                     try:
                         with ThreadPoolExecutor(max_workers=min(mc_runs, 8)) as executor:
-                            futures = [executor.submit(run_simulation, seq, sim_ctx) for seq in random_sequences]
+                            futures = {executor.submit(run_simulation, seq, sim_ctx): i for i, seq in
+                                       enumerate(random_sequences)}
 
-                            for i, future in enumerate(futures):
+                            for completed_idx, future in enumerate(concurrent.futures.as_completed(futures)):
                                 res, _, _, _ = future.result()
                                 if res:
                                     nw_path = [step["Net Worth"] for step in res]
                                     all_nw_paths.append(nw_path)
                                     if res[-1].get("Unfunded Debt", 0) <= 0: success_count += 1
-                                if i % max(1, mc_runs // 20) == 0: mc_progress.progress(min(1.0, (i + 1) / mc_runs))
+                                if completed_idx % max(1, mc_runs // 20) == 0: mc_progress.progress(
+                                    min(1.0, (completed_idx + 1) / mc_runs))
                     except Exception as e:
                         st.error(f"Simulation failed during multi-threading: {e}")
                     finally:
@@ -2370,6 +2433,7 @@ def render_simulation():
 def render_ai():
     section_header("AI Fiduciary Health & What-If Simulator",
                    "Analyze your cash flows chronologically to provide tactical, phase-by-phase advice.", "🤖")
+    st.caption("🔒 Privacy Note: Anonymized financial context will be sent to Google's AI servers for processing.")
 
     df_sim = st.session_state.get('df_sim_display')
     if df_sim is not None and not df_sim.empty:
@@ -2411,15 +2475,16 @@ def render_ai():
                         res = call_gemini_text(prompt)
                         if res:
                             st.session_state['ai_analysis_report'] = res
+                            mark_dirty()
                         else:
                             st.error("⚠️ AI Analysis failed to generate.")
                 finally:
-                    st.rerun()
+                    if res: st.rerun()
             else:
                 st.warning("Please run the baseline simulation first on the Dashboard or Simulation tab.")
 
         if 'ai_analysis_report' in st.session_state:
-            st.info(st.session_state['ai_analysis_report'].replace('\\n', '\n').replace('$', r'\$'))
+            st.markdown(st.session_state['ai_analysis_report'])
 
     with tab_whatif:
         what_if_query = st.text_area(
@@ -2433,17 +2498,18 @@ def render_ai():
                         res = call_gemini_text(prompt)
                         if res:
                             st.session_state['what_if_analysis_report'] = res
+                            mark_dirty()
                         else:
                             st.error("⚠️ AI Analysis failed to generate.")
                 finally:
-                    st.rerun()
+                    if res: st.rerun()
             elif not what_if_query:
                 st.warning("Please enter a scenario to simulate.")
             else:
                 st.warning("Please run the baseline simulation first.")
 
         if 'what_if_analysis_report' in st.session_state:
-            st.success(st.session_state['what_if_analysis_report'].replace('\\n', '\n').replace('$', r'\$'))
+            st.markdown(st.session_state['what_if_analysis_report'])
 
 
 def render_faq():
@@ -2467,7 +2533,8 @@ PAGES = {
 }
 
 with st.sidebar:
-    st.markdown("<h2 style='text-align: center; color: white;'>🏦 Pro Planner</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; color: white; font-family: Inter;'>🏦 Pro Planner</h2>",
+                unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
     current_page = st.radio("Navigation", list(PAGES.keys()), label_visibility="collapsed")
@@ -2476,7 +2543,8 @@ with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
     completed = get_completion_score()
     st.progress(completed / 100)
-    st.caption(f"<div style='text-align: center;'>Profile {completed}% Complete</div>", unsafe_allow_html=True)
+    st.caption(f"<div style='text-align: center; font-family: Inter;'>Profile {completed}% Complete</div>",
+               unsafe_allow_html=True)
 
     st.markdown("<br><br>", unsafe_allow_html=True)
 
@@ -2486,9 +2554,11 @@ with st.sidebar:
 
     if st.button("Logout", type="secondary", width="stretch"):
         cookie_manager.delete("user_email")
-        st.session_state.clear()
+        for key in ['user_email', 'user_data', 'initialized', 'dirty', 'df_sim_display', 'df_sim_nominal', 'df_det',
+                    'df_nw', 'mc_success_rate']:
+            st.session_state.pop(key, None)
         st.rerun()
 
 # Execute selected page
-if st.session_state['current_page'] in PAGES:
+if st.session_state.get('current_page') in PAGES:
     PAGES[st.session_state['current_page']]()
