@@ -179,23 +179,15 @@ def apply_chart_theme(fig, title=""):
     return fig
 
 
+# Single-line HTML renders prevent Streamlit Markdown engine parsing bugs
 def stat_card(label, value, color="indigo", icon=""):
     hex_map = {"indigo": "#4f46e5", "emerald": "#10b981", "amber": "#f59e0b", "rose": "#e11d48"}
     bg_map = {"indigo": "#e0e7ff", "emerald": "#d1fae5", "amber": "#fef3c7", "rose": "#ffe4e6"}
     c = hex_map.get(color, "#4f46e5")
     bg = bg_map.get(color, "#e0e7ff")
-
-    st.markdown(f"""
-    <div style='background: white; border: 1px solid #e2e8f0; padding: 20px; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); display: flex; align-items: center; gap: 16px;'>
-        <div style='background: {bg}; width: 52px; height: 52px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; flex-shrink: 0;'>
-            {icon}
-        </div>
-        <div>
-            <div style='color: #64748b; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;'>{html.escape(str(label))}</div>
-            <div style='color: #0f172a; font-size: 1.6rem; font-weight: 800; letter-spacing: -0.5px; margin-top: 2px;'>{html.escape(str(value))}</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background: white; border: 1px solid #e2e8f0; padding: 20px; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); display: flex; align-items: center; gap: 16px;'><div style='background: {bg}; width: 52px; height: 52px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; flex-shrink: 0;'>{icon}</div><div><div style='color: #64748b; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;'>{html.escape(str(label))}</div><div style='color: #0f172a; font-size: 1.6rem; font-weight: 800; letter-spacing: -0.5px; margin-top: 2px;'>{html.escape(str(value))}</div></div></div>",
+        unsafe_allow_html=True)
 
 
 def section_header(title, subtitle="", icon=""):
@@ -208,34 +200,20 @@ def section_header(title, subtitle="", icon=""):
 
 
 def info_banner(text, type="info"):
-    configs = {
-        "info": ("#eff6ff", "#3b82f6", "#1d4ed8", "💡"),
-        "warning": ("#fffbeb", "#f59e0b", "#b45309", "⚠️"),
-        "danger": ("#fef2f2", "#ef4444", "#b91c1c", "🚨")
-    }
+    configs = {"info": ("#eff6ff", "#3b82f6", "#1d4ed8", "💡"), "warning": ("#fffbeb", "#f59e0b", "#b45309", "⚠️"),
+               "danger": ("#fef2f2", "#ef4444", "#b91c1c", "🚨")}
     bg, border, text_color, emoji = configs.get(type, configs["info"])
-    st.markdown(f"""
-    <div style='background:{bg}; border-left:4px solid {border}; padding:14px 18px; border-radius:8px; margin-bottom:20px; display: flex; align-items: flex-start; gap: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>
-        <span style='font-size:1.1rem; line-height: 1.2;'>{emoji}</span>
-        <span style='color:{text_color}; font-size:0.95rem; font-weight: 500; line-height: 1.5;'>{html.escape(str(text))}</span>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background:{bg}; border-left:4px solid {border}; padding:14px 18px; border-radius:8px; margin-bottom:20px; display: flex; align-items: flex-start; gap: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'><span style='font-size:1.1rem; line-height: 1.2;'>{emoji}</span><span style='color:{text_color}; font-size:0.95rem; font-weight: 500; line-height: 1.5;'>{html.escape(str(text))}</span></div>",
+        unsafe_allow_html=True)
 
 
 def retirement_health_score(score):
     color = "#10b981" if score > 75 else "#f59e0b" if score > 50 else "#ef4444"
     label = "Excellent" if score > 75 else "Needs Work" if score > 50 else "At Risk"
-    st.markdown(f"""
-    <div style='text-align:center; padding:20px; background:white; border-radius:16px; border:1px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);'>
-        <svg width='140' height='140' viewBox='0 0 140 140'>
-            <circle cx='70' cy='70' r='56' fill='none' stroke='#f1f5f9' stroke-width='12'/>
-            <circle cx='70' cy='70' r='56' fill='none' stroke='{color}' stroke-width='12' stroke-dasharray='{2 * 3.14159 * 56}' stroke-dashoffset='{2 * 3.14159 * 56 * (1 - score / 100)}' stroke-linecap='round' transform='rotate(-90 70 70)'/>
-            <text x='70' y='66' text-anchor='middle' font-size='26' font-weight='900' fill='{color}' font-family='Inter'>{score}</text>
-            <text x='70' y='84' text-anchor='middle' font-size='11' font-weight='600' fill='#64748b'>{label}</text>
-        </svg>
-        <div style='color:#0f172a; font-weight:700; font-size:0.95rem; margin-top:8px;'>Monte Carlo Success</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='text-align:center; padding:20px; background:white; border-radius:16px; border:1px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);'><svg width='140' height='140' viewBox='0 0 140 140'><circle cx='70' cy='70' r='56' fill='none' stroke='#f1f5f9' stroke-width='12'/><circle cx='70' cy='70' r='56' fill='none' stroke='{color}' stroke-width='12' stroke-dasharray='{2 * 3.14159 * 56}' stroke-dashoffset='{2 * 3.14159 * 56 * (1 - score / 100)}' stroke-linecap='round' transform='rotate(-90 70 70)'/><text x='70' y='66' text-anchor='middle' font-size='26' font-weight='900' fill='{color}' font-family='Inter'>{score}</text><text x='70' y='84' text-anchor='middle' font-size='11' font-weight='600' fill='#64748b'>{label}</text></svg><div style='color:#0f172a; font-weight:700; font-size:0.95rem; margin-top:8px;'>Monte Carlo Success</div></div>",
+        unsafe_allow_html=True)
 
 
 def render_status_bar(deplete_year, deplete_age, final_nw, mc_success_rate=None):
@@ -247,29 +225,16 @@ def render_status_bar(deplete_year, deplete_age, final_nw, mc_success_rate=None)
         bg, icon, msg, sub = "#fffbeb", "🟡", "Solvent but Tight", f"${final_nw:,.0f} margin at end of plan. Small changes could significantly improve outcome."
     else:
         bg, icon, msg, sub = "#fef2f2", "🔴", "Projected Insolvency", "Net worth goes negative before end of plan."
-
     mc_html = f"<div style='margin-top: 10px; display: inline-block; background: white; padding: 4px 12px; border-radius: 999px; font-size: 0.85rem; font-weight: 700; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0,0,0,0.05);'>Monte Carlo: <span style='color: #4f46e5;'>{mc_success_rate:.0f}% Success Rate</span></div>" if mc_success_rate is not None else ""
-
-    st.markdown(f"""
-    <div style='background:{bg}; border-radius:16px; padding:20px 24px; display:flex; align-items:flex-start; gap:16px; margin-bottom:24px; border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);'>
-        <span style='font-size:2.2rem; line-height: 1;'>{icon}</span>
-        <div>
-            <div style='font-weight:800; font-size:1.2rem; color:#0f172a; letter-spacing: -0.5px;'>{html.escape(msg)}</div>
-            <div style='font-size:0.95rem; color:#475569; margin-top:4px; line-height: 1.5;'>{html.escape(sub)}</div>
-            {mc_html}
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background:{bg}; border-radius:16px; padding:20px 24px; display:flex; align-items:flex-start; gap:16px; margin-bottom:24px; border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);'><span style='font-size:2.2rem; line-height: 1;'>{icon}</span><div><div style='font-weight:800; font-size:1.2rem; color:#0f172a; letter-spacing: -0.5px;'>{html.escape(msg)}</div><div style='font-size:0.95rem; color:#475569; margin-top:4px; line-height: 1.5;'>{html.escape(sub)}</div>{mc_html}</div></div>",
+        unsafe_allow_html=True)
 
 
 def render_empty_state(section, icon):
-    st.markdown(f"""
-    <div style='text-align:center; padding:48px 24px; background:#f8fafc; border-radius:16px; border:2px dashed #cbd5e1; margin-bottom:24px;'>
-        <div style='font-size:3rem; margin-bottom:12px;'>{icon}</div>
-        <h3 style='color:#0f172a; margin:0 0 8px; font-weight: 700;'>No {html.escape(section)} Added Yet</h3>
-        <p style='color:#64748b; margin:0 0 20px; font-size:0.95rem;'>Use the table to add rows, or click the AI button to auto-populate based on your profile.</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='text-align:center; padding:48px 24px; background:#f8fafc; border-radius:16px; border:2px dashed #cbd5e1; margin-bottom:24px;'><div style='font-size:3rem; margin-bottom:12px;'>{icon}</div><h3 style='color:#0f172a; margin:0 0 8px; font-weight: 700;'>No {html.escape(section)} Added Yet</h3><p style='color:#64748b; margin:0 0 20px; font-size:0.95rem;'>Use the table to add rows, or click the AI button to auto-populate based on your profile.</p></div>",
+        unsafe_allow_html=True)
 
 
 def render_total(label, series):
@@ -409,37 +374,27 @@ th {
     box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05) !important;
 }
 
-/* Buttons */
-.stButton > button {
+/* Base Buttons */
+[data-testid="stButton"] > button {
     border-radius: 8px !important;
     font-weight: 700 !important;
     padding: 0.5rem 1rem !important;
     border: none !important;
     transition: all 0.2s ease !important;
 }
-.stButton > button[kind="primary"] {
-    background: linear-gradient(135deg, #4f46e5 0%, #0ea5e9 100%) !important;
-    color: white !important;
-    box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3) !important;
-}
-.stButton > button[kind="primary"]:hover {
-    box-shadow: 0 6px 12px -2px rgba(79, 70, 229, 0.4) !important;
-    transform: translateY(-1px) !important;
-}
 
-/* AI Buttons specifically targeted to maintain color when taken out of st.empty */
-button:has(p:contains("✨")), button:has(span:contains("✨")) {
+/* Aggressively target Primary Buttons for Gradient (Overrides Streamlit Default Red) */
+[data-testid="stButton"] button[kind="primary"],
+[data-testid="baseButton-primary"] {
     background: linear-gradient(135deg, #4f46e5 0%, #0ea5e9 100%) !important;
     color: white !important;
     border: none !important;
     box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3) !important;
 }
-button:has(p:contains("✨")):hover, button:has(span:contains("✨")):hover {
+[data-testid="stButton"] button[kind="primary"]:hover,
+[data-testid="baseButton-primary"]:hover {
     box-shadow: 0 6px 12px -2px rgba(79, 70, 229, 0.4) !important;
     transform: translateY(-1px) !important;
-}
-button:has(p:contains("✨")) p, button:has(span:contains("✨")) span {
-    color: white !important;
 }
 
 /* Plotly Containers */
@@ -983,7 +938,6 @@ def run_simulation(mkt_sequence, ctx_input):
         if not is_my_alive and not is_spouse_alive:
             break
 
-        # Base Milestones
         if ctx['has_spouse'] and not is_spouse_alive and not spouse_died_notified:
             if year not in milestones_by_year: milestones_by_year[year] = []
             milestones_by_year[year].append(
@@ -2298,24 +2252,25 @@ def render_simulation():
             sub_c1, sub_c2 = st.columns([5, 2])
             widget_key = f"in_{state_key}"
 
-            sub_c2.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-            if sub_c2.button("✨ AI", key=f"btn_{state_key}", help=f"AI Estimate for {label}", use_container_width=True,
+            with sub_c2:
+                st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+                if st.button("✨ AI", key=f"btn_{state_key}", help=f"AI Estimate for {label}", use_container_width=True,
                              type="primary"):
-                if check_ai_rate_limit():
-                    res = None
-                    try:
-                        with st.spinner("AI estimating..."):
-                            enhanced_prompt = prompt + " CRITICAL INSTRUCTION: You MUST return the value as a percentage number between 0 and 100 (e.g., return 5.5 for 5.5%, DO NOT return 0.055). Return ONLY a JSON object."
-                            res = call_gemini_json(enhanced_prompt)
-                            if res and state_key in res:
-                                new_val = float(res[state_key])
-                                if 0 < new_val < 0.30: new_val *= 100.0
-                                new_assumptions = st.session_state.get('assumptions', {}).copy()
-                                new_assumptions[state_key] = new_val
-                                st.session_state['assumptions'] = new_assumptions
-                                mark_dirty()
-                    finally:
-                        if res: st.rerun()
+                    if check_ai_rate_limit():
+                        res = None
+                        try:
+                            with st.spinner("AI estimating..."):
+                                enhanced_prompt = prompt + " CRITICAL INSTRUCTION: You MUST return the value as a percentage number between 0 and 100 (e.g., return 5.5 for 5.5%, DO NOT return 0.055). Return ONLY a JSON object."
+                                res = call_gemini_json(enhanced_prompt)
+                                if res and state_key in res:
+                                    new_val = float(res[state_key])
+                                    if 0 < new_val < 0.30: new_val *= 100.0
+                                    new_assumptions = st.session_state.get('assumptions', {}).copy()
+                                    new_assumptions[state_key] = new_val
+                                    st.session_state['assumptions'] = new_assumptions
+                                    mark_dirty()
+                        finally:
+                            if res: st.rerun()
 
             val = sub_c1.number_input(label, step=0.1, key=widget_key,
                                       value=float(st.session_state.get('assumptions', {}).get(state_key, 0.0)))
@@ -2501,7 +2456,15 @@ def render_simulation():
 
             c_status, c_ai_btn = st.columns([3, 2])
             with c_status:
-                render_status_bar(deplete_year, deplete_age, final_nw)
+                if deplete_year is not None:
+                    st.error(
+                        f"🔴 **Liquidity Crisis:** You completely exhaust your liquid cash in **Year {int(deplete_year)}** (Age {int(deplete_age)}) and begin accumulating high-interest shortfall debt.")
+                elif final_nw >= 1000000:
+                    st.success(
+                        f"🟢 **On Track:** Projected Net Worth at timeline end is **${final_nw:,.0f}**. Your assets comfortably outlive your life expectancy.")
+                elif final_nw > 0:
+                    st.warning(
+                        f"🟡 **Caution:** Projected Net Worth at timeline end is **${final_nw:,.0f}**. You are solvent, but with a narrow margin of safety.")
 
             if HAS_PLOTLY:
                 current_year = datetime.date.today().year
