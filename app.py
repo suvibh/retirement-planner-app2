@@ -122,7 +122,7 @@ def clean_df(df, primary_key):
         clean_r = {}
         for vk, vv in r.items():
             clean_r[vk] = None if pd.isna(vv) or vv is pd.NA else vv
-        if primary_key not in clean_r or str(clean_r.get(primary_key, '')).strip() != "":
+        if primary_key in clean_r and str(clean_r.get(primary_key, '')).strip() != "":
             valid_rows.append(clean_r)
     return valid_rows
 
@@ -133,8 +133,16 @@ def safe_num(val, default=0.0):
     try:
         s = str(val).replace(',', '').strip()
         if not s: return default
+
+        is_accounting_neg = False
+        if s.startswith('(') and s.endswith(')'):
+            is_accounting_neg = True
+            s = s[1:-1].strip()
+
         match = re.search(r'-?\d*\.?\d+', s)
-        if match: return float(match.group(0))
+        if match:
+            num = float(match.group(0))
+            return -abs(num) if is_accounting_neg else num
         return default
     except Exception:
         return default
@@ -582,6 +590,12 @@ def build_sim_context():
 
 def run_simulation(mkt_sequence, ctx_input):
     ctx = copy.deepcopy(ctx_input)
+    irs_uniform_table = {73: 26.5, 74: 25.5, 75: 24.6, 76: 23.7, 77: 22.9, 78: 22.0, 79: 21.1, 80: 20.2, 81: 19.4,
+                         82: 18.5, 83: 17.7, 84: 16.8, 85: 16.0, 86: 15.2, 87: 14.4, 88: 13.7, 89: 12.9, 90: 12.2,
+                         91: 11.5, 92: 10.8, 93: 10.1, 94: 9.5, 95: 8.9, 96: 8.4, 97: 7.8, 98: 7.3, 99: 6.8, 100: 6.4,
+                         101: 6.0, 102: 5.6, 103: 5.2, 104: 4.9, 105: 4.6, 106: 4.3, 107: 4.1, 108: 3.9, 109: 3.7,
+                         110: 3.5, 111: 3.4, 112: 3.3, 113: 3.1, 114: 3.0, 115: 2.9, 116: 2.8, 117: 2.7, 118: 2.5,
+                         119: 2.3, 120: 2.0}
 
     def calc_federal_tax(ordinary_income, is_mfj, year_offset, inflation_rate):
         infl_factor = (1 + inflation_rate / 100) ** year_offset
@@ -675,12 +689,6 @@ def run_simulation(mkt_sequence, ctx_input):
         return current_shortfall - net_cash, tax_inc
 
     if ctx['max_years'] <= 0: return [], [], [], {}
-    irs_uniform_table = {73: 26.5, 74: 25.5, 75: 24.6, 76: 23.7, 77: 22.9, 78: 22.0, 79: 21.1, 80: 20.2, 81: 19.4,
-                         82: 18.5, 83: 17.7, 84: 16.8, 85: 16.0, 86: 15.2, 87: 14.4, 88: 13.7, 89: 12.9, 90: 12.2,
-                         91: 11.5, 92: 10.8, 93: 10.1, 94: 9.5, 95: 8.9, 96: 8.4, 97: 7.8, 98: 7.3, 99: 6.8, 100: 6.4,
-                         101: 6.0, 102: 5.6, 103: 5.2, 104: 4.9, 105: 4.6, 106: 4.3, 107: 4.1, 108: 3.9, 109: 3.7,
-                         110: 3.5, 111: 3.4, 112: 3.3, 113: 3.1, 114: 3.0, 115: 2.9, 116: 2.8, 117: 2.7, 118: 2.5,
-                         119: 2.3, 120: 2.0}
 
     sim_assets = [{"Account Name": a.get("Account Name"), "Type": a.get("Type"), "Owner": a.get("Owner", "Me"),
                    "bal": safe_num(a.get("Current Balance ($)")),
@@ -717,6 +725,7 @@ def run_simulation(mkt_sequence, ctx_input):
     prev_unfunded_debt_bal = 0
     last_irmaa_tier = 0
 
+    # 1. Resolve starting values correctly BEFORE the loop begins
     primary_ss_record = next(
         (r for r in ctx['inc_records'] if r.get('Category') == 'Social Security' and r.get('Owner') == 'Me'), None)
     spouse_ss_record = next(
@@ -729,6 +738,9 @@ def run_simulation(mkt_sequence, ctx_input):
 
     primary_ss_multi = get_ss_multi(ctx['my_birth_year'], primary_ss_start_year)
     spouse_ss_multi = get_ss_multi(ctx['spouse_birth_year'], spouse_ss_start_year)
+
+    primary_ss_frozen_val = 0
+    spouse_ss_frozen_val = 0
 
     sim_res, det_res, nw_det_res = [], [], []
     milestones_by_year = {}
@@ -798,14 +810,11 @@ def run_simulation(mkt_sequence, ctx_input):
         base_mkt_yr = mkt_sequence[year_offset]
         if ctx['stress_test'] and year == ctx['primary_retire_year']:
             mkt_glide = -25.0
-            mkt_roth = -25.0
         elif ctx['glidepath'] and is_retired:
             years_retired = year - ctx['primary_retire_year']
             mkt_glide = max(3.0, base_mkt_yr - (math.floor(years_retired / 5) * 1.0))
-            mkt_roth = base_mkt_yr
         else:
             mkt_glide = base_mkt_yr
-            mkt_roth = base_mkt_yr
 
         active_mfj = True if ctx['has_spouse'] and is_my_alive and is_spouse_alive else False
 
@@ -842,15 +851,24 @@ def run_simulation(mkt_sequence, ctx_input):
 
             if inc.get("Description"):
                 base_amt = safe_num(inc.get('Annual Amount ($)'))
+
+                # 2. Fix the SS Entitlement Calculation
                 if cat_name == "Social Security":
-                    ss_start = primary_ss_start_year if owner == "Me" else spouse_ss_start_year
-                    offset = max(0, year - int(ss_start))
-                    amt = (base_amt * (primary_ss_multi if owner == "Me" else spouse_ss_multi)) * (
-                                (1 + ctx['infl'] / 100) ** offset)
                     if owner == "Me":
-                        primary_ss_entitlement = amt
+                        if is_my_alive:
+                            offset = max(0, year - int(primary_ss_start_year))
+                            primary_ss_entitlement = (base_amt * primary_ss_multi) * ((1 + ctx['infl'] / 100) ** offset)
+                            primary_ss_frozen_val = primary_ss_entitlement
+                        else:
+                            primary_ss_entitlement = primary_ss_frozen_val
+
                     elif owner == "Spouse":
-                        spouse_ss_entitlement = amt
+                        if is_spouse_alive:
+                            offset = max(0, year - int(spouse_ss_start_year))
+                            spouse_ss_entitlement = (base_amt * spouse_ss_multi) * ((1 + ctx['infl'] / 100) ** offset)
+                            spouse_ss_frozen_val = spouse_ss_entitlement
+                        else:
+                            spouse_ss_entitlement = spouse_ss_frozen_val
                     continue
 
                 if not is_active:
@@ -1105,8 +1123,8 @@ def run_simulation(mkt_sequence, ctx_input):
 
         # Global Medicare Gap
         if ctx['medicare_gap'] and is_retired and my_current_age < 65:
-            subsidy_factor = min(1.0, max(0.0, pre_tax_ord / 100000.0))
-            gap_cost = (MEDICARE_GAP_COST * subsidy_factor) * ((1 + ctx['infl_hc'] / 100) ** year_offset)
+            income_factor = min(1.0, max(0.0, pre_tax_ord / 100000.0))
+            gap_cost = (3000 + (MEDICARE_GAP_COST - 3000) * income_factor) * ((1 + ctx['infl_hc'] / 100) ** year_offset)
             total_exp += gap_cost
             yd["Expense: Healthcare (Pre-Medicare Gap Proxy)"] = gap_cost
 
@@ -1228,6 +1246,7 @@ def run_simulation(mkt_sequence, ctx_input):
                             a['bal'] -= convert
                             total_converted += convert
 
+                            # Tax is explicitly deducted from liquid cash to avoid silent waterfall accumulation
                             tax_cost = convert * est_tax_rate
                             for ca in sim_assets:
                                 if tax_cost <= 0: break
@@ -1253,7 +1272,6 @@ def run_simulation(mkt_sequence, ctx_input):
 
             if total_converted > 0:
                 pre_tax_ord += total_converted
-                tax_base_ord += total_converted
                 yd["Roth Conversion Amount"] = total_converted
 
         # RECALCULATE QBI AFTER ROTH CONVERSION INCREASES MAGI
@@ -1263,9 +1281,7 @@ def run_simulation(mkt_sequence, ctx_input):
         # Execute Mid-Year Growth
         for a in sim_assets:
             g = float(a.get('growth')) if pd.notna(a.get('growth')) and str(a.get('growth')).strip() != "" else (
-                0.0 if a.get('Type') in ['Checking/Savings', 'HYSA', 'Unallocated Cash'] else (
-                    mkt_glide if a.get('Type') in ['Traditional 401(k)', 'Traditional IRA',
-                                                   'Brokerage (Taxable)'] else mkt_roth))
+                0.0 if a.get('Type') in ['Checking/Savings', 'HYSA', 'Unallocated Cash'] else mkt_glide)
             add = a.pop('approved_oop_contrib', 0)
             match = a.pop('match_contrib_queue', 0)
             a['bal'] = (a['bal'] + (add + match) * 0.5) * (1 + g / 100) + (add + match) * 0.5
@@ -1720,10 +1736,11 @@ def render_assets():
     section_header("Assets, Debts & Net Worth",
                    "Construct your balance sheet. The AI draws down these buckets dynamically.", "🏦")
 
-    edited_re = pd.DataFrame(st.session_state.get('real_estate_data', []))
-    edited_biz = pd.DataFrame(st.session_state.get('business_data', []))
-    edited_ast = pd.DataFrame(st.session_state.get('liquid_assets_data', []))
-    edited_debt = pd.DataFrame(st.session_state.get('liabilities_data', []))
+    # Initialize default empty scopes to prevent NameError
+    edited_re = pd.DataFrame()
+    edited_biz = pd.DataFrame()
+    edited_ast = pd.DataFrame()
+    edited_debt = pd.DataFrame()
 
     tab_re, tab_biz, tab_ast, tab_debt = st.tabs(
         ["🏢 Real Estate", "💼 Business Interests", "🏦 Liquid Assets", "💳 Debts & Loans"])
@@ -1872,13 +1889,24 @@ def render_assets():
         )
         st.session_state['liabilities_data'] = edited_debt.to_dict('records')
 
+        # Validation Warning: Check for zero-payment traps
+        for idx, d in edited_debt.iterrows():
+            bal = safe_num(d.get('Current Balance ($)'))
+            pmt = safe_num(d.get('Monthly Payment ($)'))
+            if bal > 0 and pmt <= 0:
+                st.warning(
+                    f"⚠️ Debt '{html.escape(str(d.get('Debt Name', 'Unknown')))}': You have a balance but zero monthly payment. The simulation will carry this balance forever.")
+
     # Render overall metrics outside the tabs
     re_eq = pd.to_numeric(edited_re['Market Value ($)'], errors='coerce').fillna(0).sum() - pd.to_numeric(
-        edited_re['Mortgage Balance ($)'], errors='coerce').fillna(0).sum()
+        edited_re['Mortgage Balance ($)'], errors='coerce').fillna(0).sum() if not edited_re.empty else 0
     biz_eq = (pd.to_numeric(edited_biz['Total Valuation ($)'], errors='coerce').fillna(0) * (
-                pd.to_numeric(edited_biz['Your Ownership (%)'], errors='coerce').fillna(0) / 100)).sum()
-    liq_ast = pd.to_numeric(edited_ast['Current Balance ($)'], errors='coerce').fillna(0).sum()
-    total_debt = pd.to_numeric(edited_debt['Current Balance ($)'], errors='coerce').fillna(0).sum()
+                pd.to_numeric(edited_biz['Your Ownership (%)'], errors='coerce').fillna(
+                    0) / 100)).sum() if not edited_biz.empty else 0
+    liq_ast = pd.to_numeric(edited_ast['Current Balance ($)'], errors='coerce').fillna(
+        0).sum() if not edited_ast.empty else 0
+    total_debt = pd.to_numeric(edited_debt['Current Balance ($)'], errors='coerce').fillna(
+        0).sum() if not edited_debt.empty else 0
 
     st.divider()
     c_met1, c_met2, c_met3, c_met4 = st.columns(4)
@@ -2333,8 +2361,9 @@ def render_simulation():
                     all_nw_paths = []
                     mc_progress = st.progress(0)
 
-                    random_sequences = [[random.gauss(sim_ctx['mkt'], mc_vol) for _ in range(sim_ctx['max_years'] + 1)]
-                                        for _ in range(mc_runs)]
+                    random_sequences = [
+                        [max(-99.0, random.gauss(sim_ctx['mkt'], mc_vol)) for _ in range(sim_ctx['max_years'] + 1)] for
+                        _ in range(mc_runs)]
 
                     try:
                         with ThreadPoolExecutor(max_workers=min(mc_runs, 8)) as executor:
