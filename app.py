@@ -273,6 +273,9 @@ h3 { font-weight: 700 !important; color: var(--text-primary) !important; }
 [data-testid="stSidebar"] h2, [data-testid="stSidebar"] span, [data-testid="stSidebar"] p { color: white !important; }
 [data-testid="stSidebar"] .stRadio label { padding: 10px 16px !important; border-radius: var(--radius-sm) !important; transition: background 0.15s ease !important; cursor: pointer !important; }
 [data-testid="stSidebar"] .stRadio label:hover { background-color: rgba(255,255,255,0.1) !important; }
+[data-testid="stSidebar"] button[kind="secondary"] { background-color: white !important; border: 1px solid #e2e8f0 !important; }
+[data-testid="stSidebar"] button[kind="secondary"] p, [data-testid="stSidebar"] button[kind="secondary"] span { color: #0f172a !important; font-weight: 600 !important; }
+[data-testid="stSidebar"] button[kind="secondary"]:hover { background-color: #f8fafc !important; }
 
 [data-testid="stMetric"] { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: var(--radius-md) !important; padding: 20px !important; box-shadow: var(--shadow-sm) !important; }
 [data-testid="stMetricValue"] { color: var(--primary-dark) !important; font-size: 1.75rem !important; font-weight: 800 !important; }
@@ -371,6 +374,8 @@ def save_profile():
     st.session_state['user_data'] = user_data
     st.session_state['dirty'] = False
     st.toast("✅ Complete Financial Blueprint Synchronized Successfully!")
+    time.sleep(0.5)
+    st.rerun()
 
 
 def call_gemini_json(prompt, retries=3):
@@ -944,37 +949,49 @@ def run_simulation(mkt_sequence, ctx_input):
 
         # SS Survivor & Taxation
         active_ss = 0
-        if is_my_alive and is_spouse_alive:
-            if year >= primary_ss_start_year: active_ss += primary_ss_entitlement
-            if year >= spouse_ss_start_year: active_ss += spouse_ss_entitlement
-            if primary_ss_entitlement > 0 and year >= primary_ss_start_year and not ss_started_me:
-                if year not in milestones_by_year: milestones_by_year[year] = []
-                milestones_by_year[year].append(
-                    {"desc": "📈 Social Security Begins (You)", "amt": primary_ss_entitlement, "type": "system"})
-                ss_started_me = True
-            if spouse_ss_entitlement > 0 and year >= spouse_ss_start_year and not ss_started_spouse:
-                if year not in milestones_by_year: milestones_by_year[year] = []
-                milestones_by_year[year].append(
-                    {"desc": "📈 Social Security Begins (Spouse)", "amt": spouse_ss_entitlement, "type": "system"})
-                ss_started_spouse = True
-        elif is_my_alive and not is_spouse_alive:
-            primary_actual = primary_ss_entitlement if year >= primary_ss_start_year else 0
-            survivor_benefit = max(primary_ss_entitlement, spouse_ss_entitlement)
-            active_ss = max(primary_actual, survivor_benefit)
-            if active_ss > 0 and not ss_started_me:
-                if year not in milestones_by_year: milestones_by_year[year] = []
-                milestones_by_year[year].append(
-                    {"desc": "📈 Social Security Survivor Benefit Begins", "amt": active_ss, "type": "system"})
-                ss_started_me = True
+        if is_my_alive:
+            if ctx['has_spouse'] and is_spouse_alive:
+                if year >= primary_ss_start_year:
+                    active_ss += primary_ss_entitlement
+                    if not ss_started_me:
+                        if year not in milestones_by_year: milestones_by_year[year] = []
+                        milestones_by_year[year].append(
+                            {"desc": "📈 Social Security Begins (You)", "amt": primary_ss_entitlement, "type": "system"})
+                        ss_started_me = True
+                if year >= spouse_ss_start_year:
+                    active_ss += spouse_ss_entitlement
+                    if not ss_started_spouse:
+                        if year not in milestones_by_year: milestones_by_year[year] = []
+                        milestones_by_year[year].append(
+                            {"desc": "📈 Social Security Begins (Spouse)", "amt": spouse_ss_entitlement,
+                             "type": "system"})
+                        ss_started_spouse = True
+            elif ctx['has_spouse'] and not is_spouse_alive:
+                if year >= primary_ss_start_year:
+                    benefit = max(primary_ss_entitlement, spouse_ss_entitlement)
+                    active_ss += benefit
+                    if not ss_started_me:
+                        desc = "📈 Social Security Survivor Benefit Begins" if spouse_ss_entitlement > primary_ss_entitlement else "📈 Social Security Begins (You)"
+                        if year not in milestones_by_year: milestones_by_year[year] = []
+                        milestones_by_year[year].append({"desc": desc, "amt": benefit, "type": "system"})
+                        ss_started_me = True
+            else:
+                if year >= primary_ss_start_year:
+                    active_ss += primary_ss_entitlement
+                    if not ss_started_me:
+                        if year not in milestones_by_year: milestones_by_year[year] = []
+                        milestones_by_year[year].append(
+                            {"desc": "📈 Social Security Begins (You)", "amt": primary_ss_entitlement, "type": "system"})
+                        ss_started_me = True
         elif is_spouse_alive and not is_my_alive:
-            spouse_actual = spouse_ss_entitlement if year >= spouse_ss_start_year else 0
-            survivor_benefit = max(primary_ss_entitlement, spouse_ss_entitlement)
-            active_ss = max(spouse_actual, survivor_benefit)
-            if active_ss > 0 and not ss_started_spouse:
-                if year not in milestones_by_year: milestones_by_year[year] = []
-                milestones_by_year[year].append(
-                    {"desc": "📈 Social Security Survivor Benefit Begins", "amt": active_ss, "type": "system"})
-                ss_started_spouse = True
+            if year >= spouse_ss_start_year:
+                benefit = max(primary_ss_entitlement, spouse_ss_entitlement)
+                active_ss += benefit
+                if not ss_started_spouse:
+                    desc = "📈 Social Security Survivor Benefit Begins" if primary_ss_entitlement > spouse_ss_entitlement else "📈 Social Security Begins (Spouse)"
+                    if year not in milestones_by_year: milestones_by_year[year] = []
+                    milestones_by_year[year].append({"desc": desc, "amt": benefit, "type": "system"})
+                    ss_started_spouse = True
 
         if active_ss > 0:
             yd["Income: Social Security"] = active_ss
@@ -1617,7 +1634,7 @@ def render_dashboard():
                                                link=dict(source=source, target=target, value=value,
                                                          color=link_colors))])
         fig_sankey.update_layout(height=800, margin=dict(l=0, r=0, t=30, b=0), font=dict(size=12))
-        st.plotly_chart(fig_sankey, width="stretch")
+        st.plotly_chart(fig_sankey, use_container_width=True)
 
 
 def render_profile():
@@ -1727,7 +1744,7 @@ def render_income():
 
     col_ai_inc, _ = st.columns([3, 1])
     with col_ai_inc:
-        if st.button("✨ Auto-Estimate My Social Security (AI)", type="primary", width="stretch"):
+        if st.button("✨ Auto-Estimate My Social Security (AI)", type="primary", use_container_width=True):
             if check_ai_rate_limit():
                 res = None
                 try:
@@ -1997,7 +2014,7 @@ def render_cashflows():
     col_ai_cb, _ = st.columns([3, 1])
     with col_ai_cb:
         if st.button("✨ Auto-Estimate Budget & Milestones for selected locations (AI)", type="primary",
-                     width="stretch"):
+                     use_container_width=True):
             if check_ai_rate_limit():
                 res = None
                 try:
@@ -2057,7 +2074,7 @@ def render_simulation():
 
             sub_c2.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
             if sub_c2.button("✨ AI", key=f"btn_{state_key}", help=f"AI Estimate for {label}", type="primary",
-                             width="stretch"):
+                             use_container_width=True):
                 if check_ai_rate_limit():
                     res = None
                     try:
@@ -2599,8 +2616,9 @@ with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
     completed = get_completion_score()
     st.progress(completed / 100)
-    st.caption(f"<div style='text-align: center; font-family: Inter;'>Profile {completed}% Complete</div>",
-               unsafe_allow_html=True)
+    st.caption(
+        f"<div style='text-align: center; font-family: Inter; color: #cbd5e1;'>Profile {completed}% Complete</div>",
+        unsafe_allow_html=True)
 
     st.markdown("<br><br>", unsafe_allow_html=True)
 
