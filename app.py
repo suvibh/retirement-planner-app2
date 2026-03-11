@@ -35,6 +35,8 @@ st.set_page_config(page_title="AI Retirement Planner Pro", layout="wide", page_i
                    initial_sidebar_state="expanded")
 
 # --- GLOBAL CONSTANTS ---
+GEMINI_MODEL = "gemini-3-flash-preview"
+
 SS_WAGE_BASE_2026, ADDL_MED_TAX_THRESHOLD = 168600, 250000
 IRA_LIMIT_BASE, PLAN_401K_LIMIT_BASE = 7000, 23500
 CATCHUP_401K_BASE, CATCHUP_IRA_BASE = 7500, 1000
@@ -205,6 +207,22 @@ def info_banner(text, type="info"):
         unsafe_allow_html=True)
 
 
+def retirement_health_score(score):
+    color = "#10b981" if score > 75 else "#f59e0b" if score > 50 else "#ef4444"
+    label = "Excellent" if score > 75 else "Needs Work" if score > 50 else "At Risk"
+    st.markdown(f"""
+    <div style='text-align:center; padding:20px; background:white; border-radius:16px; border:1px solid #e2e8f0; box-shadow:0 2px 8px rgba(0,0,0,0.04); font-family: Inter;'>
+        <svg width='140' height='140' viewBox='0 0 140 140'>
+            <circle cx='70' cy='70' r='56' fill='none' stroke='#f1f5f9' stroke-width='12'/>
+            <circle cx='70' cy='70' r='56' fill='none' stroke='{color}' stroke-width='12' stroke-dasharray='{2 * 3.14159 * 56}' stroke-dashoffset='{2 * 3.14159 * 56 * (1 - score / 100)}' stroke-linecap='round' transform='rotate(-90 70 70)'/>
+            <text x='70' y='66' text-anchor='middle' font-size='26' font-weight='900' fill='{color}' font-family='Inter'>{score}</text>
+            <text x='70' y='84' text-anchor='middle' font-size='11' fill='#64748b' font-family='Inter'>{label}</text>
+        </svg>
+        <div style='color:#0f172a; font-weight:700; font-size:0.95rem; margin-top:8px;'>Monte Carlo Success Probability</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 def render_status_bar(deplete_year, deplete_age, final_nw, mc_success_rate=None):
     if deplete_year is not None:
         bg, icon, msg, sub = "#fef2f2", "🔴", "Liquidity Crisis Detected", f"Assets depleted at age {int(deplete_age)} ({int(deplete_year)}). Adjust retirement age or savings rate."
@@ -359,7 +377,7 @@ def call_gemini_json(prompt, retries=3):
     if not GEMINI_API_KEY:
         st.error("⚠️ GEMINI_API_KEY is missing. AI operations disabled.")
         return None
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
     payload = {"contents": [{"parts": [{"text": prompt}]}],
                "generationConfig": {"responseMimeType": "application/json"}}
 
@@ -393,7 +411,7 @@ def call_gemini_text(prompt, retries=3):
     if not GEMINI_API_KEY:
         st.error("⚠️ GEMINI_API_KEY is missing. AI operations disabled.")
         return None
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     for attempt in range(retries):
         try:
@@ -497,7 +515,7 @@ def initialize_session_state():
 # --- AUTH LAYER EXECUTION ---
 if 'user_email' not in st.session_state:
     saved_email = cookie_manager.get(cookie="user_email")
-    if saved_email:
+    if saved_email and not st.session_state.get('logged_out_flag'):
         st.session_state['user_email'] = saved_email
         st.session_state['user_data'] = load_user_data(saved_email)
         st.rerun()
@@ -510,9 +528,10 @@ if 'user_email' not in st.session_state:
         tab1, tab2 = st.tabs(["Secure Login", "New Account"])
         with tab1:
             le, lp = st.text_input("Email", key="le"), st.text_input("Password", type="password", key="lp")
-            if st.button("Sign In", type="primary", width="stretch"):
+            if st.button("Sign In", type="primary", use_container_width=True):
                 res = sign_in(le, lp)
                 if "idToken" in res:
+                    st.session_state.pop('logged_out_flag', None)
                     st.session_state['user_email'] = res['email'];
                     st.session_state['user_data'] = load_user_data(res['email'])
                     cookie_manager.set("user_email", res['email'],
@@ -523,10 +542,11 @@ if 'user_email' not in st.session_state:
                     st.error("Login failed. Please check your email and password.")
         with tab2:
             se, sp = st.text_input("New Email", key="se"), st.text_input("New Password", type="password", key="sp")
-            if st.button("Create Account", type="primary", width="stretch"):
+            if st.button("Create Account", type="primary", use_container_width=True):
                 if len(sp) >= 6:
                     res = sign_up(se, sp)
                     if "idToken" in res:
+                        st.session_state.pop('logged_out_flag', None)
                         st.session_state['user_email'] = res['email'];
                         st.session_state['user_data'] = {}
                         cookie_manager.set("user_email", res['email'],
@@ -536,7 +556,8 @@ if 'user_email' not in st.session_state:
                 else:
                     st.warning("Min 6 characters.")
         st.divider()
-        if st.button("🚀 Try the Demo (Guest Mode)", width="stretch"):
+        if st.button("🚀 Try the Demo (Guest Mode)", use_container_width=True):
+            st.session_state.pop('logged_out_flag', None)
             st.session_state['user_email'] = "guest_demo";
             st.session_state['user_data'] = {}
             cookie_manager.set("user_email", "guest_demo",
@@ -1595,7 +1616,7 @@ def render_dashboard():
                                                link=dict(source=source, target=target, value=value,
                                                          color=link_colors))])
         fig_sankey.update_layout(height=800, margin=dict(l=0, r=0, t=30, b=0), font=dict(size=12))
-        st.plotly_chart(fig_sankey, use_container_width=True)
+        st.plotly_chart(fig_sankey, width="stretch")
 
 
 def render_profile():
@@ -1705,7 +1726,7 @@ def render_income():
 
     col_ai_inc, _ = st.columns([3, 1])
     with col_ai_inc:
-        if st.button("✨ Auto-Estimate My Social Security (AI)", type="primary", use_container_width=True):
+        if st.button("✨ Auto-Estimate My Social Security (AI)", type="primary", width="stretch"):
             if check_ai_rate_limit():
                 res = None
                 try:
@@ -1975,7 +1996,7 @@ def render_cashflows():
     col_ai_cb, _ = st.columns([3, 1])
     with col_ai_cb:
         if st.button("✨ Auto-Estimate Budget & Milestones for selected locations (AI)", type="primary",
-                     use_container_width=True):
+                     width="stretch"):
             if check_ai_rate_limit():
                 res = None
                 try:
@@ -2035,7 +2056,7 @@ def render_simulation():
 
             sub_c2.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
             if sub_c2.button("✨ AI", key=f"btn_{state_key}", help=f"AI Estimate for {label}", type="primary",
-                             use_container_width=True):
+                             width="stretch"):
                 if check_ai_rate_limit():
                     res = None
                     try:
@@ -2317,7 +2338,7 @@ def render_simulation():
                                                           name='Critical Alerts', hoverinfo='text', text=m_text_alert))
 
                 fig_nw = apply_chart_theme(fig_nw)
-                st.plotly_chart(fig_nw, use_container_width=True)
+                st.plotly_chart(fig_nw, width="stretch")
 
                 st.write("#### Annual Cash Flow & Progressive Taxes")
                 fig_cf = go.Figure()
@@ -2348,7 +2369,7 @@ def render_simulation():
                                                           name='Critical Alerts', hoverinfo='text', text=m_text_alert))
 
                 fig_cf = apply_chart_theme(fig_cf)
-                st.plotly_chart(fig_cf, use_container_width=True)
+                st.plotly_chart(fig_cf, width="stretch")
 
             # --- MONTE CARLO SECTION ---
             st.divider()
@@ -2364,7 +2385,7 @@ def render_simulation():
 
             with col_mc3:
                 st.markdown("<div style='height: 27px;'></div>", unsafe_allow_html=True)
-                run_mc = st.button("✨ Run Monte Carlo Simulation", type="primary", use_container_width=True)
+                run_mc = st.button("✨ Run Monte Carlo Simulation", type="primary", width="stretch")
 
             if run_mc:
                 with st.spinner(f"Rendering {mc_runs} parallel market sequences (Multi-threaded)..."):
@@ -2426,7 +2447,7 @@ def render_simulation():
                                                         name='10th Percentile (Severe Contraction)',
                                                         line=dict(color='#f43f5e', dash='dot')))
                             fig_mc = apply_chart_theme(fig_mc, "Stochastic Net Worth Projections")
-                            st.plotly_chart(fig_mc, use_container_width=True)
+                            st.plotly_chart(fig_mc, width="stretch")
 
             # --- DATA AUDIT TABLES ---
             st.divider()
@@ -2443,9 +2464,11 @@ def render_simulation():
                 ord_det = ["Year", "Age (Primary)", "Age (Spouse)"] + inc_c + exp_c + ["Net Savings"]
                 st.dataframe(df_det[ord_det].set_index("Year").style.format(
                     {c: "${:,.0f}" for c in ord_det if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
-                        "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
+                        "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), width="stretch")
             with t2:
                 st.subheader("Detailed Net Worth Log")
+                st.markdown(
+                    "Track the exact, year-by-year balance of every single asset account and liability to trace your drawdowns and growth.")
                 ast_c = sorted([c for c in df_nw.columns if c.startswith("Asset:")])
                 ord_nw = ["Year", "Age (Primary)", "Age (Spouse)"] + ast_c + ["Total Liquid Assets",
                                                                               "Total Real Estate Equity",
@@ -2454,7 +2477,7 @@ def render_simulation():
                                                                               "Total Net Worth"]
                 st.dataframe(df_nw[ord_nw].set_index("Year").style.format(
                     {c: "${:,.0f}" for c in ord_nw if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
-                        "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
+                        "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), width="stretch")
 
 
 def render_ai():
@@ -2495,7 +2518,7 @@ def render_ai():
 
     tab_report, tab_whatif = st.tabs(["📊 Comprehensive Health Report", "🔮 What-If Simulator"])
     with tab_report:
-        if st.button("✨ Generate Comprehensive AI Report", type="primary", use_container_width=True, key="btn_report"):
+        if st.button("✨ Generate Comprehensive AI Report", type="primary", width="stretch", key="btn_report"):
             if check_ai_rate_limit():
                 if sim_summary:
                     res = None
@@ -2520,7 +2543,7 @@ def render_ai():
         what_if_query = st.text_area(
             "Ask the AI to simulate a scenario (e.g., 'What if I sold my rental property in 2030 and put the cash in my brokerage?' or 'What if I added $50k in income starting in 2029?')",
             key="what_if_text")
-        if st.button("✨ Run What-If Analysis (AI)", type="primary", use_container_width=True, key="btn_whatif"):
+        if st.button("✨ Run What-If Analysis (AI)", type="primary", width="stretch", key="btn_whatif"):
             if check_ai_rate_limit():
                 if sim_summary and what_if_query:
                     res = None
@@ -2581,15 +2604,13 @@ with st.sidebar:
     st.markdown("<br><br>", unsafe_allow_html=True)
 
     save_btn_label = "⚠️ Save Changes" if st.session_state.get('dirty', False) else "🚀 Save Profile"
-    if st.button(save_btn_label, type="primary", use_container_width=True):
+    if st.button(save_btn_label, type="primary", width="stretch"):
         save_profile()
 
-    if st.button("Logout", type="secondary", use_container_width=True):
+    if st.button("Logout", type="secondary", width="stretch"):
         cookie_manager.delete("user_email")
-        for key in ['user_email', 'user_data', 'initialized', 'dirty', 'df_sim_display', 'df_sim_nominal', 'df_det',
-                    'df_nw', 'mc_success_rate']:
-            st.session_state.pop(key, None)
-        time.sleep(0.5)
+        st.session_state['logged_out_flag'] = True
+        st.session_state.clear()
         st.rerun()
 
 # Execute selected page
