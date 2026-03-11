@@ -726,8 +726,8 @@ def run_simulation(mkt_sequence, ctx_input):
             o_ret_yr = ctx['primary_retire_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_retire_year']
             o_birth = ctx['my_birth_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_birth_year']
             rule_of_55 = (year >= o_ret_yr) and ((o_ret_yr - o_birth) >= 55)
-            penalty = 0.10 if (
-                        a.get('Type') in ['Roth 401(k)', 'Roth IRA'] and o_age < 59.5 and not rule_of_55) else 0.0
+            penalty = 0.10 if (a.get('Type') in ['Roth 401(k)', 'Roth 401k/IRA',
+                                                 'Roth IRA'] and o_age < 59.5 and not rule_of_55) else 0.0
             eff_tax = min(penalty, 0.99)
 
         req_gross = current_shortfall / max(0.01, (1.0 - eff_tax))
@@ -885,7 +885,7 @@ def run_simulation(mkt_sequence, ctx_input):
         # RMDs
         rmd_income = 0
         for a in sim_assets:
-            if a.get('Type') in ['Traditional 401(k)', 'Traditional IRA'] and a['bal'] > 0:
+            if a.get('Type') in ['Traditional 401(k)', 'Traditional 401k/IRA', 'Traditional IRA'] and a['bal'] > 0:
                 owner = a.get('Owner', 'Me')
                 owner_age = my_current_age if owner in ['Me', 'Joint'] else spouse_current_age
                 owner_alive = is_my_alive if owner in ['Me', 'Joint'] else is_spouse_alive
@@ -1255,7 +1255,8 @@ def run_simulation(mkt_sequence, ctx_input):
 
         for owner, match_left in list(match_income_by_owner.items()):
             if match_left <= 0: continue
-            for acct_type_target in ['Traditional 401(k)', 'Roth 401(k)', 'HSA']:
+            for acct_type_target in ['Traditional 401(k)', 'Traditional 401k/IRA', 'Roth 401(k)', 'Roth 401k/IRA',
+                                     'HSA']:
                 for a in sim_assets:
                     if a.get('Type') == acct_type_target and a.get('Owner') == owner:
                         a['match_contrib_queue'] = a.get('match_contrib_queue', 0) + match_left
@@ -1284,7 +1285,7 @@ def run_simulation(mkt_sequence, ctx_input):
 
             if o_alive and not (a.get('stop_at_ret', True) and year >= o_ret):
                 added_this_year = a['contrib']
-                if a.get('Type') in ['Traditional 401(k)', 'Roth 401(k)']:
+                if a.get('Type') in ['Traditional 401(k)', 'Traditional 401k/IRA', 'Roth 401(k)', 'Roth 401k/IRA']:
                     limit = plan_401k_limit + (catchup_401k if (year - o_birth) >= 50 else 0)
                     added_this_year = min(added_this_year, max(0, limit - person_401k_contribs[o_acct]))
                     person_401k_contribs[o_acct] += added_this_year
@@ -1319,7 +1320,8 @@ def run_simulation(mkt_sequence, ctx_input):
 
             if conversion_room > 0:
                 for a in sim_assets:
-                    if a.get('Type') in ['Traditional 401(k)', 'Traditional IRA'] and a['bal'] > 0:
+                    if a.get('Type') in ['Traditional 401(k)', 'Traditional 401k/IRA', 'Traditional IRA'] and a[
+                        'bal'] > 0:
                         convert = min(a['bal'], conversion_room - total_converted)
                         if convert > 0:
                             a['bal'] -= convert
@@ -1337,7 +1339,8 @@ def run_simulation(mkt_sequence, ctx_input):
 
                             roth_found = False
                             for ra in sim_assets:
-                                if ra.get('Type') in ['Roth 401(k)', 'Roth IRA'] and ra.get('Owner') == a.get('Owner'):
+                                if ra.get('Type') in ['Roth 401(k)', 'Roth 401k/IRA', 'Roth IRA'] and ra.get(
+                                        'Owner') == a.get('Owner'):
                                     ra['bal'] += convert
                                     roth_found = True
                                     break
@@ -1466,29 +1469,46 @@ def run_simulation(mkt_sequence, ctx_input):
                     total_tax += t_inc
                     yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
 
-            seq = ['Traditional 401(k)', 'Traditional IRA', 'Roth 401(k)', 'Roth IRA', 'HSA', 'Crypto', '529 Plan',
-                   'Other'] if 'Standard' in ctx['active_withdrawal_strategy'] else ['Roth 401(k)', 'Roth IRA', 'HSA',
-                                                                                     'Crypto', '529 Plan', 'Other',
-                                                                                     'Traditional 401(k)',
-                                                                                     'Traditional IRA']
+            trad_types = ['Traditional 401(k)', 'Traditional 401k/IRA', 'Traditional IRA']
+            roth_types = ['Roth 401(k)', 'Roth 401k/IRA', 'Roth IRA']
+            tax_free_types = roth_types + ['HSA', 'Crypto', '529 Plan', 'Other']
+
+            if 'Standard' in ctx['active_withdrawal_strategy']:
+                seq = trad_types + tax_free_types
+            else:
+                seq = tax_free_types + trad_types
+
             for t in seq:
                 if shortfall <= 0: break
                 for a in sim_assets:
                     if a.get('Type') == t:
-                        if 'Traditional' in t and not tapped_trad:
+                        is_trad = t in trad_types
+                        if is_trad and not tapped_trad:
                             if year not in milestones_by_year: milestones_by_year[year] = []
                             milestones_by_year[year].append(
                                 {"desc": "📉 Began Drawing from Traditional 401(k)/IRA", "amt": 0, "type": "system"})
                             tapped_trad = True
-                        elif 'Roth' in t and not tapped_roth:
+                        elif t in roth_types and not tapped_roth:
                             if year not in milestones_by_year: milestones_by_year[year] = []
                             milestones_by_year[year].append(
                                 {"desc": "📉 Began Drawing from Roth/Tax-Free Assets", "amt": 0, "type": "system"})
                             tapped_roth = True
 
-                        shortfall, t_inc = _withdraw(a, shortfall, 'ordinary' if 'Traditional' in t else 'free', ctx,
+                        shortfall, t_inc = _withdraw(a, shortfall, 'ordinary' if is_trad else 'free', ctx,
                                                      my_current_age, spouse_current_age, active_mfj, year_offset,
                                                      tax_base_ord, marginal_rate, state_tax_rate, year, yd)
+                        total_tax += t_inc
+                        yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
+
+            # Absolute fallback if asset type text string didn't strictly match the lists
+            if shortfall > 0:
+                for a in sim_assets:
+                    if shortfall <= 0: break
+                    if a['bal'] > 0 and a.get('Type') not in ['Checking/Savings', 'HYSA', 'Unallocated Cash',
+                                                              'Brokerage (Taxable)'] + trad_types + tax_free_types:
+                        shortfall, t_inc = _withdraw(a, shortfall, 'ordinary', ctx, my_current_age, spouse_current_age,
+                                                     active_mfj, year_offset, tax_base_ord, marginal_rate,
+                                                     state_tax_rate, year, yd)
                         total_tax += t_inc
                         yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
 
@@ -2498,31 +2518,32 @@ def render_simulation():
 
             # --- DATA AUDIT TABLES ---
             st.divider()
-            csv = df_sim_nominal.to_csv(index=False).encode('utf-8')
-            st.download_button(label="📥 Download Full Simulation (.csv)", data=csv,
-                               file_name='retirement_simulation.csv', mime='text/csv')
+            with st.expander("📊 View Detailed Data Logs & Export JSON", expanded=False):
+                csv = df_sim_nominal.to_csv(index=False).encode('utf-8')
+                st.download_button(label="📥 Download Full Simulation (.csv)", data=csv,
+                                   file_name='retirement_simulation.csv', mime='text/csv')
 
-            t1, t2 = st.tabs(["Income & Expense Log", "Net Worth Log"])
-            with t1:
-                st.subheader("Detailed Tax & Expense Log")
-                inc_c = sorted([c for c in df_det.columns if
-                                c.startswith("Income:") or c.startswith("Roth") or c.startswith("Cashflow:")])
-                exp_c = sorted([c for c in df_det.columns if c.startswith("Expense:")])
-                ord_det = ["Year", "Age (Primary)", "Age (Spouse)"] + inc_c + exp_c + ["Net Savings"]
-                st.dataframe(df_det[ord_det].set_index("Year").style.format(
-                    {c: "${:,.0f}" for c in ord_det if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
-                        "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
-            with t2:
-                st.subheader("Detailed Net Worth Log")
-                ast_c = sorted([c for c in df_nw.columns if c.startswith("Asset:")])
-                ord_nw = ["Year", "Age (Primary)", "Age (Spouse)"] + ast_c + ["Total Liquid Assets",
-                                                                              "Total Real Estate Equity",
-                                                                              "Total Business Equity",
-                                                                              "Total Debt Liabilities",
-                                                                              "Total Net Worth"]
-                st.dataframe(df_nw[ord_nw].set_index("Year").style.format(
-                    {c: "${:,.0f}" for c in ord_nw if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
-                        "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
+                t1, t2, t3 = st.tabs(["Income & Expense Log", "Net Worth Log", "System State (JSON)"])
+                with t1:
+                    inc_c = sorted([c for c in df_det.columns if
+                                    c.startswith("Income:") or c.startswith("Roth") or c.startswith("Cashflow:")])
+                    exp_c = sorted([c for c in df_det.columns if c.startswith("Expense:")])
+                    ord_det = ["Year", "Age (Primary)", "Age (Spouse)"] + inc_c + exp_c + ["Net Savings"]
+                    st.dataframe(df_det[ord_det].set_index("Year").style.format(
+                        {c: "${:,.0f}" for c in ord_det if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
+                            "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
+                with t2:
+                    ast_c = sorted([c for c in df_nw.columns if c.startswith("Asset:")])
+                    ord_nw = ["Year", "Age (Primary)", "Age (Spouse)"] + ast_c + ["Total Liquid Assets",
+                                                                                  "Total Real Estate Equity",
+                                                                                  "Total Business Equity",
+                                                                                  "Total Debt Liabilities",
+                                                                                  "Total Net Worth"]
+                    st.dataframe(df_nw[ord_nw].set_index("Year").style.format(
+                        {c: "${:,.0f}" for c in ord_nw if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
+                            "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
+                with t3:
+                    st.json(sim_ctx)
 
 
 def render_ai():
