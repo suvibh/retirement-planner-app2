@@ -124,7 +124,7 @@ def clean_df(df, primary_key):
         clean_r = {}
         for vk, vv in r.items():
             clean_r[vk] = None if pd.isna(vv) or vv is pd.NA else vv
-        if primary_key in clean_r and str(clean_r.get(primary_key, '')).strip() != "":
+        if primary_key not in clean_r or str(clean_r.get(primary_key, '')).strip() != "":
             valid_rows.append(clean_r)
     return valid_rows
 
@@ -703,7 +703,7 @@ def run_simulation(mkt_sequence, ctx_input):
         return 1.0
 
     def _withdraw(a, current_shortfall, tax_treatment, ctx, my_current_age, spouse_current_age, active_mfj, year_offset,
-                  tax_base_ord, marginal_rate, state_tax_rate, year):
+                  tax_base_ord, marginal_rate, state_tax_rate, year, yd):
         if a['bal'] <= 0 or current_shortfall <= 0: return current_shortfall, 0.0
 
         eff_tax = 0.0
@@ -735,6 +735,11 @@ def run_simulation(mkt_sequence, ctx_input):
         a['bal'] -= withdrawn
         tax_inc = withdrawn * eff_tax
         net_cash = withdrawn - tax_inc
+
+        if withdrawn > 0:
+            yd[f"Income: Withdrawal ({a.get('Account Name', 'Account')})"] = yd.get(
+                f"Income: Withdrawal ({a.get('Account Name', 'Account')})", 0) + withdrawn
+
         return current_shortfall - net_cash, tax_inc
 
     if ctx['max_years'] <= 0: return [], [], [], {}
@@ -774,7 +779,6 @@ def run_simulation(mkt_sequence, ctx_input):
     prev_unfunded_debt_bal = 0
     last_irmaa_tier = 0
 
-    # 1. Resolve starting values correctly BEFORE the loop begins
     primary_ss_record = next(
         (r for r in ctx['inc_records'] if r.get('Category') == 'Social Security' and r.get('Owner') == 'Me'), None)
     spouse_ss_record = next(
@@ -902,7 +906,11 @@ def run_simulation(mkt_sequence, ctx_input):
             owner = inc.get("Owner", "Me")
             cat_name = inc.get("Category", "Other")
             owner_retire_year = ctx['primary_retire_year'] if owner in ["Me", "Joint"] else ctx['spouse_retire_year']
-            start_year = safe_num(inc.get('Start Year'), ctx['current_year'])
+
+            raw_start = inc.get('Start Year')
+            start_year = int(safe_num(raw_start)) if raw_start and not pd.isna(raw_start) and str(
+                raw_start).strip() != "" else ctx['primary_retire_year']
+
             end_year = safe_num(inc.get('End Year'), 2100)
 
             is_active = (year >= start_year) and (not inc.get("Stop at Ret.?", False) or year < owner_retire_year)
@@ -1419,10 +1427,19 @@ def run_simulation(mkt_sequence, ctx_input):
                 unfunded_debt_bal -= payoff
                 net_cash_flow -= payoff
             if net_cash_flow > 0 and sim_assets:
-                brokerage = next((a for a in sim_assets if a.get('Type') == 'Brokerage (Taxable)'),
-                                 next((a for a in sim_assets if a.get('Type') in ['Checking/Savings', 'HYSA']),
-                                      sim_assets[0]))
-                brokerage['bal'] += net_cash_flow
+                taxable_acct = next((a for a in sim_assets if a.get('Type') == 'Brokerage (Taxable)'), None)
+                if not taxable_acct:
+                    taxable_acct = next(
+                        (a for a in sim_assets if a.get('Type') in ['Checking/Savings', 'HYSA', 'Unallocated Cash']),
+                        None)
+
+                if taxable_acct:
+                    taxable_acct['bal'] += net_cash_flow
+                else:
+                    new_cash_acct = {"Account Name": "Unallocated Cash", "Type": "Checking/Savings", "Owner": "Me",
+                                     "bal": net_cash_flow, "contrib": 0.0, "growth": 0.0, "stop_at_ret": False}
+                    sim_assets.append(new_cash_acct)
+
         elif net_cash_flow < 0:
             shortfall = abs(net_cash_flow)
 
@@ -1430,7 +1447,7 @@ def run_simulation(mkt_sequence, ctx_input):
                 if shortfall <= 0: break
                 if a.get('Type') in ['Checking/Savings', 'HYSA', 'Unallocated Cash']:
                     shortfall, _ = _withdraw(a, shortfall, 'free', ctx, my_current_age, spouse_current_age, active_mfj,
-                                             year_offset, tax_base_ord, marginal_rate, state_tax_rate, year)
+                                             year_offset, tax_base_ord, marginal_rate, state_tax_rate, year, yd)
 
             if shortfall > 0 and not cash_depleted and not any(a['bal'] > 0 for a in sim_assets if
                                                                a.get('Type') in ['Checking/Savings', 'HYSA',
@@ -1445,7 +1462,7 @@ def run_simulation(mkt_sequence, ctx_input):
                 if a.get('Type') == 'Brokerage (Taxable)':
                     shortfall, t_inc = _withdraw(a, shortfall, 'cg', ctx, my_current_age, spouse_current_age,
                                                  active_mfj, year_offset, tax_base_ord, marginal_rate, state_tax_rate,
-                                                 year)
+                                                 year, yd)
                     total_tax += t_inc
                     yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
 
@@ -1471,7 +1488,7 @@ def run_simulation(mkt_sequence, ctx_input):
 
                         shortfall, t_inc = _withdraw(a, shortfall, 'ordinary' if 'Traditional' in t else 'free', ctx,
                                                      my_current_age, spouse_current_age, active_mfj, year_offset,
-                                                     tax_base_ord, marginal_rate, state_tax_rate, year)
+                                                     tax_base_ord, marginal_rate, state_tax_rate, year, yd)
                         total_tax += t_inc
                         yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
 
@@ -1745,10 +1762,12 @@ def render_income():
         if not inc.get("Stop at Ret.?") and (pd.isna(inc.get("End Year")) or str(inc.get("End Year")).strip() == ""):
             st.warning(
                 f"⚠️ Income '{html.escape(str(inc.get('Description', 'Unknown')))}': 'Stop at Retirement' is unchecked, but no 'End Year' is provided.")
-        if inc.get("Category") == "Social Security" and safe_num(inc.get("Start Year")) > (
-                st.session_state.get('my_dob', datetime.date(1980, 1, 1)).year + 70):
-            st.warning(
-                f"⚠️ Social Security '{html.escape(str(inc.get('Description', 'Unknown')))}': Start Year implies claiming after age 70. The IRS permanently caps delayed retirement credits at age 70.")
+        if inc.get("Category") == "Social Security":
+            s_yr = inc.get("Start Year")
+            if s_yr is not None and not pd.isna(s_yr) and str(s_yr).strip() != "":
+                if safe_num(s_yr) > (st.session_state.get('my_dob', datetime.date(1980, 1, 1)).year + 70):
+                    st.warning(
+                        f"⚠️ Social Security '{html.escape(str(inc.get('Description', 'Unknown')))}': Start Year implies claiming after age 70. The IRS permanently caps delayed retirement credits at age 70.")
 
     render_total("Total Pre-Tax Income", edited_inc['Annual Amount ($)'])
 
@@ -2495,8 +2514,6 @@ def render_simulation():
                         "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
             with t2:
                 st.subheader("Detailed Net Worth Log")
-                st.markdown(
-                    "Track the exact, year-by-year balance of every single asset account and liability to trace your drawdowns and growth.")
                 ast_c = sorted([c for c in df_nw.columns if c.startswith("Asset:")])
                 ord_nw = ["Year", "Age (Primary)", "Age (Spouse)"] + ast_c + ["Total Liquid Assets",
                                                                               "Total Real Estate Equity",
