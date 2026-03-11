@@ -241,43 +241,7 @@ def render_total(label, series):
         unsafe_allow_html=True)
 
 
-# --- DESIGN SYSTEM & CSS ---
-st.markdown("""
-<style>
-:root {
-    --primary: #6366f1; --primary-dark: #4f46e5; --primary-light: #e0e7ff; 
-    --success: #10b981; --warning: #f59e0b; --danger: #ef4444; 
-    --surface: #ffffff; --border: #e2e8f0; --text-primary: #0f172a; --text-secondary: #64748b; 
-    --radius-sm: 8px; --radius-md: 12px; --radius-lg: 20px; 
-    --shadow-sm: 0 1px 3px rgba(0,0,0,0.08); --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
-}
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-h1, h2, h3, h4, h5, h6, p, label, .stMarkdown { font-family: 'Inter', sans-serif !important; }
-h1 { font-size: 2.2rem !important; font-weight: 900 !important; background: linear-gradient(135deg, var(--primary-dark), #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; }
-h2 { font-weight: 800 !important; color: var(--text-primary) !important; }
-h3 { font-weight: 700 !important; color: var(--text-primary) !important; }
-[data-testid="stSidebar"] { background: var(--text-primary) !important; border-right: none !important; }
-[data-testid="stSidebar"] h2, [data-testid="stSidebar"] span, [data-testid="stSidebar"] p { color: white !important; }
-[data-testid="stSidebar"] .stRadio label { padding: 10px 16px !important; border-radius: var(--radius-sm) !important; transition: background 0.15s ease !important; cursor: pointer !important; }
-[data-testid="stSidebar"] .stRadio label:hover { background: rgba(255,255,255,0.1) !important; }
-[data-testid="stMetric"] { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: var(--radius-md) !important; padding: 20px !important; box-shadow: var(--shadow-sm) !important; }
-[data-testid="stMetricValue"] { color: var(--primary-dark) !important; font-size: 1.75rem !important; font-weight: 800 !important; }
-[data-testid="stDataEditor"] { border-radius: var(--radius-md) !important; border: 1px solid var(--border) !important; overflow: hidden !important; box-shadow: var(--shadow-sm) !important; }
-[data-testid="stDataEditor"] tr:hover td { background: #f8fafc !important; }
-[data-testid="stTabs"] button { font-weight: 600 !important; border-radius: var(--radius-sm) var(--radius-sm) 0 0 !important; }
-[data-testid="stTextInput"] input, [data-testid="stNumberInput"] input { border-radius: var(--radius-sm) !important; border-color: var(--border) !important; font-size: 0.95rem !important; transition: border-color 0.15s ease, box-shadow 0.15s ease !important; }
-[data-testid="stTextInput"] input:focus, [data-testid="stNumberInput"] input:focus { border-color: var(--primary) !important; box-shadow: 0 0 0 3px var(--primary-light) !important; }
-[data-testid="stProgress"] > div > div { background: linear-gradient(90deg, var(--primary), #7c3aed) !important; border-radius: 999px !important; }
-[data-testid="stPlotlyChart"] { border-radius: 16px !important; overflow: hidden !important; box-shadow: 0 2px 12px rgba(0,0,0,0.06) !important; background: white; border: 1px solid var(--border); padding: 10px; }
-div[data-testid="stExpander"] { background-color: white !important; border: 1px solid var(--border) !important; border-radius: var(--radius-md) !important; box-shadow: var(--shadow-sm) !important; }
-div.stButton > button { border-radius: 8px !important; font-weight: 600 !important; }
-.card { background: white; padding: 20px; border-radius: 12px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
-.info-text { font-size: 0.9rem; color: #64748b; }
-@media (max-width: 768px) { [data-testid="column"] { min-width: 100% !important; } button { min-height: 48px !important; } [data-testid="stMetricValue"] { font-size: 1.4rem !important; } }
-</style>
-""", unsafe_allow_html=True)
-
-# --- 2. FIREBASE & SESSION INIT ---
+# --- 1. FIREBASE & SESSION CORE ---
 if 'firebase_enabled' not in st.session_state:
     st.session_state['firebase_enabled'] = True
     if not firebase_admin._apps:
@@ -711,6 +675,12 @@ def run_simulation(mkt_sequence, ctx_input):
         return current_shortfall - net_cash, tax_inc
 
     if ctx['max_years'] <= 0: return [], [], [], {}
+    irs_uniform_table = {73: 26.5, 74: 25.5, 75: 24.6, 76: 23.7, 77: 22.9, 78: 22.0, 79: 21.1, 80: 20.2, 81: 19.4,
+                         82: 18.5, 83: 17.7, 84: 16.8, 85: 16.0, 86: 15.2, 87: 14.4, 88: 13.7, 89: 12.9, 90: 12.2,
+                         91: 11.5, 92: 10.8, 93: 10.1, 94: 9.5, 95: 8.9, 96: 8.4, 97: 7.8, 98: 7.3, 99: 6.8, 100: 6.4,
+                         101: 6.0, 102: 5.6, 103: 5.2, 104: 4.9, 105: 4.6, 106: 4.3, 107: 4.1, 108: 3.9, 109: 3.7,
+                         110: 3.5, 111: 3.4, 112: 3.3, 113: 3.1, 114: 3.0, 115: 2.9, 116: 2.8, 117: 2.7, 118: 2.5,
+                         119: 2.3, 120: 2.0}
 
     sim_assets = [{"Account Name": a.get("Account Name"), "Type": a.get("Type"), "Owner": a.get("Owner", "Me"),
                    "bal": safe_num(a.get("Current Balance ($)")),
@@ -1079,7 +1049,9 @@ def run_simulation(mkt_sequence, ctx_input):
 
                 if ctx['has_spouse'] and not (is_my_alive and is_spouse_alive) and freq != "One-Time" and cat in [
                     "Food", "Utilities", "Transportation"]:
-                    if year >= ctx['primary_retire_year']:
+                    survivor_retired = (not is_my_alive and year >= ctx['spouse_retire_year']) or (
+                                not is_spouse_alive and year >= ctx['primary_retire_year'])
+                    if survivor_retired:
                         inflated_amt *= WIDOW_EXPENSE_MULTIPLIER
 
                 primary_on_medicare = is_my_alive and my_current_age >= 65
@@ -1256,7 +1228,6 @@ def run_simulation(mkt_sequence, ctx_input):
                             a['bal'] -= convert
                             total_converted += convert
 
-                            # Tax is explicitly deducted from liquid cash to avoid silent waterfall accumulation
                             tax_cost = convert * est_tax_rate
                             for ca in sim_assets:
                                 if tax_cost <= 0: break
@@ -1282,6 +1253,7 @@ def run_simulation(mkt_sequence, ctx_input):
 
             if total_converted > 0:
                 pre_tax_ord += total_converted
+                tax_base_ord += total_converted
                 yd["Roth Conversion Amount"] = total_converted
 
         # RECALCULATE QBI AFTER ROTH CONVERSION INCREASES MAGI
@@ -1747,6 +1719,11 @@ def render_income():
 def render_assets():
     section_header("Assets, Debts & Net Worth",
                    "Construct your balance sheet. The AI draws down these buckets dynamically.", "🏦")
+
+    edited_re = pd.DataFrame(st.session_state.get('real_estate_data', []))
+    edited_biz = pd.DataFrame(st.session_state.get('business_data', []))
+    edited_ast = pd.DataFrame(st.session_state.get('liquid_assets_data', []))
+    edited_debt = pd.DataFrame(st.session_state.get('liabilities_data', []))
 
     tab_re, tab_biz, tab_ast, tab_debt = st.tabs(
         ["🏢 Real Estate", "💼 Business Interests", "🏦 Liquid Assets", "💳 Debts & Loans"])
@@ -2496,7 +2473,7 @@ def render_ai():
                     st.warning("Please run the baseline simulation first on the Dashboard or Simulation tab.")
 
         if 'ai_analysis_report' in st.session_state:
-            st.info(st.session_state['ai_analysis_report'])
+            st.markdown(st.session_state['ai_analysis_report'].replace('$', r'\$'))
 
     with tab_whatif:
         what_if_query = st.text_area(
@@ -2522,7 +2499,7 @@ def render_ai():
                     st.warning("Please run the baseline simulation first.")
 
         if 'what_if_analysis_report' in st.session_state:
-            st.success(st.session_state['what_if_analysis_report'])
+            st.markdown(st.session_state['what_if_analysis_report'].replace('$', r'\$'))
 
 
 def render_faq():
