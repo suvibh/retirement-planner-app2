@@ -983,6 +983,7 @@ def run_simulation(mkt_sequence, ctx_input):
         if not is_my_alive and not is_spouse_alive:
             break
 
+        # Base Milestones
         if ctx['has_spouse'] and not is_spouse_alive and not spouse_died_notified:
             if year not in milestones_by_year: milestones_by_year[year] = []
             milestones_by_year[year].append(
@@ -1773,7 +1774,6 @@ def render_dashboard():
 
     st.divider()
 
-    # --- DYNAMIC SANKEY SLIDER ---
     c_sank1, c_sank2 = st.columns([3, 1])
     with c_sank1:
         st.write("#### 🌊 Cash Flow Visualizer")
@@ -1827,7 +1827,7 @@ def render_dashboard():
                                                textfont=dict(color="black", size=12),
                                                link=dict(source=source, target=target, value=value,
                                                          color=link_colors))])
-        fig_sankey.update_layout(height=800, margin=dict(l=0, r=0, t=30, b=0), font=dict(size=12))
+        fig_sankey.update_layout(height=900, margin=dict(l=0, r=0, t=30, b=50), font=dict(size=12))
         st.plotly_chart(fig_sankey, use_container_width=True)
 
 
@@ -2183,28 +2183,6 @@ def render_cashflows():
     st.divider()
     df_exp = pd.DataFrame(st.session_state.get('lifetime_expenses', []))
 
-    # Calculate pre/post retirement averages safely
-    pre_ret_monthly = 0
-    post_ret_monthly = 0
-    if not df_exp.empty:
-        for idx, row in df_exp.iterrows():
-            amt = safe_num(row.get("Amount ($)", 0))
-            if row.get("Frequency") == "Yearly": amt = amt / 12.0
-
-            if row.get("Frequency") != "One-Time" and row.get("Start Phase") != "Custom Year":
-                if row.get("Start Phase") == "Now" and row.get("End Phase") in ["At Retirement", "End of Life"]:
-                    pre_ret_monthly += amt
-                if (row.get("Start Phase") == "At Retirement" and row.get("End Phase") == "End of Life") or (
-                        row.get("Start Phase") == "Now" and row.get("End Phase") == "End of Life"):
-                    post_ret_monthly += amt
-
-    c_met1, c_met2 = st.columns(2)
-    c_met1.metric("Avg. Monthly Burn (Pre-Retirement)", f"${pre_ret_monthly:,.0f}",
-                  help="Ignores short-term custom-year expenses.")
-    c_met2.metric("Avg. Monthly Burn (Post-Retirement)", f"${post_ret_monthly:,.0f}",
-                  help="Ignores short-term custom-year expenses.")
-    st.divider()
-
     if df_exp.empty: df_exp = pd.DataFrame(
         columns=["Description", "Category", "Frequency", "Amount ($)", "Start Phase", "Start Year", "End Phase",
                  "End Year", "AI Estimate?"])
@@ -2290,6 +2268,27 @@ def render_cashflows():
                 finally:
                     if res: st.rerun()
 
+    st.divider()
+    pre_ret_monthly = 0
+    post_ret_monthly = 0
+    if not edited_exp.empty:
+        for idx, row in edited_exp.iterrows():
+            amt = safe_num(row.get("Amount ($)", 0))
+            if row.get("Frequency") == "Yearly": amt = amt / 12.0
+
+            if row.get("Frequency") != "One-Time" and row.get("Start Phase") != "Custom Year":
+                if row.get("Start Phase") == "Now" and row.get("End Phase") in ["At Retirement", "End of Life"]:
+                    pre_ret_monthly += amt
+                if (row.get("Start Phase") == "At Retirement" and row.get("End Phase") == "End of Life") or (
+                        row.get("Start Phase") == "Now" and row.get("End Phase") == "End of Life"):
+                    post_ret_monthly += amt
+
+    c_met1, c_met2 = st.columns(2)
+    c_met1.metric("Avg. Monthly Burn (Pre-Retirement)", f"${pre_ret_monthly:,.0f}",
+                  f"${pre_ret_monthly * 12:,.0f} Annually")
+    c_met2.metric("Avg. Monthly Burn (Post-Retirement)", f"${post_ret_monthly:,.0f}",
+                  f"${post_ret_monthly * 12:,.0f} Annually")
+
 
 def render_simulation():
     section_header("Simulation", "Fine-tune your timeline and run Monte Carlo scenarios.", "📈")
@@ -2299,24 +2298,24 @@ def render_simulation():
             sub_c1, sub_c2 = st.columns([5, 2])
             widget_key = f"in_{state_key}"
 
-            with sub_c2:
-                st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-                if st.button("✨ AI", key=f"btn_{state_key}", help=f"AI Estimate for {label}", use_container_width=True):
-                    if check_ai_rate_limit():
-                        res = None
-                        try:
-                            with st.spinner("AI estimating..."):
-                                enhanced_prompt = prompt + " CRITICAL INSTRUCTION: You MUST return the value as a percentage number between 0 and 100 (e.g., return 5.5 for 5.5%, DO NOT return 0.055). Return ONLY a JSON object."
-                                res = call_gemini_json(enhanced_prompt)
-                                if res and state_key in res:
-                                    new_val = float(res[state_key])
-                                    if 0 < new_val < 0.30: new_val *= 100.0
-                                    new_assumptions = st.session_state.get('assumptions', {}).copy()
-                                    new_assumptions[state_key] = new_val
-                                    st.session_state['assumptions'] = new_assumptions
-                                    mark_dirty()
-                        finally:
-                            if res: st.rerun()
+            sub_c2.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            if sub_c2.button("✨ AI", key=f"btn_{state_key}", help=f"AI Estimate for {label}", use_container_width=True,
+                             type="primary"):
+                if check_ai_rate_limit():
+                    res = None
+                    try:
+                        with st.spinner("AI estimating..."):
+                            enhanced_prompt = prompt + " CRITICAL INSTRUCTION: You MUST return the value as a percentage number between 0 and 100 (e.g., return 5.5 for 5.5%, DO NOT return 0.055). Return ONLY a JSON object."
+                            res = call_gemini_json(enhanced_prompt)
+                            if res and state_key in res:
+                                new_val = float(res[state_key])
+                                if 0 < new_val < 0.30: new_val *= 100.0
+                                new_assumptions = st.session_state.get('assumptions', {}).copy()
+                                new_assumptions[state_key] = new_val
+                                st.session_state['assumptions'] = new_assumptions
+                                mark_dirty()
+                    finally:
+                        if res: st.rerun()
 
             val = sub_c1.number_input(label, step=0.1, key=widget_key,
                                       value=float(st.session_state.get('assumptions', {}).get(state_key, 0.0)))
@@ -2502,15 +2501,7 @@ def render_simulation():
 
             c_status, c_ai_btn = st.columns([3, 2])
             with c_status:
-                if deplete_year is not None:
-                    st.error(
-                        f"🔴 **Liquidity Crisis:** You completely exhaust your liquid cash in **Year {int(deplete_year)}** (Age {int(deplete_age)}) and begin accumulating high-interest shortfall debt.")
-                elif final_nw >= 1000000:
-                    st.success(
-                        f"🟢 **On Track:** Projected Net Worth at timeline end is **${final_nw:,.0f}**. Your assets comfortably outlive your life expectancy.")
-                elif final_nw > 0:
-                    st.warning(
-                        f"🟡 **Caution:** Projected Net Worth at timeline end is **${final_nw:,.0f}**. You are solvent, but with a narrow margin of safety.")
+                render_status_bar(deplete_year, deplete_age, final_nw)
 
             if HAS_PLOTLY:
                 current_year = datetime.date.today().year
@@ -2740,8 +2731,6 @@ def render_simulation():
 def render_ai():
     section_header("AI Fiduciary Health & What-If Simulator",
                    "Analyze your cash flows chronologically to provide tactical, phase-by-phase advice.", "🤖")
-    st.warning(
-        "🔒 **Privacy Notice:** Running these AI scenarios sends your anonymized simulation timeline data (income, expenses, net worth over time) to Google's Gemini AI for processing.")
 
     df_sim = st.session_state.get('df_sim_display')
     if df_sim is not None and not df_sim.empty:
