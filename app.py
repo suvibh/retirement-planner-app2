@@ -468,69 +468,98 @@ initialize_session_state()
 
 
 # --- MODULE LEVEL SIMULATION CORE (CACHED) ---
-def build_sim_context():
-    current_year = datetime.date.today().year
-    my_age = relativedelta(datetime.date.today(), st.session_state.get('my_dob', datetime.date(1980, 1, 1))).years
-    spouse_age = relativedelta(datetime.date.today(), st.session_state.get('spouse_dob', datetime.date(1982, 1,
-                                                                                                       1))).years if st.session_state.get(
-        'has_spouse') else 0
-    my_birth_year = st.session_state.get('my_dob', datetime.date(1980, 1, 1)).year
-    spouse_birth_year = st.session_state.get('spouse_dob', datetime.date(1982, 1, 1)).year if st.session_state.get(
-        'has_spouse') else current_year
-
-    ret_age, s_ret_age = st.session_state.get('ret_age', 65), st.session_state.get('s_ret_age', 65)
-    my_life_exp_val, spouse_life_exp_val = st.session_state.get('my_life_exp', 95), (
-        st.session_state.get('spouse_life_exp', 95) if st.session_state.get('has_spouse') else 0)
-
-    primary_retire_year = my_birth_year + ret_age
-    spouse_retire_year = spouse_birth_year + s_ret_age if st.session_state.get('has_spouse') else 9999
-    primary_end_year = my_birth_year + my_life_exp_val
-    spouse_end_year = spouse_birth_year + spouse_life_exp_val if st.session_state.get('has_spouse') else current_year
-
-    max_year = max(primary_end_year, spouse_end_year)
-    max_years = max_year - current_year
-
-    primary_rmd_age = 73 if my_birth_year <= 1959 else 75
-    spouse_rmd_age = 73 if spouse_birth_year <= 1959 else 75
-
-    asm = st.session_state.get('assumptions', {})
-    df_re = pd.DataFrame(st.session_state.get('real_estate_data', []))
-    owns_home = not df_re[df_re[
-                              "Is Primary Residence?"] == True].empty if not df_re.empty and "Is Primary Residence?" in df_re.columns else False
-    df_debt = pd.DataFrame(st.session_state.get('liabilities_data', []))
-    debt_records = [d for d in df_debt.to_dict('records') if
-                    d.get("Debt Name") and safe_num(d.get("Current Balance ($)")) > 0] if not df_debt.empty else []
-
-    return {
-        'current_year': current_year, 'my_birth_year': my_birth_year, 'spouse_birth_year': spouse_birth_year,
-        'primary_end_year': primary_end_year, 'spouse_end_year': spouse_end_year,
-        'has_spouse': st.session_state.get('has_spouse', False),
-        'primary_retire_year': primary_retire_year, 'spouse_retire_year': spouse_retire_year,
-        'primary_rmd_age': primary_rmd_age, 'spouse_rmd_age': spouse_rmd_age,
-        'mkt': float(asm.get('market_growth', 7.0)), 'infl': float(asm.get('inflation', 3.0)),
-        'infl_hc': float(asm.get('inflation_healthcare', 5.5)), 'infl_ed': float(asm.get('inflation_education', 4.5)),
-        'inc_g': float(asm.get('income_growth', 3.0)), 'prop_g': float(asm.get('property_growth', 3.0)),
-        'rent_g': float(asm.get('rent_growth', 3.0)), 'cur_t': float(asm.get('current_tax_rate', 5.0)),
-        'ret_t': float(asm.get('retire_tax_rate', 0.0)),
-        'stress_test': asm.get('stress_test', False), 'glidepath': asm.get('glidepath', True),
-        'medicare_gap': asm.get('medicare_gap', True), 'medicare_cliff': asm.get('medicare_cliff', True),
-        'ltc_shock': asm.get('ltc_shock', False),
-        'roth_conversions': asm.get('roth_conversions', False), 'roth_target': asm.get('roth_target', '24%'),
-        'active_withdrawal_strategy': asm.get('withdrawal_strategy', 'Standard'),
-        'owns_home': owns_home, 'kids_data': st.session_state.get('kids_data', []),
-        'max_years': max_years, 'max_year': max_year, 'my_life_exp_val': my_life_exp_val,
-        'spouse_life_exp_val': spouse_life_exp_val,
-        'ast_records': scrub_records(st.session_state.get('liquid_assets_data', [])),
-        'debt_records': scrub_records(debt_records),
-        're_records': scrub_records(st.session_state.get('real_estate_data', [])),
-        'biz_records': scrub_records(st.session_state.get('business_data', [])),
-        'inc_records': scrub_records(st.session_state.get('income_data', [])),
-        'exp_records': scrub_records(st.session_state.get('lifetime_expenses', [])),
-        'my_age': my_age, 'spouse_age': spouse_age
-    }
-
-
 def run_simulation(mkt_sequence, ctx):
+    def calc_federal_tax(ordinary_income, is_mfj, year_offset, inflation_rate):
+        infl_factor = (1 + inflation_rate / 100) ** year_offset
+        std_deduction = (29200 if is_mfj else 14600) * infl_factor
+        taxable_ordinary = max(0, ordinary_income - std_deduction)
+
+        b_mfj = [(23200, 0.10), (94300, 0.12), (201050, 0.22), (383900, 0.24), (487450, 0.32), (731200, 0.35),
+                 (float('inf'), 0.37)]
+        b_single = [(11600, 0.10), (47150, 0.12), (100525, 0.22), (191950, 0.24), (243725, 0.32), (609350, 0.35),
+                    (float('inf'), 0.37)]
+        brackets = b_mfj if is_mfj else b_single
+
+        ord_tax, prev_limit = 0, 0
+        for limit, rate in brackets:
+            adj_limit = limit * infl_factor
+            if taxable_ordinary > prev_limit:
+                taxable_in_bracket = min(taxable_ordinary, adj_limit) - prev_limit
+                ord_tax += taxable_in_bracket * rate
+            prev_limit = adj_limit
+
+        marginal_rate = 0.10
+        for limit, rate in brackets:
+            if taxable_ordinary < limit * infl_factor:
+                marginal_rate = rate
+                break
+        if taxable_ordinary > brackets[-1][0] * infl_factor: marginal_rate = 0.37
+        return ord_tax, marginal_rate
+
+    def get_ltcg_rate(ordinary_income, is_mfj, year_offset, inflation_rate):
+        infl_factor = (1 + inflation_rate / 100) ** year_offset
+        niit_threshold = ADDL_MED_TAX_THRESHOLD * infl_factor
+        cg_threshold_0 = 94050 * infl_factor if is_mfj else 47025 * infl_factor
+        cg_threshold_15 = 583750 * infl_factor if is_mfj else 518900 * infl_factor
+
+        if ordinary_income < cg_threshold_0:
+            base_rate = 0.0
+        elif ordinary_income < cg_threshold_15:
+            base_rate = 0.15
+        else:
+            base_rate = 0.20
+        niit = 0.038 if ordinary_income > niit_threshold else 0.0
+        return base_rate + niit
+
+    def get_ss_multi(birth_year, claim_year):
+        fra = 67 if birth_year >= 1960 else (66 + (min(birth_year - 1954, 10) / 12.0) if birth_year >= 1955 else 66)
+        claim_age = claim_year - birth_year
+        if claim_age < fra:
+            months_early = (fra - claim_age) * 12
+            if months_early <= 36:
+                return 1.0 - (months_early * (5 / 9 * 0.01))
+            else:
+                return 1.0 - (36 * (5 / 9 * 0.01)) - ((months_early - 36) * (5 / 12 * 0.01))
+        elif claim_age > fra:
+            months_late = min((claim_age - fra) * 12, (70 - fra) * 12)  # Strict cap at age 70 relative to FRA
+            return 1.0 + (months_late * (2 / 3 * 0.01))
+        return 1.0
+
+    def _withdraw(a, current_shortfall, tax_treatment, ctx, my_current_age, spouse_current_age, active_mfj, year_offset,
+                  tax_base_ord, marginal_rate, state_tax_rate, year):
+        if a['bal'] <= 0 or current_shortfall <= 0: return current_shortfall, 0.0
+
+        eff_tax = 0.0
+        if tax_treatment == 'cg':
+            is_step_up = ctx['has_spouse'] and (
+                        not (year <= ctx['primary_end_year']) or not (year <= ctx['spouse_end_year']))
+            eff_tax = 0.0 if is_step_up else (
+                        get_ltcg_rate(tax_base_ord, active_mfj, year_offset, ctx['infl']) + (state_tax_rate / 100.0))
+        elif tax_treatment == 'ordinary':
+            o_acct = a.get('Owner', 'Me')
+            o_age = my_current_age if o_acct in ['Me', 'Joint'] else spouse_current_age
+            o_ret_yr = ctx['primary_retire_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_retire_year']
+            o_birth = ctx['my_birth_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_birth_year']
+            rule_of_55 = (year >= o_ret_yr) and ((o_ret_yr - o_birth) >= 55)
+            penalty = 0.10 if (o_age < 59.5 and not rule_of_55) else 0.0
+            eff_tax = min(marginal_rate + (state_tax_rate / 100.0) + penalty, 0.99)
+        elif tax_treatment == 'free':
+            o_acct = a.get('Owner', 'Me')
+            o_age = my_current_age if o_acct in ['Me', 'Joint'] else spouse_current_age
+            o_ret_yr = ctx['primary_retire_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_retire_year']
+            o_birth = ctx['my_birth_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_birth_year']
+            rule_of_55 = (year >= o_ret_yr) and ((o_ret_yr - o_birth) >= 55)
+            penalty = 0.10 if (
+                        a.get('Type') in ['Roth 401(k)', 'Roth IRA'] and o_age < 59.5 and not rule_of_55) else 0.0
+            eff_tax = min(penalty, 0.99)
+
+        req_gross = current_shortfall / max(0.01, (1.0 - eff_tax))
+        withdrawn = min(a['bal'], req_gross)
+        a['bal'] -= withdrawn
+        tax_inc = withdrawn * eff_tax
+        net_cash = withdrawn - tax_inc
+        return current_shortfall - net_cash, tax_inc
+
     if ctx['max_years'] <= 0: return [], [], [], {}
     irs_uniform_table = {73: 26.5, 74: 25.5, 75: 24.6, 76: 23.7, 77: 22.9, 78: 22.0, 79: 21.1, 80: 20.2, 81: 19.4,
                          82: 18.5, 83: 17.7, 84: 16.8, 85: 16.0, 86: 15.2, 87: 14.4, 88: 13.7, 89: 12.9, 90: 12.2,
