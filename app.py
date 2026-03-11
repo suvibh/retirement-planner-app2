@@ -383,7 +383,7 @@ def call_gemini_json(prompt, retries=3):
 
     for attempt in range(retries):
         try:
-            res = requests.post(url, json=payload, timeout=15)
+            res = requests.post(url, json=payload, timeout=45)
             res.raise_for_status()
             res_json = res.json()
             if "error" in res_json:
@@ -415,7 +415,7 @@ def call_gemini_text(prompt, retries=3):
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     for attempt in range(retries):
         try:
-            res = requests.post(url, json=payload, timeout=20)
+            res = requests.post(url, json=payload, timeout=60)
             res.raise_for_status()
             res_json = res.json()
             if "error" in res_json:
@@ -528,7 +528,7 @@ if 'user_email' not in st.session_state:
         tab1, tab2 = st.tabs(["Secure Login", "New Account"])
         with tab1:
             le, lp = st.text_input("Email", key="le"), st.text_input("Password", type="password", key="lp")
-            if st.button("Sign In", type="primary", use_container_width=True):
+            if st.button("Sign In", type="primary", width="stretch"):
                 res = sign_in(le, lp)
                 if "idToken" in res:
                     st.session_state.pop('logged_out_flag', None)
@@ -542,7 +542,7 @@ if 'user_email' not in st.session_state:
                     st.error("Login failed. Please check your email and password.")
         with tab2:
             se, sp = st.text_input("New Email", key="se"), st.text_input("New Password", type="password", key="sp")
-            if st.button("Create Account", type="primary", use_container_width=True):
+            if st.button("Create Account", type="primary", width="stretch"):
                 if len(sp) >= 6:
                     res = sign_up(se, sp)
                     if "idToken" in res:
@@ -556,7 +556,7 @@ if 'user_email' not in st.session_state:
                 else:
                     st.warning("Min 6 characters.")
         st.divider()
-        if st.button("🚀 Try the Demo (Guest Mode)", use_container_width=True):
+        if st.button("🚀 Try the Demo (Guest Mode)", width="stretch"):
             st.session_state.pop('logged_out_flag', None)
             st.session_state['user_email'] = "guest_demo";
             st.session_state['user_data'] = {}
@@ -1290,6 +1290,7 @@ def run_simulation(mkt_sequence, ctx_input):
                             a['bal'] -= convert
                             total_converted += convert
 
+                            # Tax is explicitly deducted from liquid cash to avoid silent waterfall accumulation
                             tax_cost = convert * est_tax_rate
                             for ca in sim_assets:
                                 if tax_cost <= 0: break
@@ -2608,9 +2609,13 @@ with st.sidebar:
         save_profile()
 
     if st.button("Logout", type="secondary", width="stretch"):
-        cookie_manager.delete("user_email")
+        if cookie_manager.get("user_email"):
+            cookie_manager.delete("user_email")
+        for key in list(st.session_state.keys()):
+            if key != 'logged_out_flag':
+                del st.session_state[key]
         st.session_state['logged_out_flag'] = True
-        st.session_state.clear()
+        time.sleep(0.5)
         st.rerun()
 
 # Execute selected page
