@@ -59,7 +59,7 @@ if GA_MEASUREMENT_ID:
 
 
 # =====================================================================
-# 1. CORE HELPER FUNCTIONS & UI COMPONENTS (HOISTED FOR SCOPE SAFETY)
+# 1. CORE HELPER FUNCTIONS & UI COMPONENTS
 # =====================================================================
 
 def update_state(key, val):
@@ -704,7 +704,7 @@ def run_simulation(mkt_sequence, ctx_input):
 
     def _withdraw(a, current_shortfall, tax_treatment, ctx, my_current_age, spouse_current_age, active_mfj, year_offset,
                   tax_base_ord, marginal_rate, state_tax_rate, year, yd):
-        if a['bal'] <= 0 or current_shortfall <= 0: return current_shortfall, 0.0
+        if a['bal'] <= 0 or current_shortfall <= 0: return current_shortfall, 0.0, 0.0
 
         eff_tax = 0.0
         if tax_treatment == 'cg':
@@ -740,7 +740,7 @@ def run_simulation(mkt_sequence, ctx_input):
             yd[f"Income: Withdrawal ({a.get('Account Name', 'Account')})"] = yd.get(
                 f"Income: Withdrawal ({a.get('Account Name', 'Account')})", 0) + withdrawn
 
-        return current_shortfall - net_cash, tax_inc
+        return current_shortfall - net_cash, tax_inc, withdrawn
 
     if ctx['max_years'] <= 0: return [], [], [], {}
 
@@ -885,7 +885,8 @@ def run_simulation(mkt_sequence, ctx_input):
         # RMDs
         rmd_income = 0
         for a in sim_assets:
-            if a.get('Type') in ['Traditional 401(k)', 'Traditional 401k/IRA', 'Traditional IRA'] and a['bal'] > 0:
+            if a.get('Type', '').strip() in ['Traditional 401(k)', 'Traditional 401k/IRA', 'Traditional IRA'] and a[
+                'bal'] > 0:
                 owner = a.get('Owner', 'Me')
                 owner_age = my_current_age if owner in ['Me', 'Joint'] else spouse_current_age
                 owner_alive = is_my_alive if owner in ['Me', 'Joint'] else is_spouse_alive
@@ -1179,7 +1180,7 @@ def run_simulation(mkt_sequence, ctx_input):
 
                     if target_kid:
                         for a in sim_assets:
-                            if a.get('Type') == '529 Plan' and a['bal'] > 0 and re.search(
+                            if a.get('Type', '').strip() == '529 Plan' and a['bal'] > 0 and re.search(
                                     rf'\b{re.escape(target_kid)}\b', str(a.get('Account Name', '')).lower()):
                                 pull = min(a['bal'], amount_to_cover)
                                 a['bal'] -= pull
@@ -1189,7 +1190,7 @@ def run_simulation(mkt_sequence, ctx_input):
 
                     if amount_to_cover > 0:
                         for a in sim_assets:
-                            if a.get('Type') == '529 Plan' and a['bal'] > 0:
+                            if a.get('Type', '').strip() == '529 Plan' and a['bal'] > 0:
                                 pull = min(a['bal'], amount_to_cover)
                                 a['bal'] -= pull
                                 amount_to_cover -= pull
@@ -1362,7 +1363,8 @@ def run_simulation(mkt_sequence, ctx_input):
 
         # Execute Mid-Year Growth
         for a in sim_assets:
-            g = float(a.get('growth')) if pd.notna(a.get('growth')) and str(a.get('growth')).strip() != "" else (
+            g = float(a.get('growth')) if pd.notna(a.get('growth')) and str(a.get('growth')).strip() != "" and str(
+                a.get('growth')).strip() != "None" else (
                 0.0 if a.get('Type') in ['Checking/Savings', 'HYSA', 'Unallocated Cash'] else mkt_glide)
             add = a.pop('approved_oop_contrib', 0)
             match = a.pop('match_contrib_queue', 0)
@@ -1415,21 +1417,23 @@ def run_simulation(mkt_sequence, ctx_input):
                         {"desc": "📉 Medicare IRMAA Surcharge Tier Jumped", "amt": total_irmaa, "type": "system"})
                     last_irmaa_tier = total_irmaa
 
-        # Waterfall
+        # Waterfall & Shortfall Logic
         if user_out_of_pocket_contribs > 0:
             yd["Expense: Portfolio Contributions"] = user_out_of_pocket_contribs
 
-        cash_outflows = total_exp + user_out_of_pocket_contribs + total_tax
-        net_cash_flow = annual_inc - cash_outflows
-        yd["Net Savings"] = net_cash_flow
+        organic_cash_outflows = total_exp + user_out_of_pocket_contribs + total_tax
+        organic_net_cash_flow = annual_inc - organic_cash_outflows
+        yd["Organic Net Savings"] = organic_net_cash_flow
 
-        if net_cash_flow > 0:
-            yd["Cashflow: Surplus Reinvested"] = net_cash_flow
+        total_withdrawals = 0
+
+        if organic_net_cash_flow > 0:
+            yd["Expense: Surplus Reinvested"] = organic_net_cash_flow
             if unfunded_debt_bal > 0:
-                payoff = min(net_cash_flow, unfunded_debt_bal)
+                payoff = min(organic_net_cash_flow, unfunded_debt_bal)
                 unfunded_debt_bal -= payoff
-                net_cash_flow -= payoff
-            if net_cash_flow > 0 and sim_assets:
+                organic_net_cash_flow -= payoff
+            if organic_net_cash_flow > 0 and sim_assets:
                 taxable_acct = next((a for a in sim_assets if a.get('Type') == 'Brokerage (Taxable)'), None)
                 if not taxable_acct:
                     taxable_acct = next(
@@ -1437,37 +1441,40 @@ def run_simulation(mkt_sequence, ctx_input):
                         None)
 
                 if taxable_acct:
-                    taxable_acct['bal'] += net_cash_flow
+                    taxable_acct['bal'] += organic_net_cash_flow
                 else:
                     new_cash_acct = {"Account Name": "Unallocated Cash", "Type": "Checking/Savings", "Owner": "Me",
-                                     "bal": net_cash_flow, "contrib": 0.0, "growth": 0.0, "stop_at_ret": False}
+                                     "bal": organic_net_cash_flow, "contrib": 0.0, "growth": 0.0, "stop_at_ret": False}
                     sim_assets.append(new_cash_acct)
 
-        elif net_cash_flow < 0:
-            shortfall = abs(net_cash_flow)
+        elif organic_net_cash_flow < 0:
+            shortfall = abs(organic_net_cash_flow)
 
             for a in sim_assets:
                 if shortfall <= 0: break
                 if a.get('Type') in ['Checking/Savings', 'HYSA', 'Unallocated Cash']:
-                    shortfall, _ = _withdraw(a, shortfall, 'free', ctx, my_current_age, spouse_current_age, active_mfj,
-                                             year_offset, tax_base_ord, marginal_rate, state_tax_rate, year, yd)
+                    shortfall, t_inc, wd = _withdraw(a, shortfall, 'free', ctx, my_current_age, spouse_current_age,
+                                                     active_mfj, year_offset, tax_base_ord, marginal_rate,
+                                                     state_tax_rate, year, yd)
+                    total_withdrawals += wd
 
             if shortfall > 0 and not cash_depleted and not any(a['bal'] > 0 for a in sim_assets if
                                                                a.get('Type') in ['Checking/Savings', 'HYSA',
                                                                                  'Unallocated Cash']):
                 if year not in milestones_by_year: milestones_by_year[year] = []
                 milestones_by_year[year].append(
-                    {"desc": "⚠️ Cash Reserves Depleted. Now drawing from investments.", "amt": 0, "type": "system"})
+                    {"desc": "⚠️ Liquid Bank Cash Depleted. Withdrawing from investments.", "amt": 0, "type": "system"})
                 cash_depleted = True
 
             for a in sim_assets:
                 if shortfall <= 0: break
                 if a.get('Type') == 'Brokerage (Taxable)':
-                    shortfall, t_inc = _withdraw(a, shortfall, 'cg', ctx, my_current_age, spouse_current_age,
-                                                 active_mfj, year_offset, tax_base_ord, marginal_rate, state_tax_rate,
-                                                 year, yd)
+                    shortfall, t_inc, wd = _withdraw(a, shortfall, 'cg', ctx, my_current_age, spouse_current_age,
+                                                     active_mfj, year_offset, tax_base_ord, marginal_rate,
+                                                     state_tax_rate, year, yd)
                     total_tax += t_inc
                     yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
+                    total_withdrawals += wd
 
             trad_types = ['Traditional 401(k)', 'Traditional 401k/IRA', 'Traditional IRA']
             roth_types = ['Roth 401(k)', 'Roth 401k/IRA', 'Roth IRA']
@@ -1494,11 +1501,12 @@ def run_simulation(mkt_sequence, ctx_input):
                                 {"desc": "📉 Began Drawing from Roth/Tax-Free Assets", "amt": 0, "type": "system"})
                             tapped_roth = True
 
-                        shortfall, t_inc = _withdraw(a, shortfall, 'ordinary' if is_trad else 'free', ctx,
-                                                     my_current_age, spouse_current_age, active_mfj, year_offset,
-                                                     tax_base_ord, marginal_rate, state_tax_rate, year, yd)
+                        shortfall, t_inc, wd = _withdraw(a, shortfall, 'ordinary' if is_trad else 'free', ctx,
+                                                         my_current_age, spouse_current_age, active_mfj, year_offset,
+                                                         tax_base_ord, marginal_rate, state_tax_rate, year, yd)
                         total_tax += t_inc
                         yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
+                        total_withdrawals += wd
 
             # Absolute fallback if asset type text string didn't strictly match the lists
             if shortfall > 0:
@@ -1506,11 +1514,12 @@ def run_simulation(mkt_sequence, ctx_input):
                     if shortfall <= 0: break
                     if a['bal'] > 0 and a.get('Type') not in ['Checking/Savings', 'HYSA', 'Unallocated Cash',
                                                               'Brokerage (Taxable)'] + trad_types + tax_free_types:
-                        shortfall, t_inc = _withdraw(a, shortfall, 'ordinary', ctx, my_current_age, spouse_current_age,
-                                                     active_mfj, year_offset, tax_base_ord, marginal_rate,
-                                                     state_tax_rate, year, yd)
+                        shortfall, t_inc, wd = _withdraw(a, shortfall, 'ordinary', ctx, my_current_age,
+                                                         spouse_current_age, active_mfj, year_offset, tax_base_ord,
+                                                         marginal_rate, state_tax_rate, year, yd)
                         total_tax += t_inc
                         yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
+                        total_withdrawals += wd
 
             if shortfall > 0:
                 unfunded_debt_bal += shortfall
@@ -1538,12 +1547,16 @@ def run_simulation(mkt_sequence, ctx_input):
                     {"desc": f"🎓 529 Plan Depleted: {a['Account Name']}", "amt": 0, "type": "system"})
             prev_ast_bals[a['Account Name']] = a['bal']
 
+        yd["Net Savings"] = (annual_inc + total_withdrawals + yd.get("Income: Shortfall Debt Funded", 0)) - (
+                    total_exp + user_out_of_pocket_contribs + yd.get("Expense: Taxes", 0) + yd.get(
+                "Expense: Surplus Reinvested", 0))
+
         sim_res.append({"Year": year, "Age (Primary)": my_current_age, "Age (Spouse)": spouse_current_age,
-                        "Annual Income": annual_inc, "Annual Expenses": total_exp,
-                        "Annual Taxes": yd.get("Expense: Taxes", 0), "Annual Net Savings": yd.get("Net Savings", 0),
-                        "Liquid Assets": liquid_assets_total, "Real Estate Equity": re_equity,
-                        "Business Equity": cur_biz_val, "Debt": -debt_bal_total, "Unfunded Debt": unfunded_debt_bal,
-                        "Net Worth": net_worth})
+                        "Annual Income": annual_inc, "Asset Withdrawals": total_withdrawals,
+                        "Annual Expenses": total_exp, "Annual Taxes": yd.get("Expense: Taxes", 0),
+                        "Annual Net Savings": yd.get("Organic Net Savings", 0), "Liquid Assets": liquid_assets_total,
+                        "Real Estate Equity": re_equity, "Business Equity": cur_biz_val, "Debt": -debt_bal_total,
+                        "Unfunded Debt": unfunded_debt_bal, "Net Worth": net_worth})
         det_res.append(yd)
         nw_det_res.append(nw_yd)
 
@@ -1556,7 +1569,7 @@ def run_simulation(mkt_sequence, ctx_input):
 
 
 @st.cache_data(show_spinner=False)
-def run_cached_simulation(mkt_sequence_tuple, ctx):
+def execute_sim_engine_v5(mkt_sequence_tuple, ctx):
     s_res, d_res, nw_res, milestones = run_simulation(list(mkt_sequence_tuple), ctx)
     return pd.DataFrame(s_res), pd.DataFrame(d_res).fillna(0), pd.DataFrame(nw_res).fillna(0), milestones
 
@@ -1581,7 +1594,7 @@ def render_dashboard():
 
     with st.spinner("Running high-precision simulation engine..."):
         mkt_seq = tuple([sim_ctx['mkt']] * (sim_ctx['max_years'] + 1))
-        df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = run_cached_simulation(mkt_seq, sim_ctx)
+        df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v5(mkt_seq, sim_ctx)
 
         st.session_state['df_sim_nominal'] = df_sim_nominal
         st.session_state['df_det'] = df_det_nominal
@@ -1595,8 +1608,8 @@ def render_dashboard():
     df_sim = df_sim_nominal.copy()
     if st.session_state.get('view_todays_dollars', True):
         discounts = (1 + sim_ctx['infl'] / 100) ** (df_sim['Year'] - sim_ctx['current_year'])
-        cols_sim = ["Annual Income", "Annual Expenses", "Annual Taxes", "Annual Net Savings", "Liquid Assets",
-                    "Real Estate Equity", "Business Equity", "Debt", "Unfunded Debt", "Net Worth"]
+        cols_sim = ["Annual Income", "Asset Withdrawals", "Annual Expenses", "Annual Taxes", "Annual Net Savings",
+                    "Liquid Assets", "Real Estate Equity", "Business Equity", "Debt", "Unfunded Debt", "Net Worth"]
         df_sim[cols_sim] = df_sim[cols_sim].div(discounts, axis=0)
 
     st.session_state['df_sim_display'] = df_sim
@@ -1633,24 +1646,16 @@ def render_dashboard():
     if st.session_state.get('view_todays_dollars', True):
         discount = (1 + sim_ctx['infl'] / 100) ** (row['Year'] - sim_ctx['current_year'])
         for k in row.keys():
-            if isinstance(row[k], (int, float)) and k not in ["Age (Primary)", "Age (Spouse)", "Year"]:
+            if isinstance(row[k], (int, float)) and k not in ["Age", "Age (Primary)", "Age (Spouse)", "Year"]:
                 row[k] /= discount
 
-    inflows = {k.replace('Income: ', ''): v for k, v in row.items() if
-               k.startswith('Income:') and v > 0 and k != 'Income: Shortfall Debt Funded'}
-    outflows = {k.replace('Expense: ', ''): v for k, v in row.items() if
-                k.startswith('Expense:') and v > 0 and k not in ['Expense: Unallocated Surplus Saved']}
-
-    net_savings = row.get('Net Savings', 0)
-    if net_savings > 0:
-        outflows['Cashflow: Surplus Reinvested'] = net_savings
-    elif net_savings < 0:
-        inflows['Shortfall Debt Funded'] = abs(net_savings)
+    inflows = {k.replace('Income: ', ''): v for k, v in row.items() if k.startswith('Income:') and v > 0}
+    outflows = {k.replace('Expense: ', ''): v for k, v in row.items() if k.startswith('Expense:') and v > 0}
 
     in_labels = [f"{html.escape(k)}<br>${v:,.0f}" for k, v in inflows.items()]
     out_labels = [f"{html.escape(k)}<br>${v:,.0f}" for k, v in outflows.items()]
     total_inflow = sum(inflows.values())
-    mid_label = f"Total Cash Pool<br>${total_inflow:,.0f}"
+    mid_label = f"Total Budget Pool<br>${total_inflow:,.0f}"
 
     labels = in_labels + [mid_label] + out_labels
     middle_idx = len(inflows)
@@ -1660,8 +1665,8 @@ def render_dashboard():
         source.append(i);
         target.append(middle_idx);
         value.append(v)
-        node_colors.append('#f43f5e' if k == 'Shortfall Debt Funded' else '#10b981')
-        link_colors.append('rgba(244, 63, 94, 0.4)' if k == 'Shortfall Debt Funded' else 'rgba(16, 185, 129, 0.4)')
+        node_colors.append('#f43f5e' if 'Shortfall Debt' in k else '#10b981')
+        link_colors.append('rgba(244, 63, 94, 0.4)' if 'Shortfall Debt' in k else 'rgba(16, 185, 129, 0.4)')
 
     node_colors.append('#3b82f6')
 
@@ -1669,9 +1674,9 @@ def render_dashboard():
         source.append(middle_idx);
         target.append(middle_idx + 1 + i);
         value.append(v)
-        node_colors.append('#10b981' if k in ['Portfolio Contributions', 'Cashflow: Surplus Reinvested'] else '#f43f5e')
+        node_colors.append('#10b981' if k in ['Portfolio Contributions', 'Surplus Reinvested'] else '#f43f5e')
         link_colors.append('rgba(16, 185, 129, 0.4)' if k in ['Portfolio Contributions',
-                                                              'Cashflow: Surplus Reinvested'] else 'rgba(244, 63, 94, 0.4)')
+                                                              'Surplus Reinvested'] else 'rgba(244, 63, 94, 0.4)')
 
     if total_inflow > 0 and HAS_PLOTLY:
         fig_sankey = go.Figure(data=[go.Sankey(arrangement="snap",
@@ -2282,7 +2287,7 @@ def render_simulation():
         mkt_seq = tuple([sim_ctx['mkt']] * (sim_ctx['max_years'] + 1))
 
         with st.spinner("Running high-precision simulation engine..."):
-            df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = run_cached_simulation(mkt_seq, sim_ctx)
+            df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v5(mkt_seq, sim_ctx)
 
         if not df_sim_nominal.empty:
             df_sim, df_det, df_nw = df_sim_nominal.copy(), df_det_nominal.copy(), df_nw_nominal.copy()
@@ -2292,8 +2297,9 @@ def render_simulation():
             if view_todays_dollars:
                 current_year = datetime.date.today().year
                 discounts = (1 + sim_ctx['infl'] / 100) ** (df_sim['Year'] - current_year)
-                cols_sim = ["Annual Income", "Annual Expenses", "Annual Taxes", "Annual Net Savings", "Liquid Assets",
-                            "Real Estate Equity", "Business Equity", "Debt", "Unfunded Debt", "Net Worth"]
+                cols_sim = ["Annual Income", "Asset Withdrawals", "Annual Expenses", "Annual Taxes",
+                            "Annual Net Savings", "Liquid Assets", "Real Estate Equity", "Business Equity", "Debt",
+                            "Unfunded Debt", "Net Worth"]
                 df_sim[cols_sim] = df_sim[cols_sim].div(discounts, axis=0)
                 cols_det = [c for c in df_det.columns if
                             c not in ["Age (Primary)", "Age (Spouse)", "Year"] and pd.api.types.is_numeric_dtype(
@@ -2413,6 +2419,9 @@ def render_simulation():
                     go.Scatter(x=df_sim["Year"], y=df_sim["Annual Income"], mode='lines', name='Organic Income',
                                line=dict(color='#4f46e5', width=3)))
                 fig_cf.add_trace(
+                    go.Scatter(x=df_sim["Year"], y=df_sim["Asset Withdrawals"], mode='lines', name='Asset Withdrawals',
+                               line=dict(color='#a855f7', width=3, dash='dot')))
+                fig_cf.add_trace(
                     go.Scatter(x=df_sim["Year"], y=df_sim["Annual Expenses"], mode='lines', name='Expenses',
                                line=dict(color='#f43f5e', width=3)))
                 fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Taxes"], mode='lines', name='Taxes',
@@ -2466,15 +2475,15 @@ def render_simulation():
 
                     try:
                         with ThreadPoolExecutor(max_workers=min(mc_runs, 8)) as executor:
-                            futures = {executor.submit(run_simulation, seq, sim_ctx): i for i, seq in
+                            futures = {executor.submit(execute_sim_engine_v5, seq, sim_ctx): i for i, seq in
                                        enumerate(random_sequences)}
 
                             for completed_idx, future in enumerate(concurrent.futures.as_completed(futures)):
                                 res_mc, _, _, _ = future.result()
-                                if res_mc:
-                                    nw_path = [step["Net Worth"] for step in res_mc]
+                                if not res_mc.empty:
+                                    nw_path = res_mc["Net Worth"].tolist()
                                     all_nw_paths.append(nw_path)
-                                    if res_mc[-1].get("Unfunded Debt", 0) <= 0: success_count += 1
+                                    if res_mc.iloc[-1].get("Unfunded Debt", 0) <= 0: success_count += 1
                                 if completed_idx % max(1, mc_runs // 20) == 0: mc_progress.progress(
                                     min(1.0, (completed_idx + 1) / mc_runs))
                     except Exception as e:
@@ -2543,6 +2552,9 @@ def render_simulation():
                         {c: "${:,.0f}" for c in ord_nw if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
                             "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
                 with t3:
+                    json_str = json.dumps(sim_ctx, indent=4)
+                    st.download_button(label="📥 Download JSON Configuration", data=json_str,
+                                       file_name='system_state.json', mime='application/json')
                     st.json(sim_ctx)
 
 
