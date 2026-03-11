@@ -122,7 +122,7 @@ def clean_df(df, primary_key):
         clean_r = {}
         for vk, vv in r.items():
             clean_r[vk] = None if pd.isna(vv) or vv is pd.NA else vv
-        if primary_key in clean_r and str(clean_r.get(primary_key, '')).strip() != "":
+        if primary_key not in clean_r or str(clean_r.get(primary_key, '')).strip() != "":
             valid_rows.append(clean_r)
     return valid_rows
 
@@ -205,22 +205,6 @@ def info_banner(text, type="info"):
         unsafe_allow_html=True)
 
 
-def retirement_health_score(score):
-    color = "#10b981" if score > 75 else "#f59e0b" if score > 50 else "#ef4444"
-    label = "Excellent" if score > 75 else "Needs Work" if score > 50 else "At Risk"
-    st.markdown(f"""
-    <div style='text-align:center; padding:20px; background:white; border-radius:16px; border:1px solid #e2e8f0; box-shadow:0 2px 8px rgba(0,0,0,0.04); font-family: Inter;'>
-        <svg width='140' height='140' viewBox='0 0 140 140'>
-            <circle cx='70' cy='70' r='56' fill='none' stroke='#f1f5f9' stroke-width='12'/>
-            <circle cx='70' cy='70' r='56' fill='none' stroke='{color}' stroke-width='12' stroke-dasharray='{2 * 3.14159 * 56}' stroke-dashoffset='{2 * 3.14159 * 56 * (1 - score / 100)}' stroke-linecap='round' transform='rotate(-90 70 70)'/>
-            <text x='70' y='66' text-anchor='middle' font-size='26' font-weight='900' fill='{color}' font-family='Inter'>{score}</text>
-            <text x='70' y='84' text-anchor='middle' font-size='11' fill='#64748b' font-family='Inter'>{label}</text>
-        </svg>
-        <div style='color:#0f172a; font-weight:700; font-size:0.95rem; margin-top:8px;'>Monte Carlo Success Probability</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
 def render_status_bar(deplete_year, deplete_age, final_nw, mc_success_rate=None):
     if deplete_year is not None:
         bg, icon, msg, sub = "#fef2f2", "🔴", "Liquidity Crisis Detected", f"Assets depleted at age {int(deplete_age)} ({int(deplete_year)}). Adjust retirement age or savings rate."
@@ -249,7 +233,47 @@ def render_total(label, series):
         unsafe_allow_html=True)
 
 
-# --- 1. FIREBASE & SESSION CORE ---
+# --- DESIGN SYSTEM & CSS ---
+st.markdown("""
+<style>
+:root {
+    --primary: #6366f1; --primary-dark: #4f46e5; --primary-light: #e0e7ff; 
+    --success: #10b981; --warning: #f59e0b; --danger: #ef4444; 
+    --surface: #ffffff; --border: #e2e8f0; --text-primary: #0f172a; --text-secondary: #64748b; 
+    --radius-sm: 8px; --radius-md: 12px; --radius-lg: 20px; 
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.08); --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
+}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+h1, h2, h3, h4, h5, h6, p, label, .stMarkdown { font-family: 'Inter', sans-serif !important; }
+h1 { font-size: 2.2rem !important; font-weight: 900 !important; background: linear-gradient(135deg, var(--primary-dark), #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; }
+h2 { font-weight: 800 !important; color: var(--text-primary) !important; }
+h3 { font-weight: 700 !important; color: var(--text-primary) !important; }
+
+/* Fixed Sidebar Dark Theme CSS */
+[data-testid="stSidebar"] { background-color: #0f172a !important; border-right: none !important; }
+[data-testid="stSidebarContent"] { background-color: #0f172a !important; }
+[data-testid="stSidebar"] h2, [data-testid="stSidebar"] span, [data-testid="stSidebar"] p { color: white !important; }
+[data-testid="stSidebar"] .stRadio label { padding: 10px 16px !important; border-radius: var(--radius-sm) !important; transition: background 0.15s ease !important; cursor: pointer !important; }
+[data-testid="stSidebar"] .stRadio label:hover { background-color: rgba(255,255,255,0.1) !important; }
+
+[data-testid="stMetric"] { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: var(--radius-md) !important; padding: 20px !important; box-shadow: var(--shadow-sm) !important; }
+[data-testid="stMetricValue"] { color: var(--primary-dark) !important; font-size: 1.75rem !important; font-weight: 800 !important; }
+[data-testid="stDataEditor"] { border-radius: var(--radius-md) !important; border: 1px solid var(--border) !important; overflow: hidden !important; box-shadow: var(--shadow-sm) !important; }
+[data-testid="stDataEditor"] tr:hover td { background: #f8fafc !important; }
+[data-testid="stTabs"] button { font-weight: 600 !important; border-radius: var(--radius-sm) var(--radius-sm) 0 0 !important; }
+[data-testid="stTextInput"] input, [data-testid="stNumberInput"] input { border-radius: var(--radius-sm) !important; border-color: var(--border) !important; font-size: 0.95rem !important; transition: border-color 0.15s ease, box-shadow 0.15s ease !important; }
+[data-testid="stTextInput"] input:focus, [data-testid="stNumberInput"] input:focus { border-color: var(--primary) !important; box-shadow: 0 0 0 3px var(--primary-light) !important; }
+[data-testid="stProgress"] > div > div { background: linear-gradient(90deg, var(--primary), #7c3aed) !important; border-radius: 999px !important; }
+[data-testid="stPlotlyChart"] { border-radius: 16px !important; overflow: hidden !important; box-shadow: 0 2px 12px rgba(0,0,0,0.06) !important; background: white; border: 1px solid var(--border); padding: 10px; }
+div[data-testid="stExpander"] { background-color: white !important; border: 1px solid var(--border) !important; border-radius: var(--radius-md) !important; box-shadow: var(--shadow-sm) !important; }
+div.stButton > button { border-radius: 8px !important; font-weight: 600 !important; }
+.card { background: white; padding: 20px; border-radius: 12px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
+.info-text { font-size: 0.9rem; color: #64748b; }
+@media (max-width: 768px) { [data-testid="column"] { min-width: 100% !important; } button { min-height: 48px !important; } [data-testid="stMetricValue"] { font-size: 1.4rem !important; } }
+</style>
+""", unsafe_allow_html=True)
+
+# --- 2. FIREBASE & SESSION INIT ---
 if 'firebase_enabled' not in st.session_state:
     st.session_state['firebase_enabled'] = True
     if not firebase_admin._apps:
@@ -335,7 +359,7 @@ def call_gemini_json(prompt, retries=3):
     if not GEMINI_API_KEY:
         st.error("⚠️ GEMINI_API_KEY is missing. AI operations disabled.")
         return None
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key={GEMINI_API_KEY}"
     payload = {"contents": [{"parts": [{"text": prompt}]}],
                "generationConfig": {"responseMimeType": "application/json"}}
 
@@ -369,7 +393,7 @@ def call_gemini_text(prompt, retries=3):
     if not GEMINI_API_KEY:
         st.error("⚠️ GEMINI_API_KEY is missing. AI operations disabled.")
         return None
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key={GEMINI_API_KEY}"
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     for attempt in range(retries):
         try:
@@ -852,7 +876,6 @@ def run_simulation(mkt_sequence, ctx_input):
             if inc.get("Description"):
                 base_amt = safe_num(inc.get('Annual Amount ($)'))
 
-                # 2. Fix the SS Entitlement Calculation
                 if cat_name == "Social Security":
                     if owner == "Me":
                         if is_my_alive:
@@ -1246,7 +1269,6 @@ def run_simulation(mkt_sequence, ctx_input):
                             a['bal'] -= convert
                             total_converted += convert
 
-                            # Tax is explicitly deducted from liquid cash to avoid silent waterfall accumulation
                             tax_cost = convert * est_tax_rate
                             for ca in sim_assets:
                                 if tax_cost <= 0: break
@@ -1503,18 +1525,7 @@ def render_dashboard():
     deplete_age = df_sim[shortfall_mask]['Age (Primary)'].min() if not df_sim[shortfall_mask].empty else None
 
     mc_success = st.session_state.get('mc_success_rate')
-    if final_nw > 0 and deplete_year is None:
-        score = 90
-    elif deplete_year is not None:
-        score = max(0, min(100, int(((deplete_year - sim_ctx['current_year']) / sim_ctx['max_years']) * 100)))
-    else:
-        score = 50
-
-    c_gauge, c_status = st.columns([1, 4])
-    with c_gauge:
-        retirement_health_score(score)
-    with c_status:
-        render_status_bar(deplete_year, deplete_age, final_nw, mc_success)
+    render_status_bar(deplete_year, deplete_age, final_nw, mc_success)
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -2494,6 +2505,7 @@ def render_ai():
                             res = call_gemini_text(prompt)
                             if res:
                                 st.session_state['ai_analysis_report'] = res
+                                mark_dirty()
                             else:
                                 st.error("⚠️ AI Analysis failed to generate.")
                     finally:
@@ -2518,6 +2530,7 @@ def render_ai():
                             res = call_gemini_text(prompt)
                             if res:
                                 st.session_state['what_if_analysis_report'] = res
+                                mark_dirty()
                             else:
                                 st.error("⚠️ AI Analysis failed to generate.")
                     finally:
@@ -2576,6 +2589,7 @@ with st.sidebar:
         for key in ['user_email', 'user_data', 'initialized', 'dirty', 'df_sim_display', 'df_sim_nominal', 'df_det',
                     'df_nw', 'mc_success_rate']:
             st.session_state.pop(key, None)
+        time.sleep(0.5)
         st.rerun()
 
 # Execute selected page
