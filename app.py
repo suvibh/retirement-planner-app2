@@ -124,7 +124,7 @@ def clean_df(df, primary_key):
         clean_r = {}
         for vk, vv in r.items():
             clean_r[vk] = None if pd.isna(vv) or vv is pd.NA else vv
-        if primary_key not in clean_r or str(clean_r.get(primary_key, '')).strip() != "":
+        if primary_key in clean_r and str(clean_r.get(primary_key, '')).strip() != "":
             valid_rows.append(clean_r)
     return valid_rows
 
@@ -374,7 +374,6 @@ def save_profile():
     st.session_state['user_data'] = user_data
     st.session_state['dirty'] = False
     st.toast("✅ Complete Financial Blueprint Synchronized Successfully!")
-    time.sleep(0.5)
     st.rerun()
 
 
@@ -533,7 +532,7 @@ if 'user_email' not in st.session_state:
         tab1, tab2 = st.tabs(["Secure Login", "New Account"])
         with tab1:
             le, lp = st.text_input("Email", key="le"), st.text_input("Password", type="password", key="lp")
-            if st.button("Sign In", type="primary", width="stretch"):
+            if st.button("Sign In", type="primary", use_container_width=True):
                 res = sign_in(le, lp)
                 if "idToken" in res:
                     st.session_state.pop('logged_out_flag', None)
@@ -547,7 +546,7 @@ if 'user_email' not in st.session_state:
                     st.error("Login failed. Please check your email and password.")
         with tab2:
             se, sp = st.text_input("New Email", key="se"), st.text_input("New Password", type="password", key="sp")
-            if st.button("Create Account", type="primary", width="stretch"):
+            if st.button("Create Account", type="primary", use_container_width=True):
                 if len(sp) >= 6:
                     res = sign_up(se, sp)
                     if "idToken" in res:
@@ -561,7 +560,7 @@ if 'user_email' not in st.session_state:
                 else:
                     st.warning("Min 6 characters.")
         st.divider()
-        if st.button("🚀 Try the Demo (Guest Mode)", width="stretch"):
+        if st.button("🚀 Try the Demo (Guest Mode)", use_container_width=True):
             st.session_state.pop('logged_out_flag', None)
             st.session_state['user_email'] = "guest_demo";
             st.session_state['user_data'] = {}
@@ -781,10 +780,21 @@ def run_simulation(mkt_sequence, ctx_input):
     spouse_ss_record = next(
         (r for r in ctx['inc_records'] if r.get('Category') == 'Social Security' and r.get('Owner') == 'Spouse'), None)
 
-    primary_ss_start_year = int(
-        safe_num(primary_ss_record['Start Year'], ctx['current_year'])) if primary_ss_record else 9999
-    spouse_ss_start_year = int(
-        safe_num(spouse_ss_record['Start Year'], ctx['current_year'])) if spouse_ss_record else 9999
+    if primary_ss_record:
+        raw_start = primary_ss_record.get('Start Year')
+        primary_ss_start_year = ctx['primary_retire_year'] if (
+                    raw_start is None or pd.isna(raw_start) or str(raw_start).strip() == "") else int(
+            safe_num(raw_start))
+    else:
+        primary_ss_start_year = 9999
+
+    if spouse_ss_record:
+        raw_start = spouse_ss_record.get('Start Year')
+        spouse_ss_start_year = ctx['spouse_retire_year'] if (
+                    raw_start is None or pd.isna(raw_start) or str(raw_start).strip() == "") else int(
+            safe_num(raw_start))
+    else:
+        spouse_ss_start_year = 9999
 
     primary_ss_multi = get_ss_multi(ctx['my_birth_year'], primary_ss_start_year)
     spouse_ss_multi = get_ss_multi(ctx['spouse_birth_year'], spouse_ss_start_year)
@@ -1727,7 +1737,7 @@ def render_income():
             "Stop at Ret.?": st.column_config.CheckboxColumn("Stop at Retirement?",
                                                              help="If checked, automatically turns off when the owner reaches retirement."),
             "Override Growth (%)": st.column_config.NumberColumn("Custom Growth (%)", step=0.1, format="%.1f%%")
-        }, num_rows="dynamic", width="stretch", hide_index=True, key="inc_editor", on_change=mark_dirty
+        }, num_rows="dynamic", use_container_width=True, hide_index=True, key="inc_editor", on_change=mark_dirty
     )
     st.session_state['income_data'] = edited_inc.to_dict('records')
 
@@ -1826,7 +1836,7 @@ def render_assets():
                 "Override Prop Growth (%)": st.column_config.NumberColumn("Property Growth (%)", step=0.1,
                                                                           format="%.1f%%"),
                 "Override Rent Growth (%)": st.column_config.NumberColumn("Rent Growth (%)", step=0.1, format="%.1f%%")
-            }, num_rows="dynamic", width="stretch", hide_index=True, key="re_editor", on_change=mark_dirty
+            }, num_rows="dynamic", use_container_width=True, hide_index=True, key="re_editor", on_change=mark_dirty
         )
         st.session_state['real_estate_data'] = edited_re.to_dict('records')
 
@@ -1865,7 +1875,7 @@ def render_assets():
                                                                           help="Private assets do not follow portfolio glidepaths. Set a static growth rate."),
                 "Override Dist. Growth (%)": st.column_config.NumberColumn("Income Growth (%)", step=0.1,
                                                                            format="%.1f%%")
-            }, num_rows="dynamic", width="stretch", hide_index=True, key="biz_editor", on_change=mark_dirty
+            }, num_rows="dynamic", use_container_width=True, hide_index=True, key="biz_editor", on_change=mark_dirty
         )
         st.session_state['business_data'] = edited_biz.to_dict('records')
 
@@ -1905,7 +1915,7 @@ def render_assets():
                                                                         help="Leave blank to use global market growth assumptions."),
                 "Stop Contrib at Ret.?": st.column_config.CheckboxColumn("Stop Adding at Ret.?",
                                                                          help="Check this if you will stop saving into this account once the owner retires.")
-            }, num_rows="dynamic", width="stretch", hide_index=True, key="assets_editor", on_change=mark_dirty
+            }, num_rows="dynamic", use_container_width=True, hide_index=True, key="assets_editor", on_change=mark_dirty
         )
         st.session_state['liquid_assets_data'] = edited_ast.to_dict('records')
 
@@ -1935,7 +1945,7 @@ def render_assets():
                 "Current Balance ($)": st.column_config.NumberColumn("Current Balance ($)", step=1000, format="$%d"),
                 "Interest Rate (%)": st.column_config.NumberColumn("Interest Rate (%)", step=0.001, format="%.3f%%"),
                 "Monthly Payment ($)": st.column_config.NumberColumn("Monthly Payment ($)", step=100, format="$%d")
-            }, num_rows="dynamic", width="stretch", hide_index=True, key="debt_editor", on_change=mark_dirty
+            }, num_rows="dynamic", use_container_width=True, hide_index=True, key="debt_editor", on_change=mark_dirty
         )
         st.session_state['liabilities_data'] = edited_debt.to_dict('records')
 
@@ -2007,7 +2017,7 @@ def render_cashflows():
             "End Year": st.column_config.NumberColumn("End Year (If Custom)", format="%d", min_value=1900,
                                                       max_value=2100),
             "AI Estimate?": st.column_config.CheckboxColumn("🤖 AI?")
-        }, num_rows="dynamic", width="stretch", hide_index=True, key="exp_ed", on_change=mark_dirty
+        }, num_rows="dynamic", use_container_width=True, hide_index=True, key="exp_ed", on_change=mark_dirty
     )
     st.session_state['lifetime_expenses'] = edited_exp.to_dict('records')
 
@@ -2356,7 +2366,7 @@ def render_simulation():
                                                           name='Critical Alerts', hoverinfo='text', text=m_text_alert))
 
                 fig_nw = apply_chart_theme(fig_nw)
-                st.plotly_chart(fig_nw, width="stretch")
+                st.plotly_chart(fig_nw, use_container_width=True)
 
                 st.write("#### Annual Cash Flow & Progressive Taxes")
                 fig_cf = go.Figure()
@@ -2387,7 +2397,7 @@ def render_simulation():
                                                           name='Critical Alerts', hoverinfo='text', text=m_text_alert))
 
                 fig_cf = apply_chart_theme(fig_cf)
-                st.plotly_chart(fig_cf, width="stretch")
+                st.plotly_chart(fig_cf, use_container_width=True)
 
             # --- MONTE CARLO SECTION ---
             st.divider()
@@ -2403,7 +2413,7 @@ def render_simulation():
 
             with col_mc3:
                 st.markdown("<div style='height: 27px;'></div>", unsafe_allow_html=True)
-                run_mc = st.button("✨ Run Monte Carlo Simulation", type="primary", width="stretch")
+                run_mc = st.button("✨ Run Monte Carlo Simulation", type="primary", use_container_width=True)
 
             if run_mc:
                 with st.spinner(f"Rendering {mc_runs} parallel market sequences (Multi-threaded)..."):
@@ -2465,7 +2475,7 @@ def render_simulation():
                                                         name='10th Percentile (Severe Contraction)',
                                                         line=dict(color='#f43f5e', dash='dot')))
                             fig_mc = apply_chart_theme(fig_mc, "Stochastic Net Worth Projections")
-                            st.plotly_chart(fig_mc, width="stretch")
+                            st.plotly_chart(fig_mc, use_container_width=True)
 
             # --- DATA AUDIT TABLES ---
             st.divider()
@@ -2482,7 +2492,7 @@ def render_simulation():
                 ord_det = ["Year", "Age (Primary)", "Age (Spouse)"] + inc_c + exp_c + ["Net Savings"]
                 st.dataframe(df_det[ord_det].set_index("Year").style.format(
                     {c: "${:,.0f}" for c in ord_det if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
-                        "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), width="stretch")
+                        "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
             with t2:
                 st.subheader("Detailed Net Worth Log")
                 st.markdown(
@@ -2495,7 +2505,7 @@ def render_simulation():
                                                                               "Total Net Worth"]
                 st.dataframe(df_nw[ord_nw].set_index("Year").style.format(
                     {c: "${:,.0f}" for c in ord_nw if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
-                        "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), width="stretch")
+                        "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
 
 
 def render_ai():
@@ -2536,7 +2546,7 @@ def render_ai():
 
     tab_report, tab_whatif = st.tabs(["📊 Comprehensive Health Report", "🔮 What-If Simulator"])
     with tab_report:
-        if st.button("✨ Generate Comprehensive AI Report", type="primary", width="stretch", key="btn_report"):
+        if st.button("✨ Generate Comprehensive AI Report", type="primary", use_container_width=True, key="btn_report"):
             if check_ai_rate_limit():
                 if sim_summary:
                     res = None
@@ -2555,13 +2565,13 @@ def render_ai():
                     st.warning("Please run the baseline simulation first on the Dashboard or Simulation tab.")
 
         if 'ai_analysis_report' in st.session_state:
-            st.markdown(st.session_state['ai_analysis_report'].replace('$', r'\$'))
+            st.markdown(st.session_state['ai_analysis_report'].replace('$', '&#36;'), unsafe_allow_html=True)
 
     with tab_whatif:
         what_if_query = st.text_area(
             "Ask the AI to simulate a scenario (e.g., 'What if I sold my rental property in 2030 and put the cash in my brokerage?' or 'What if I added $50k in income starting in 2029?')",
             key="what_if_text")
-        if st.button("✨ Run What-If Analysis (AI)", type="primary", width="stretch", key="btn_whatif"):
+        if st.button("✨ Run What-If Analysis (AI)", type="primary", use_container_width=True, key="btn_whatif"):
             if check_ai_rate_limit():
                 if sim_summary and what_if_query:
                     res = None
@@ -2582,7 +2592,7 @@ def render_ai():
                     st.warning("Please run the baseline simulation first.")
 
         if 'what_if_analysis_report' in st.session_state:
-            st.markdown(st.session_state['what_if_analysis_report'].replace('$', r'\$'))
+            st.markdown(st.session_state['what_if_analysis_report'].replace('$', '&#36;'), unsafe_allow_html=True)
 
 
 def render_faq():
@@ -2623,17 +2633,16 @@ with st.sidebar:
     st.markdown("<br><br>", unsafe_allow_html=True)
 
     save_btn_label = "⚠️ Save Changes" if st.session_state.get('dirty', False) else "🚀 Save Profile"
-    if st.button(save_btn_label, type="primary", width="stretch"):
+    if st.button(save_btn_label, type="primary", use_container_width=True):
         save_profile()
 
-    if st.button("Logout", type="secondary", width="stretch"):
+    if st.button("Logout", type="secondary", use_container_width=True):
         if cookie_manager.get("user_email"):
             cookie_manager.delete("user_email")
         for key in list(st.session_state.keys()):
             if key != 'logged_out_flag':
                 del st.session_state[key]
         st.session_state['logged_out_flag'] = True
-        time.sleep(0.5)
         st.rerun()
 
 # Execute selected page
