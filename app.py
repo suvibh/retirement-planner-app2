@@ -468,6 +468,68 @@ initialize_session_state()
 
 
 # --- MODULE LEVEL SIMULATION CORE (CACHED) ---
+def build_sim_context():
+    current_year = datetime.date.today().year
+    my_age = relativedelta(datetime.date.today(), st.session_state.get('my_dob', datetime.date(1980, 1, 1))).years
+    spouse_age = relativedelta(datetime.date.today(), st.session_state.get('spouse_dob', datetime.date(1982, 1,
+                                                                                                       1))).years if st.session_state.get(
+        'has_spouse') else 0
+    my_birth_year = st.session_state.get('my_dob', datetime.date(1980, 1, 1)).year
+    spouse_birth_year = st.session_state.get('spouse_dob', datetime.date(1982, 1, 1)).year if st.session_state.get(
+        'has_spouse') else current_year
+
+    ret_age, s_ret_age = st.session_state.get('ret_age', 65), st.session_state.get('s_ret_age', 65)
+    my_life_exp_val, spouse_life_exp_val = st.session_state.get('my_life_exp', 95), (
+        st.session_state.get('spouse_life_exp', 95) if st.session_state.get('has_spouse') else 0)
+
+    primary_retire_year = my_birth_year + ret_age
+    spouse_retire_year = spouse_birth_year + s_ret_age if st.session_state.get('has_spouse') else 9999
+    primary_end_year = my_birth_year + my_life_exp_val
+    spouse_end_year = spouse_birth_year + spouse_life_exp_val if st.session_state.get('has_spouse') else current_year
+
+    max_year = max(primary_end_year, spouse_end_year)
+    max_years = max_year - current_year
+
+    primary_rmd_age = 73 if my_birth_year <= 1959 else 75
+    spouse_rmd_age = 73 if spouse_birth_year <= 1959 else 75
+
+    asm = st.session_state.get('assumptions', {})
+    df_re = pd.DataFrame(st.session_state.get('real_estate_data', []))
+    owns_home = not df_re[df_re[
+                              "Is Primary Residence?"] == True].empty if not df_re.empty and "Is Primary Residence?" in df_re.columns else False
+    df_debt = pd.DataFrame(st.session_state.get('liabilities_data', []))
+    debt_records = [d for d in df_debt.to_dict('records') if
+                    d.get("Debt Name") and safe_num(d.get("Current Balance ($)")) > 0] if not df_debt.empty else []
+
+    return {
+        'current_year': current_year, 'my_birth_year': my_birth_year, 'spouse_birth_year': spouse_birth_year,
+        'primary_end_year': primary_end_year, 'spouse_end_year': spouse_end_year,
+        'has_spouse': st.session_state.get('has_spouse', False),
+        'primary_retire_year': primary_retire_year, 'spouse_retire_year': spouse_retire_year,
+        'primary_rmd_age': primary_rmd_age, 'spouse_rmd_age': spouse_rmd_age,
+        'mkt': float(asm.get('market_growth', 7.0)), 'infl': float(asm.get('inflation', 3.0)),
+        'infl_hc': float(asm.get('inflation_healthcare', 5.5)), 'infl_ed': float(asm.get('inflation_education', 4.5)),
+        'inc_g': float(asm.get('income_growth', 3.0)), 'prop_g': float(asm.get('property_growth', 3.0)),
+        'rent_g': float(asm.get('rent_growth', 3.0)), 'cur_t': float(asm.get('current_tax_rate', 5.0)),
+        'ret_t': float(asm.get('retire_tax_rate', 0.0)),
+        'stress_test': asm.get('stress_test', False), 'glidepath': asm.get('glidepath', True),
+        'medicare_gap': asm.get('medicare_gap', True), 'medicare_cliff': asm.get('medicare_cliff', True),
+        'ltc_shock': asm.get('ltc_shock', False),
+        'roth_conversions': asm.get('roth_conversions', False), 'roth_target': asm.get('roth_target', '24%'),
+        'active_withdrawal_strategy': asm.get('withdrawal_strategy', 'Standard'),
+        'owns_home': owns_home, 'kids_data': st.session_state.get('kids_data', []),
+        'max_years': max_years, 'max_year': max_year, 'my_life_exp_val': my_life_exp_val,
+        'spouse_life_exp_val': spouse_life_exp_val,
+        'ast_records': scrub_records(st.session_state.get('liquid_assets_data', [])),
+        'debt_records': scrub_records(debt_records),
+        're_records': scrub_records(st.session_state.get('real_estate_data', [])),
+        'biz_records': scrub_records(st.session_state.get('business_data', [])),
+        'inc_records': scrub_records(st.session_state.get('income_data', [])),
+        'exp_records': scrub_records(st.session_state.get('lifetime_expenses', [])),
+        'my_age': my_age, 'spouse_age': spouse_age
+    }
+
+
 def run_simulation(mkt_sequence, ctx):
     def calc_federal_tax(ordinary_income, is_mfj, year_offset, inflation_rate):
         infl_factor = (1 + inflation_rate / 100) ** year_offset
