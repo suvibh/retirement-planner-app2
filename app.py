@@ -821,9 +821,14 @@ def run_simulation(mkt_sequence, ctx_input):
         yd = {
             "Year": year, "Age (Primary)": my_current_age, "Age (Spouse)": spouse_current_age,
             "Tax Breakdown: Federal": 0.0, "Tax Breakdown: State": 0.0, 
-            "Tax Breakdown: FICA": 0.0, "Tax Breakdown: Withdrawals": 0.0
+            "Tax Breakdown: FICA": 0.0, "Tax Breakdown: Withdrawals": 0.0,
+            "Tax Breakdown: Roth Conversion": 0.0
         }
         nw_yd = {"Year": year, "Age (Primary)": my_current_age, "Age (Spouse)": spouse_current_age}
+
+        # --- NEW: Track Roth Taxes separately for the year ---
+        roth_fed_tax_paid = 0.0
+        roth_state_tax_paid = 0.0
 
         annual_inc, annual_ss, pre_tax_ord, total_tax = 0, 0, 0, 0
         earned_income_me, earned_income_spouse = 0, 0
@@ -1275,6 +1280,7 @@ def run_simulation(mkt_sequence, ctx_input):
                             a['bal'] -= convert
                             total_converted += convert
 
+                            # --- FIX: EXACT TAX DELTA CALCULATION ---
                             base_fed, _ = calc_federal_tax(tax_base_ord_pre, active_mfj, year_offset, ctx['infl'])
                             base_state = tax_base_ord_pre * (state_tax_rate / 100.0)
                             
@@ -1283,6 +1289,10 @@ def run_simulation(mkt_sequence, ctx_input):
                             prop_state = proposed_tax_base * (state_tax_rate / 100.0)
                             
                             tax_cost = (prop_fed + prop_state) - (base_fed + base_state)
+                            
+                            # --- FIX: Track Roth taxes, but wait to log them to prevent double-counting ---
+                            roth_fed_tax_paid += (prop_fed - base_fed)
+                            roth_state_tax_paid += (prop_state - base_state)
                             
                             yd["Tax Breakdown: Federal"] = yd.get("Tax Breakdown: Federal", 0) + (prop_fed - base_fed)
                             yd["Tax Breakdown: State"] = yd.get("Tax Breakdown: State", 0) + (prop_state - base_state)
@@ -1344,8 +1354,10 @@ def run_simulation(mkt_sequence, ctx_input):
         total_tax = base_fed_tax + state_tax + fica_tax
         yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + total_tax
         
-        yd["Tax Breakdown: Federal"] = yd.get("Tax Breakdown: Federal", 0) + base_fed_tax
-        yd["Tax Breakdown: State"] = yd.get("Tax Breakdown: State", 0) + state_tax
+        # --- FIX: Explicitly separate baseline taxes from Roth Conversion taxes ---
+        yd["Tax Breakdown: Federal"] = yd.get("Tax Breakdown: Federal", 0) + max(0, base_fed_tax - roth_fed_tax_paid)
+        yd["Tax Breakdown: State"] = yd.get("Tax Breakdown: State", 0) + max(0, state_tax - roth_state_tax_paid)
+        yd["Tax Breakdown: Roth Conversion"] = yd.get("Tax Breakdown: Roth Conversion", 0) + (roth_fed_tax_paid + roth_state_tax_paid)
         yd["Tax Breakdown: FICA"] = yd.get("Tax Breakdown: FICA", 0) + fica_tax
 
         num_medicare = (1 if is_my_alive and my_current_age >= 65 else 0) + (
@@ -1506,7 +1518,7 @@ def run_simulation(mkt_sequence, ctx_input):
     return sim_res, det_res, nw_det_res, milestones_by_year
 
 @st.cache_data(show_spinner=False)
-def execute_sim_engine_v6(mkt_sequence_tuple, ctx):
+def execute_sim_engine_v7(mkt_sequence_tuple, ctx):
     s_res, d_res, nw_res, milestones = run_simulation(list(mkt_sequence_tuple), ctx)
     return pd.DataFrame(s_res), pd.DataFrame(d_res).fillna(0), pd.DataFrame(nw_res).fillna(0), milestones
 
@@ -1584,7 +1596,7 @@ def render_dashboard():
 
     with st.spinner("Running high-precision simulation engine..."):
         mkt_seq = tuple([sim_ctx['mkt']] * (sim_ctx['max_years'] + 1))
-        df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v6(mkt_seq, sim_ctx)
+        df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v7(mkt_seq, sim_ctx)
         st.session_state['df_sim_nominal'] = df_sim_nominal
         st.session_state['df_det'] = df_det_nominal
         st.session_state['df_nw'] = df_nw_nominal
@@ -2285,7 +2297,7 @@ def render_simulation():
         mkt_seq = tuple([sim_ctx['mkt']] * (sim_ctx['max_years'] + 1))
 
         with st.spinner("Running high-precision simulation engine..."):
-            df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v6(mkt_seq, sim_ctx)
+            df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v7(mkt_seq, sim_ctx)
 
         if not df_sim_nominal.empty:
             df_sim, df_det, df_nw = df_sim_nominal.copy(), df_det_nominal.copy(), df_nw_nominal.copy()
@@ -2479,7 +2491,7 @@ def render_simulation():
 
                         try:
                             with ThreadPoolExecutor(max_workers=min(mc_runs, 8)) as executor:
-                                futures = {executor.submit(execute_sim_engine_v6, seq, sim_ctx): i for i, seq in
+                                futures = {executor.submit(execute_sim_engine_v7, seq, sim_ctx): i for i, seq in
                                            enumerate(random_sequences)}
 
                                 for completed_idx, future in enumerate(concurrent.futures.as_completed(futures)):
@@ -2554,8 +2566,9 @@ def render_simulation():
 
                     # --- ROW 2: Tax Obligations Breakdown ---
                     tax_categories = [
-                        ("Tax Breakdown: Federal", "#3b82f6", "Federal Income Tax"),
-                        ("Tax Breakdown: State", "#8b5cf6", "State Income Tax"),
+                        ("Tax Breakdown: Federal", "#3b82f6", "Baseline Federal Tax"),
+                        ("Tax Breakdown: State", "#0ea5e9", "Baseline State Tax"),
+                        ("Tax Breakdown: Roth Conversion", "#a855f7", "Roth Conversion Taxes"), # <-- NEW PURPLE BAR
                         ("Tax Breakdown: FICA", "#10b981", "FICA (SS & Medicare)"),
                         ("Tax Breakdown: Withdrawals", "#f59e0b", "Cap Gains & Penalties"),
                         ("Expense: Medicare IRMAA Surcharge", "#ef4444", "Medicare IRMAA Surcharge")
