@@ -814,6 +814,9 @@ def run_simulation(mkt_sequence, ctx_input):
             if year not in milestones_by_year: milestones_by_year[year] = []
             milestones_by_year[year].append({"desc": "🏦 Spouse RMDs Begin", "amt": 0, "type": "system"})
 
+        # --- MAKE SURE THIS LINE EXISTS ---
+        is_retired = year >= ctx['primary_retire_year']
+
         # --- FIX: Pre-initialize all tax keys so Pandas always sees them ---
         yd = {
             "Year": year, "Age (Primary)": my_current_age, "Age (Spouse)": spouse_current_age,
