@@ -2451,7 +2451,7 @@ def render_simulation():
                 else:
                     st.info("Please install Plotly to view the charts.")
 
-            if st.button("✨ Run Sensitivity Analysis", type="primary", use_container_width=True, key="btn_sens"):
+                if st.button("✨ Run Sensitivity Analysis", type="primary", use_container_width=True, key="btn_sens"):
                     with st.spinner("Running 10 divergent timelines to map risk..."):
                         base_nw_sens = final_nw
                         
