@@ -2655,14 +2655,20 @@ def render_simulation():
                         mc_matrix = np.maximum(-99.0, mc_matrix)
                         random_sequences = [tuple(row) for row in mc_matrix]
 
-                        # --- FIX: Call run_simulation directly to bypass Streamlit's cache locks in threaded contexts ---
+                        # --- FIX 1: Serialize context to a string to completely sever Streamlit proxy references ---
+                        ctx_json_mc = json.dumps(sim_ctx)
+                        
+                        # --- FIX 2: Create an isolated worker that deserializes fresh memory per thread ---
+                        def thread_worker(seq_tuple, ctx_str):
+                            # json.loads guarantees 100% pure Python dicts with zero shared references
+                            return run_simulation(list(seq_tuple), json.loads(ctx_str))
+
                         try:
                             with ThreadPoolExecutor(max_workers=min(mc_runs, 8)) as executor:
-                                # We can safely pass the raw sim_ctx dict because run_simulation does a deepcopy on line 1
-                                futures = {executor.submit(run_simulation, list(seq), sim_ctx): i for i, seq in enumerate(random_sequences)}
+                                # Pass the pure JSON string and the worker function
+                                futures = {executor.submit(thread_worker, seq, ctx_json_mc): i for i, seq in enumerate(random_sequences)}
 
                                 for completed_idx, future in enumerate(concurrent.futures.as_completed(futures)):
-                                    # run_simulation returns a tuple of lists/dicts, so we unpack and convert the first one to a DataFrame
                                     s_res, _, _, _ = future.result()
                                     res_mc = pd.DataFrame(s_res)
                                     
