@@ -2378,50 +2378,20 @@ def render_simulation():
                     st.write("#### Net Worth Composition (Smart Asset Drawdown)")
                     fig_nw = go.Figure()
                     ast_cols = [c for c in df_nw.columns if c.startswith("Asset: ")]
-                    fill_colors = ['rgba(79, 70, 229, 0.6)', 'rgba(14, 165, 233, 0.6)', 'rgba(16, 185, 129, 0.6)',
-                                   'rgba(245, 158, 11, 0.6)', 'rgba(139, 92, 246, 0.6)', 'rgba(236, 72, 153, 0.6)',
-                                   'rgba(52, 211, 153, 0.6)', 'rgba(251, 191, 36, 0.6)', 'rgba(163, 230, 53, 0.6)',
-                                   'rgba(250, 204, 21, 0.6)']
-                    line_colors = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#34d399',
-                                   '#fbbf24', '#a3e635', '#facc15']
+                    fill_colors = ['rgba(79, 70, 229, 0.6)', 'rgba(14, 165, 233, 0.6)', 'rgba(16, 185, 129, 0.6)', 'rgba(245, 158, 11, 0.6)', 'rgba(139, 92, 246, 0.6)', 'rgba(236, 72, 153, 0.6)', 'rgba(52, 211, 153, 0.6)', 'rgba(251, 191, 36, 0.6)', 'rgba(163, 230, 53, 0.6)', 'rgba(250, 204, 21, 0.6)']
+                    line_colors = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#34d399', '#fbbf24', '#a3e635', '#facc15']
 
                     for i, col in enumerate(ast_cols):
-                        fig_nw.add_trace(go.Scatter(x=df_nw["Year"], y=df_nw[col], mode='lines', stackgroup='one',
-                                                    name=col.replace("Asset: ", ""),
-                                                    fillcolor=fill_colors[i % len(fill_colors)],
-                                                    line=dict(color=line_colors[i % len(line_colors)], width=1.5)))
+                        fig_nw.add_trace(go.Scatter(x=df_nw["Year"], y=df_nw[col], mode='lines', stackgroup='one', name=col.replace("Asset: ", ""), fillcolor=fill_colors[i % len(fill_colors)], line=dict(color=line_colors[i % len(line_colors)], width=1.5)))
 
-                    fig_nw.add_trace(
-                        go.Scatter(x=df_nw["Year"], y=df_nw["Total Real Estate Equity"], mode='lines', stackgroup='one',
-                                   name='Real Estate Equity', fillcolor='rgba(139, 92, 246, 0.5)',
-                                   line=dict(color='#8b5cf6', width=1.5)))
-                    fig_nw.add_trace(
-                        go.Scatter(x=df_nw["Year"], y=df_nw["Total Business Equity"], mode='lines', stackgroup='one',
-                                   name='Business Equity', fillcolor='rgba(245, 158, 11, 0.5)',
-                                   line=dict(color='#f59e0b', width=1.5)))
-                    fig_nw.add_trace(
-                        go.Scatter(x=df_nw["Year"], y=df_nw["Total Debt Liabilities"], mode='lines', stackgroup='two',
-                                   name='Total Liabilities (Inc. Shortfalls)', fillcolor='rgba(244, 63, 94, 0.5)',
-                                   line=dict(color='#f43f5e', width=1.5)))
-                    fig_nw.add_trace(
-                        go.Scatter(x=df_nw["Year"], y=df_nw["Total Net Worth"], mode='lines', name='Total Net Worth',
-                                   line=dict(color='#111827', width=3, dash='dot')))
+                    fig_nw.add_trace(go.Scatter(x=df_nw["Year"], y=df_nw["Total Real Estate Equity"], mode='lines', stackgroup='one', name='Real Estate Equity', fillcolor='rgba(139, 92, 246, 0.5)', line=dict(color='#8b5cf6', width=1.5)))
+                    fig_nw.add_trace(go.Scatter(x=df_nw["Year"], y=df_nw["Total Business Equity"], mode='lines', stackgroup='one', name='Business Equity', fillcolor='rgba(245, 158, 11, 0.5)', line=dict(color='#f59e0b', width=1.5)))
+                    fig_nw.add_trace(go.Scatter(x=df_nw["Year"], y=df_nw["Total Debt Liabilities"], mode='lines', stackgroup='two', name='Total Liabilities (Inc. Shortfalls)', fillcolor='rgba(244, 63, 94, 0.5)', line=dict(color='#f43f5e', width=1.5)))
+                    fig_nw.add_trace(go.Scatter(x=df_nw["Year"], y=df_nw["Total Net Worth"], mode='lines', name='Total Net Worth', line=dict(color='#111827', width=3, dash='dot')))
 
-                    if m_x_normal: fig_nw.add_trace(go.Scatter(x=m_x_normal, y=m_y_normal, mode='markers',
-                                                               marker=dict(symbol='star', size=14, color='#eab308',
-                                                                           line=dict(width=1.5, color='white')),
-                                                               name='User Milestones', hoverinfo='text',
-                                                               text=m_text_normal))
-                    if m_x_system: fig_nw.add_trace(go.Scatter(x=m_x_system, y=m_y_system, mode='markers',
-                                                               marker=dict(symbol='star', size=14, color='#3b82f6',
-                                                                           line=dict(width=1.5, color='white')),
-                                                               name='System Events', hoverinfo='text',
-                                                               text=m_text_system))
-                    if m_x_alert: fig_nw.add_trace(go.Scatter(x=m_x_alert, y=m_y_alert, mode='markers',
-                                                              marker=dict(symbol='star', size=18, color='#ef4444',
-                                                                          line=dict(width=2, color='white')),
-                                                              name='Critical Alerts', hoverinfo='text',
-                                                              text=m_text_alert))
+                    if m_x_normal: fig_nw.add_trace(go.Scatter(x=m_x_normal, y=m_y_normal, mode='markers', marker=dict(symbol='star', size=14, color='#eab308', line=dict(width=1.5, color='white')), name='User Milestones', hoverinfo='text', text=m_text_normal))
+                    if m_x_system: fig_nw.add_trace(go.Scatter(x=m_x_system, y=m_y_system, mode='markers', marker=dict(symbol='star', size=14, color='#3b82f6', line=dict(width=1.5, color='white')), name='System Events', hoverinfo='text', text=m_text_system))
+                    if m_x_alert: fig_nw.add_trace(go.Scatter(x=m_x_alert, y=m_y_alert, mode='markers', marker=dict(symbol='star', size=18, color='#ef4444', line=dict(width=2, color='white')), name='Critical Alerts', hoverinfo='text', text=m_text_alert))
 
                     fig_nw = apply_chart_theme(fig_nw)
                     st.plotly_chart(fig_nw, use_container_width=True)
@@ -2559,11 +2529,23 @@ def render_simulation():
                     
                     fig_tor.update_layout(
                         barmode='relative',
-                        xaxis=dict(title='Impact on Final Net Worth', tickformat='$,.0f', zeroline=True, zerolinecolor='#0f172a', zerolinewidth=2),
-                        yaxis=dict(title=''), # Removed title to save horizontal space
+                        xaxis=dict(
+                            title='Impact on Final Net Worth', 
+                            tickformat='$,.0f', 
+                            zeroline=True, 
+                            zerolinecolor='#0f172a', 
+                            zerolinewidth=2,
+                            automargin=True  # Force Plotly to prevent clipping on the bottom
+                        ),
+                        yaxis=dict(
+                            title='', 
+                            automargin=True  # Force Plotly to prevent clipping on the left
+                        ),
                         hovermode='y unified',
-                        height=600, # Increased from 450 to 600
-                        margin=dict(l=10, r=20, t=50, b=20) # Added slight padding so labels don't clip
+                        height=600,
+                        # Significantly increased the Right (r) and Bottom (b) margins
+                        margin=dict(l=20, r=80, t=50, b=80) 
+                    )
                     )
                     fig_tor = apply_chart_theme(fig_tor, "Sensitivity Tornado Chart")
                     st.plotly_chart(fig_tor, use_container_width=True)
