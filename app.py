@@ -2116,7 +2116,11 @@ def render_assets():
                 "Override Rent Growth (%)": st.column_config.NumberColumn("Rent Growth (%)", step=0.1, format="%.1f%%", help="Custom annual rent increase rate. Leave blank to use the global assumption.")
             }, num_rows="dynamic", use_container_width=True, key="re_editor", on_change=mark_dirty
         )
-        st.session_state['real_estate_data'] = edited_re.to_dict('records')
+        # --- FIX: Scrub and Guard Real Estate Data ---
+        scrubbed_re = scrub_records(edited_re.to_dict('records'))
+        if json.dumps(scrubbed_re) != json.dumps(scrub_records(st.session_state.get('real_estate_data', []))):
+            st.session_state['real_estate_data'] = scrubbed_re
+            st.rerun()
 
     with tab_biz:
         df_biz = pd.DataFrame(st.session_state.get('business_data', []))
@@ -2143,7 +2147,11 @@ def render_assets():
                 "Override Dist. Growth (%)": st.column_config.NumberColumn("Income Growth (%)", step=0.1, format="%.1f%%", help="Custom annual income distribution growth. Leave blank to use global income growth.")
             }, num_rows="dynamic", use_container_width=True, key="biz_editor", on_change=mark_dirty
         )
-        st.session_state['business_data'] = edited_biz.to_dict('records')
+        # --- FIX: Scrub and Guard Business Data ---
+        scrubbed_biz = scrub_records(edited_biz.to_dict('records'))
+        if json.dumps(scrubbed_biz) != json.dumps(scrub_records(st.session_state.get('business_data', []))):
+            st.session_state['business_data'] = scrubbed_biz
+            st.rerun()
 
     with tab_ast:
         info_banner(
@@ -2176,7 +2184,11 @@ def render_assets():
                 "Stop Contrib at Ret.?": st.column_config.CheckboxColumn("Stop Adding at Ret.?", help="If checked, contributions cease the year the owner retires.")
             }, num_rows="dynamic", use_container_width=True, key="assets_editor", on_change=mark_dirty
         )
-        st.session_state['liquid_assets_data'] = edited_ast.to_dict('records')
+        # --- FIX: Scrub and Guard Liquid Assets Data ---
+        scrubbed_ast = scrub_records(edited_ast.to_dict('records'))
+        if json.dumps(scrubbed_ast) != json.dumps(scrub_records(st.session_state.get('liquid_assets_data', []))):
+            st.session_state['liquid_assets_data'] = scrubbed_ast
+            st.rerun()
 
     with tab_debt:
         info_banner(
@@ -2198,7 +2210,11 @@ def render_assets():
                 "Monthly Payment ($)": st.column_config.NumberColumn("Monthly Payment ($)", step=100, format="$%d")
             }, num_rows="dynamic", use_container_width=True, key="debt_editor", on_change=mark_dirty
         )
-        st.session_state['liabilities_data'] = edited_debt.to_dict('records')
+        # --- FIX: Scrub and Guard Debt Data ---
+        scrubbed_debt = scrub_records(edited_debt.to_dict('records'))
+        if json.dumps(scrubbed_debt) != json.dumps(scrub_records(st.session_state.get('liabilities_data', []))):
+            st.session_state['liabilities_data'] = scrubbed_debt
+            st.rerun()
 
     re_eq = pd.to_numeric(edited_re['Market Value ($)'], errors='coerce').fillna(0).sum() - pd.to_numeric(
         edited_re['Mortgage Balance ($)'], errors='coerce').fillna(0).sum() if not edited_re.empty else 0
