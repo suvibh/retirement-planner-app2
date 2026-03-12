@@ -76,6 +76,13 @@ def update_state(key, val):
 
 def mark_dirty():
     st.session_state['dirty'] = True
+    
+    # --- FIX: Purge stale Monte Carlo results when any input changes ---
+    st.session_state['mc_success_rate'] = None
+    
+    # If you are also storing the raw MC simulation data in state (like for charts), clear it too:
+    if 'mc_raw_results' in st.session_state:
+        st.session_state['mc_raw_results'] = None
 
 
 def get_completion_status():
@@ -637,7 +644,8 @@ def build_sim_context():
     debt_records = [d for d in df_debt.to_dict('records') if
                     d.get("Debt Name") and safe_num(d.get("Current Balance ($)")) > 0] if not df_debt.empty else []
 
-    return {
+# --- FIX: Assign to a variable first so we can scrub it ---
+    raw_ctx = {
         'current_year': current_year, 'my_birth_year': my_birth_year, 'spouse_birth_year': spouse_birth_year,
         'primary_end_year': primary_end_year, 'spouse_end_year': spouse_end_year,
         'has_spouse': st.session_state.get('has_spouse', False),
@@ -664,6 +672,9 @@ def build_sim_context():
         'exp_records': scrub_records(st.session_state.get('lifetime_expenses', [])),
         'my_age': my_age, 'spouse_age': spouse_age
     }
+    
+    # --- FIX: Return the fully sanitized dictionary! ---
+    return sanitize_for_cache(raw_ctx)
 
 # --- MODULE LEVEL STATIC RESOURCES & HELPERS ---
 IRS_UNIFORM_TABLE = {73: 26.5, 74: 25.5, 75: 24.6, 76: 23.7, 77: 22.9, 78: 22.0, 79: 21.1, 80: 20.2, 81: 19.4,
@@ -2613,7 +2624,10 @@ def render_simulation():
                                     c[key] += shift
                                     
                                 m_seq = tuple([c['mkt']] * (c['max_years'] + 1))
-                                df_s, _, _, _ = execute_sim_engine_v8(m_seq, json.dumps(c))
+
+                                # --- FIX: Scrub the shifted scenario data and sort keys to guarantee cache hits ---
+                                clean_scenario_ctx = sanitize_for_cache(c)
+                                df_s, _, _, _ = execute_sim_engine_v8(m_seq, json.dumps(clean_scenario_ctx, sort_keys=True))
                                 val = df_s.iloc[-1]['Net Worth'] if not df_s.empty else 0
                                 
                                 if view_todays_dollars:
