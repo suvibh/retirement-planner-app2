@@ -753,17 +753,20 @@ def run_simulation(mkt_sequence, ctx_input):
 
     if primary_ss_record:
         raw_start = primary_ss_record.get('Start Year')
-        primary_ss_start_year = ctx['primary_retire_year'] if (
-                    raw_start is None or pd.isna(raw_start) or str(raw_start).strip() == "") else int(
-            safe_num(raw_start))
+        primary_ss_start_year = ctx['primary_retire_year'] if (raw_start is None or pd.isna(raw_start) or str(raw_start).strip() == "") else int(safe_num(raw_start))
+        
+        # --- FIX: Hard Engine Guardrails for SS Claim Age ---
+        primary_ss_start_year = max(ctx['my_birth_year'] + 62, min(ctx['my_birth_year'] + 70, primary_ss_start_year))
     else:
         primary_ss_start_year = 9999
 
     if spouse_ss_record:
         raw_start = spouse_ss_record.get('Start Year')
-        spouse_ss_start_year = ctx['spouse_retire_year'] if (
-                    raw_start is None or pd.isna(raw_start) or str(raw_start).strip() == "") else int(
-            safe_num(raw_start))
+        spouse_ss_start_year = ctx['spouse_retire_year'] if (raw_start is None or pd.isna(raw_start) or str(raw_start).strip() == "") else int(safe_num(raw_start))
+        
+        # --- FIX: Hard Engine Guardrails for Spouse SS Claim Age ---
+        if ctx['has_spouse']:
+            spouse_ss_start_year = max(ctx['spouse_birth_year'] + 62, min(ctx['spouse_birth_year'] + 70, spouse_ss_start_year))
     else:
         spouse_ss_start_year = 9999
 
@@ -1793,15 +1796,10 @@ def render_income():
 
     edited_inc = st.data_editor(
         df_inc,
-        column_order=["Description", "Category", "Owner", "Annual Amount ($)", "Start Year", "End Year",
-                      "Stop at Ret.?", "Override Growth (%)"],
+        column_order=["Description", "Category", "Owner", "Annual Amount ($)", "Start Year", "End Year", "Stop at Ret.?", "Override Growth (%)"],
         column_config={
             "Description": st.column_config.TextColumn("Description"),
-            "Category": st.column_config.SelectboxColumn("Category", options=["Base Salary (W-2)", "Bonus / Commission",
-                                                                              "Employer Match (401k/HSA)",
-                                                                              "Equity / RSUs", "Contractor (1099)",
-                                                                              "Dividends", "Social Security", "Pension",
-                                                                              "Other"]),
+            "Category": st.column_config.SelectboxColumn("Category", options=["Base Salary (W-2)", "Bonus / Commission", "Employer Match (401k/HSA)", "Equity / RSUs", "Contractor (1099)", "Dividends", "Social Security", "Pension", "Other"]),
             "Owner": st.column_config.SelectboxColumn("Whose Income?", options=["Me", "Spouse", "Joint"]),
             "Annual Amount ($)": st.column_config.NumberColumn("Amount per Year ($)", step=1000, format="$%d"),
             "Start Year": st.column_config.NumberColumn("Start Year", min_value=1900, max_value=2100, format="%d"),
@@ -1810,7 +1808,28 @@ def render_income():
             "Override Growth (%)": st.column_config.NumberColumn("Custom Growth (%)", step=0.1, format="%.1f%%")
         }, num_rows="dynamic", use_container_width=True, key="inc_editor", on_change=mark_dirty
     )
-    st.session_state['income_data'] = edited_inc.to_dict('records')
+    
+    # --- FIX: Extract records and scrub NaN values to prevent infinite st.rerun() loops ---
+    edited_inc_records = scrub_records(edited_inc.to_dict('records'))
+    
+    # --- FIX: UI Validation Pass ---
+    for inc in edited_inc_records:
+        if inc.get("Category") == "Social Security":
+            s_yr = inc.get("Start Year")
+            if s_yr is not None and str(s_yr).strip() != "":
+                owner = inc.get("Owner", "Me")
+                b_yr = st.session_state.get('my_dob', datetime.date(1980, 1, 1)).year if owner in ["Me", "Joint"] else st.session_state.get('spouse_dob', datetime.date(1982, 1, 1)).year
+                
+                if safe_num(s_yr) < b_yr + 62:
+                    st.error(f"🚨 Social Security '{html.escape(str(inc.get('Description', 'Unknown')))}': Earliest claiming age is 62 (Year {b_yr + 62}). The simulation engine will cap this.")
+                elif safe_num(s_yr) > b_yr + 70:
+                    st.error(f"🚨 Social Security '{html.escape(str(inc.get('Description', 'Unknown')))}': Delayed retirement credits max out at age 70 (Year {b_yr + 70}). The simulation engine will cap this.")
+
+    # --- FIX: Immediate State Commit ---
+    # We compare the JSON strings to ignore Python dict object identity mismatches
+    if json.dumps(edited_inc_records) != json.dumps(scrub_records(st.session_state.get('income_data', []))):
+        st.session_state['income_data'] = edited_inc_records
+        st.rerun()
 
     render_total("Total Pre-Tax Income", edited_inc['Annual Amount ($)'])
 
