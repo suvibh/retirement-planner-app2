@@ -2864,23 +2864,8 @@ def render_ai():
                      disabled=st.session_state['ai_report_loading']):
             if check_ai_rate_limit():
                 if sim_summary:
-<<<<<<< HEAD
                     st.session_state['ai_report_loading'] = True
                     st.rerun()
-=======
-                    res = None
-                    try:
-                        with st.spinner("AI extracting timeseries data and acting as fiduciary advisor..."):
-                            prompt = f"Act as an expert fiduciary financial planner. Review this user's summary: {json.dumps(sim_summary)} and their chronological 5-year cash flow progression: {json.dumps(timeline_summary)}. Provide a highly detailed, year-by-year or phase-by-phase tactical analysis. Focus on specific strategies they can use to optimize their tax buckets (e.g., when exactly to execute Roth conversions before RMDs begin), sequence of withdrawals, and managing the gaps between retirement and Social Security/Medicare. Format your response in clean Markdown."
-                            res = call_gemini_text(prompt)
-                            if res:
-                                st.session_state['ai_analysis_report'] = res
-                                mark_dirty()
-                            else:
-                                st.error("⚠️ AI Analysis failed to generate.")
-                    finally:
-                        if res: st.rerun()
->>>>>>> parent of 140b237 (Update app.py)
                 else:
                     st.warning("Please run the baseline simulation first on the Dashboard or Simulation tab.")
 
