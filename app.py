@@ -1399,9 +1399,6 @@ def run_simulation(mkt_sequence, ctx_input):
                             # --- FIX: Track Roth taxes, but wait to log them to prevent double-counting ---
                             roth_fed_tax_paid += (prop_fed - base_fed)
                             roth_state_tax_paid += (prop_state - base_state)
-                            
-                            yd["Tax Breakdown: Federal"] = yd.get("Tax Breakdown: Federal", 0) + (prop_fed - base_fed)
-                            yd["Tax Breakdown: State"] = yd.get("Tax Breakdown: State", 0) + (prop_state - base_state)
 
                             for ca in sim_assets:
                                 if tax_cost <= 0: break
