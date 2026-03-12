@@ -3315,7 +3315,20 @@ with st.sidebar:
         st.session_state['current_page'] = clean_page_name
         st.rerun()
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    # --- FIX: Visual Setup Progress Indicator ---
+    st.markdown("<hr style='margin-top: 10px; margin-bottom: 20px; border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
+    
+    score = status['score']
+    # If they hit 100%, turn the text green to celebrate. Otherwise, keep it a subtle gray.
+    score_color = "#10b981" if score == 100 else "#64748b"
+    
+    st.markdown(f"<div style='font-size: 0.85rem; color: {score_color}; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;'>Blueprint Completion: {score}%</div>", unsafe_allow_html=True)
+    
+    # st.progress requires a float between 0.0 and 1.0
+    st.progress(score / 100.0)
+    
+    st.markdown("<div style='margin-bottom: 24px;'></div>", unsafe_allow_html=True)
+    # --------------------------------------------
 
     save_btn_label = "⚠️ Save Changes" if st.session_state.get('dirty', False) else "🚀 Save Profile"
     if st.button(save_btn_label, type="primary", use_container_width=True):
