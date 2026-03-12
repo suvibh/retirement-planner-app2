@@ -9,6 +9,7 @@ import math
 import html
 import re
 import copy
+import io
 import concurrent.futures
 from dateutil.relativedelta import relativedelta
 import warnings
@@ -28,6 +29,11 @@ try:
 except ImportError:
     st.error("Missing dependency: pip install extra-streamlit-components")
     st.stop()
+
+try:
+    import openpyxl
+except ImportError:
+    st.warning("Missing dependency: pip install openpyxl (Required for Excel downloads)")
 
 # --- CONFIG & SUPPRESSION ---
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -1357,7 +1363,7 @@ def run_simulation(mkt_sequence, ctx_input):
             prev_debt_bals[d['name']] = d['bal']
             debt_bal_total += d['bal']
 
-        base_fed_tax_pre_conversion, marginal_rate_pre_conversion = calc_federal_tax(tax_base_ord_pre, active_mfj,
+        base_fed_tax_pre_conversion, marginal_rate_pre_conversion = calc_federal_tax(tax_base_ord, active_mfj,
                                                                                      year_offset, ctx['infl'])
         state_tax_rate = ctx['cur_t'] if not is_retired else ctx['ret_t']
         base_state_tax_pre_conversion = tax_base_ord_pre * (state_tax_rate / 100.0)
@@ -1744,6 +1750,8 @@ def render_dashboard():
     sim_ctx = build_sim_context()
     if sim_ctx['my_age'] <= 0:
         render_empty_state("Profile", "👤")
+        info_banner("Please complete your Profile (specifically your Date of Birth) to unlock the simulation.",
+                    "warning")
         return
 
     if sim_ctx['max_years'] <= 0:
@@ -2717,37 +2725,60 @@ def render_simulation():
                             fig_mc = apply_chart_theme(fig_mc, "Stochastic Net Worth Projections")
                             st.plotly_chart(fig_mc, use_container_width=True)
 
-            # --- DATA AUDIT TABLES ---
+            # --- DATA AUDIT TABLES & EXCEL EXPORT ---
             st.divider()
-            with st.expander("📊 View Detailed Data Logs & Export JSON", expanded=False):
-                csv = df_sim_nominal.to_csv(index=False).encode('utf-8')
-                st.download_button(label="📥 Download Full Simulation (.csv)", data=csv,
-                                   file_name='retirement_simulation.csv', mime='text/csv')
+            with st.expander("📊 View Detailed Data Logs & Export Excel", expanded=False):
 
-                t1, t2, t3 = st.tabs(["Income & Expense Log", "Net Worth Log", "System State (JSON)"])
-                with t1:
+                # Excel Generation Logic
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    # Sheet 1: Income/Expense Log
                     inc_c = sorted([c for c in df_det.columns if
                                     c.startswith("Income:") or c.startswith("Roth") or c.startswith("Cashflow:")])
                     exp_c = sorted([c for c in df_det.columns if c.startswith("Expense:")])
                     ord_det = ["Year", "Age (Primary)", "Age (Spouse)"] + inc_c + exp_c + ["Net Savings"]
-                    st.dataframe(df_det[ord_det].set_index("Year").style.format(
-                        {c: "${:,.0f}" for c in ord_det if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
-                            "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
-                with t2:
+                    df_det[ord_det].to_excel(writer, sheet_name='Income_Expense_Log', index=False)
+
+                    # Sheet 2: Net Worth Log
                     ast_c = sorted([c for c in df_nw.columns if c.startswith("Asset:")])
                     ord_nw = ["Year", "Age (Primary)", "Age (Spouse)"] + ast_c + ["Total Liquid Assets",
                                                                                   "Total Real Estate Equity",
                                                                                   "Total Business Equity",
                                                                                   "Total Debt Liabilities",
                                                                                   "Total Net Worth"]
+                    df_nw[ord_nw].to_excel(writer, sheet_name='Net_Worth_Log', index=False)
+
+                    # Sheet 3: System State JSON Flattened
+                    # Flatten the sim_ctx dictionary to write to Excel cleanly
+                    flat_ctx = []
+                    for k, v in sim_ctx.items():
+                        if isinstance(v, (list, dict)):
+                            flat_ctx.append({"Parameter": k, "Value": json.dumps(v)})
+                        else:
+                            flat_ctx.append({"Parameter": k, "Value": v})
+                    df_ctx = pd.DataFrame(flat_ctx)
+                    df_ctx.to_excel(writer, sheet_name='System_State', index=False)
+
+                excel_data = output.getvalue()
+
+                st.download_button(
+                    label="📥 Download Full Simulation (.xlsx)",
+                    data=excel_data,
+                    file_name='retirement_simulation.xlsx',
+                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    type="primary",
+                    use_container_width=True
+                )
+
+                t1, t2 = st.tabs(["Income & Expense Log", "Net Worth Log"])
+                with t1:
+                    st.dataframe(df_det[ord_det].set_index("Year").style.format(
+                        {c: "${:,.0f}" for c in ord_det if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
+                            "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
+                with t2:
                     st.dataframe(df_nw[ord_nw].set_index("Year").style.format(
                         {c: "${:,.0f}" for c in ord_nw if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
                             "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
-                with t3:
-                    json_str = json.dumps(sim_ctx, indent=4)
-                    st.download_button(label="📥 Download JSON Configuration", data=json_str,
-                                       file_name='system_state.json', mime='application/json')
-                    st.json(sim_ctx)
 
 
 def render_ai():
