@@ -2779,22 +2779,63 @@ def render_ai():
                                  "Net_Worth": int(last_row["Net Worth"])})
     else:
         sim_summary, timeline_summary = {}, []
+def render_ai():
+    section_header("AI Fiduciary Health & What-If Simulator", "Analyze your cash flows chronologically to provide tactical, phase-by-phase advice.", "🤖")
+
+    df_sim = st.session_state.get('df_sim_display')
+    if df_sim is not None and not df_sim.empty:
+        shortfall_mask = df_sim['Unfunded Debt'] > 0
+        deplete_year = df_sim[shortfall_mask]['Year'].min() if not df_sim[shortfall_mask].empty else None
+        my_age = relativedelta(datetime.date.today(), st.session_state.get('my_dob', datetime.date(1980, 1, 1))).years
+
+        sim_summary = {
+            "Current Age": my_age, "Retirement Age": st.session_state.get('ret_age', 65),
+            "Life Expectancy": st.session_state.get('my_life_exp', 95),
+            "Current Net Worth": df_sim.iloc[0]['Net Worth'], "Final Net Worth": df_sim.iloc[-1]['Net Worth'],
+            "Shortfall Year": str(deplete_year) if deplete_year is not None else "None"
+        }
+
+        # --- NEW: Grab baseline assumptions for the AI ---
+        sim_ctx = build_sim_context()
+        ai_assumptions = {
+            "Market Growth (%)": sim_ctx['mkt'],
+            "General Inflation (%)": sim_ctx['infl'],
+            "Healthcare Inflation (%)": sim_ctx['infl_hc'],
+            "Education Inflation (%)": sim_ctx['infl_ed'],
+            "Current State Tax Rate (%)": sim_ctx['cur_t'],
+            "Retirement State Tax Rate (%)": sim_ctx['ret_t'],
+            "Withdrawal Strategy": sim_ctx['active_withdrawal_strategy'],
+            "Roth Conversions Optimizer": "Enabled" if sim_ctx['roth_conversions'] else "Disabled",
+            "Target Roth Bracket": sim_ctx['roth_target']
+        }
+
+        timeline_summary = []
+        for idx, row in df_sim.iloc[::5].iterrows():
+            timeline_summary.append({
+                "Age": int(row["Age (Primary)"]), "Income": int(row["Annual Income"]),
+                "Expenses": int(row["Annual Expenses"]), "Taxes": int(row["Annual Taxes"]),
+                "Liquid_Assets": int(row["Liquid Assets"]), "Net_Worth": int(row["Net Worth"])
+            })
+        last_row = df_sim.iloc[-1]
+        timeline_summary.append({"Age": int(last_row["Age (Primary)"]), "Income": int(last_row["Annual Income"]), "Expenses": int(last_row["Annual Expenses"]), "Taxes": int(last_row["Annual Taxes"]), "Liquid_Assets": int(last_row["Liquid Assets"]), "Net_Worth": int(last_row["Net Worth"])})
+    else:
+        sim_summary, ai_assumptions, timeline_summary = {}, {}, []
 
     tab_report, tab_whatif = st.tabs(["📊 Comprehensive Health Report", "🔮 What-If Simulator"])
-
-    # --- FIX: Safe AI State Machine ---
+    
     with tab_report:
         if st.button("✨ Generate Comprehensive AI Report", type="primary", use_container_width=True, key="btn_report"):
             st.session_state['trigger_report_ai'] = True
-
+            
         if st.session_state.get('trigger_report_ai'):
             if check_ai_rate_limit():
                 if sim_summary:
                     try:
                         with st.spinner("AI extracting timeseries data and acting as fiduciary advisor..."):
-                            prompt = f"""Act as an expert fiduciary financial planner. Review this user's summary: {json.dumps(sim_summary)} and their chronological 5-year cash flow progression: {json.dumps(timeline_summary)}. 
+                            # --- FIX: Injected ai_assumptions into the prompt ---
+                            prompt = f"""Act as an expert fiduciary financial planner. Review this user's summary: {json.dumps(sim_summary)}, their core economic & strategic assumptions: {json.dumps(ai_assumptions)}, and their chronological 5-year cash flow progression: {json.dumps(timeline_summary)}. 
 
-                            Provide a highly detailed, year-by-year or phase-by-phase tactical analysis. 
+                            Provide a highly detailed, year-by-year or phase-by-phase tactical analysis based strictly on these parameters. 
 
                             CRITICAL INSTRUCTION: You MUST include a distinct, bolded section titled "Roth Conversion Strategy Blueprint". In this section, provide actionable, mathematical advice on EXACTLY when they should execute Roth conversions. For example: "Between ages X and Y, convert $Z per year to fill the 24% bracket before RMDs begin at age 75." Be as specific as possible using their exact numbers and tax data.
 
@@ -2817,11 +2858,8 @@ def render_ai():
             st.markdown(st.session_state['ai_analysis_report'].replace('$', '&#36;'), unsafe_allow_html=True)
 
     with tab_whatif:
-        what_if_query = st.text_area(
-            "Ask the AI to simulate a scenario (e.g., 'What if I sold my rental property in 2030 and put the cash in my brokerage?' or 'What if I added $50k in income starting in 2029?')",
-            key="what_if_text")
-
-        # --- FIX: Safe AI State Machine ---
+        what_if_query = st.text_area("Ask the AI to simulate a scenario (e.g., 'What if I sold my rental property in 2030 and put the cash in my brokerage?' or 'What if inflation hits 5% for the next decade?')", key="what_if_text")
+        
         if st.button("✨ Run What-If Analysis (AI)", type="primary", use_container_width=True, key="btn_whatif"):
             st.session_state['trigger_whatif_ai'] = True
 
@@ -2830,7 +2868,8 @@ def render_ai():
                 if sim_summary and what_if_query:
                     try:
                         with st.spinner("AI processing alternative timelines and computing what-if scenario..."):
-                            prompt = f"Act as an expert fiduciary financial planner. Review this user's baseline simulation summary: {json.dumps(sim_summary)} and their chronological 5-year cash flow progression: {json.dumps(timeline_summary)}. The user wants to run the following 'what-if' scenario: '{what_if_query}'. Analyze how this change would mathematically and strategically impact their net worth, cash flow, and tax strategy compared to the baseline. Provide a highly detailed, reasonable estimate and tactical breakdown of this scenario. Format your response in clean Markdown."
+                            # --- FIX: Injected ai_assumptions into the prompt ---
+                            prompt = f"Act as an expert fiduciary financial planner. Review this user's baseline simulation summary: {json.dumps(sim_summary)}, their baseline economic assumptions: {json.dumps(ai_assumptions)}, and their chronological 5-year cash flow progression: {json.dumps(timeline_summary)}. The user wants to run the following 'what-if' scenario: '{what_if_query}'. Analyze how this change would mathematically and strategically impact their net worth, cash flow, and tax strategy compared to their baseline assumptions. Provide a highly detailed, reasonable estimate and tactical breakdown of this scenario. Format your response in clean Markdown."
                             res = call_gemini_text(prompt)
                             if res:
                                 st.session_state['what_if_analysis_report'] = res
