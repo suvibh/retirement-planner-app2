@@ -198,23 +198,23 @@ def apply_chart_theme(fig, title=""):
         font=dict(family="Inter", color="#64748b", size=12), hovermode="x unified",
         hoverlabel=dict(bgcolor="white", bordercolor="#e2e8f0", font_size=13, font_family="Inter"),
         
-        # --- FIX: Center the legend globally and push it slightly higher ---
+        # --- FIX: Mobile-Responsive Legend Placement ---
         legend=dict(
             orientation="h", 
-            yanchor="bottom", 
-            y=1.08, 
+            yanchor="top",     # Anchor to the top of the legend box...
+            y=-0.2,            # ...and push it safely below the X-axis
             xanchor="center", 
             x=0.5, 
             bgcolor="rgba(0,0,0,0)",
-            font=dict(size=12)
+            font=dict(size=11),
+            itemwidth=70       # Forces uniform wrapping on narrow mobile screens
         ),
         
         xaxis=dict(showgrid=False, zeroline=False, color="#94a3b8", tickfont=dict(size=11)),
         yaxis=dict(gridcolor="#f1f5f9", zeroline=False, tickformat="$,.0f", color="#94a3b8", tickfont=dict(size=11)),
         
-        # --- FIX: Only enforce the top margin (to protect the legend). 
-        # Let Plotly auto-calculate Left, Right, and Bottom margins to prevent clipping! ---
-        margin=dict(t=90) 
+        # --- FIX: Adjust margins to give the top breathing room and the bottom room for the legend ---
+        margin=dict(t=60, b=120) 
     )
     return fig
 
@@ -2788,16 +2788,6 @@ def render_simulation():
                                 fig_mc.add_trace(go.Scatter(x=years_list, y=p10, mode='lines', name='10th Percentile (Severe)', line=dict(color='#f43f5e', dash='dot')))
                                 fig_mc = apply_chart_theme(fig_mc, "Stochastic Net Worth Projections")
                                 
-                                # --- FIX: Expand top margin and center the legend so it doesn't clip on the right ---
-                                fig_mc.update_layout(
-                                    margin=dict(t=90), # Increase top margin from default 50 to 90
-                                    legend=dict(
-                                        x=0.5,         # Center horizontally
-                                        xanchor='center',
-                                        y=1.08,        # Push slightly higher above the grid
-                                        yanchor='bottom'
-                                    )
-                                )
                                 st.plotly_chart(fig_mc, use_container_width=True)
 
             with out_tab_tax:
