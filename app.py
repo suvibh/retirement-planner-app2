@@ -2414,35 +2414,6 @@ def render_simulation():
             update_asm_toggle('roth_target', roth_target)
             update_asm_toggle('withdrawal_strategy', active_withdrawal_strategy.split(' ')[0])
 
-        def update_asm_toggle(key, val):
-            if st.session_state.get('assumptions', {}).get(key) != val:
-                new_asm = st.session_state.get('assumptions', {}).copy()
-                new_asm[key] = val
-                st.session_state['assumptions'] = new_asm
-                mark_dirty()
-
-        with sc1:
-            medicare_gap = st.toggle("🏥 Model Pre-Medicare Gap", value=st.session_state.get('assumptions', {}).get('medicare_gap', True), help="Adds a $15,000/yr proxy cost if you retire before Medicare kicks in at 65.")
-            update_asm_toggle('medicare_gap', medicare_gap)
-            medicare_cliff = st.toggle("🏥 Apply Medicare Cliff (Drop Healthcare at 65)", value=st.session_state.get('assumptions', {}).get('medicare_cliff', True), help="Reduces your general healthcare expense by 25% per person at age 65 to simulate Medicare taking over.")
-            update_asm_toggle('medicare_cliff', medicare_cliff)
-            glidepath = st.toggle("📉 Apply Investment Glidepath", value=st.session_state.get('assumptions', {}).get('glidepath', True), help="Gradually reduces your investment growth rate by up to 3% in retirement to simulate shifting to safer assets (bonds).")
-            update_asm_toggle('glidepath', glidepath)
-            stress_test = st.toggle("📉 Apply -25% Market Crash at Retirement", value=st.session_state.get('assumptions', {}).get('stress_test', False), help="Applies a severe market drop in your exact first year of retirement to test Sequence of Returns Risk.")
-            update_asm_toggle('stress_test', stress_test)
-            ltc_shock = st.toggle("🛏️ Long-Term Care (LTC) Shock", value=st.session_state.get('assumptions', {}).get('ltc_shock', False), help="Simulates a massive $100k+ annual expense in the final two years of life for nursing home care.")
-            update_asm_toggle('ltc_shock', ltc_shock)
-
-        with sc2:
-            active_withdrawal_strategy = st.selectbox("Shortfall Withdrawal Sequence", options=["Standard (Taxable -> 401k -> Roth)", "Roth Preferred (Taxable -> Roth -> 401k)"], index=0 if "Standard" in st.session_state.get('assumptions', {}).get('withdrawal_strategy', 'Standard') else 1, help="Standard drains Traditional accounts before Roth. Roth Preferred drains Roth before Traditional to keep taxable income artificially low.")
-            roth_conversions = st.toggle("🔄 Enable Roth Conversion Optimizer", value=st.session_state.get('assumptions', {}).get('roth_conversions', False), help="Automatically converts Traditional balances to Roth up to your target tax bracket during low-income years.")
-            roth_target_idx = ["12%", "22%", "24%", "32%"].index(st.session_state.get('assumptions', {}).get('roth_target', "24%"))
-            roth_target = st.selectbox("Target Bracket to Fill", options=["12%", "22%", "24%", "32%"], index=roth_target_idx, help="The highest tax bracket you are willing to 'fill up' with Roth conversions each year.")
-            
-            update_asm_toggle('roth_conversions', roth_conversions)
-            update_asm_toggle('roth_target', roth_target)
-            update_asm_toggle('withdrawal_strategy', active_withdrawal_strategy.split(' ')[0])
-
     st.divider()
     view_todays_dollars = st.toggle("💵 View Charts in Today's Dollars", value=True,
                                     help="Removes the effect of inflation so you can easily understand what these big future numbers feel like today.")
