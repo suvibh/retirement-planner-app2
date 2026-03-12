@@ -1752,7 +1752,35 @@ def render_dashboard():
         st.session_state['df_nw'] = df_nw_nominal
 
     if df_sim_nominal.empty:
-        st.error("Simulation returned no data. Please check your profile and start dates.")
+        st.markdown(
+            """
+            <div style='text-align:center; padding:60px 24px; background:#f8fafc; border-radius:16px; border:2px dashed #cbd5e1; margin-top: 20px; margin-bottom:24px;'>
+                <div style='font-size:3.5rem; margin-bottom:16px;'>🌱</div>
+                <h3 style='color:#0f172a; margin:0 0 12px; font-weight: 800; font-size: 1.8rem;'>Your Blueprint is a Blank Canvas</h3>
+                <p style='color:#64748b; margin:0 auto 32px; font-size:1.1rem; max-width: 600px; line-height: 1.6;'>
+                    The simulation engine is ready, but it needs a bit more data to project your future net worth. Add your current financial foundation to bring your dashboard to life.
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+        # --- FIX: Inject direct routing CTAs so the user isn't stranded ---
+        st.write("#### What would you like to add first?")
+        cta1, cta2, cta3 = st.columns(3)
+        
+        if cta1.button("💵 Add Income Sources", type="primary", use_container_width=True):
+            st.session_state['current_page'] = "💵 Income Streams"
+            st.rerun()
+            
+        if cta2.button("🏦 Add Savings & Assets", type="primary", use_container_width=True):
+            st.session_state['current_page'] = "🏦 Assets & Debts"
+            st.rerun()
+            
+        if cta3.button("💸 Estimate Living Expenses", type="primary", use_container_width=True):
+            st.session_state['current_page'] = "💸 Cash Flows"
+            st.rerun()
+            
         return
 
     df_sim = df_sim_nominal.copy()
