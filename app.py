@@ -2572,11 +2572,16 @@ def render_simulation():
             with out_tab_sens:
                 st.markdown('<div class="info-text" style="margin-bottom: 20px;">💡 <strong>Tornado Chart (Sensitivity Analysis):</strong> This isolates your biggest risks by stress-testing key variables one at a time. It reveals which assumption moving slightly has the most drastic impact on your Final Net Worth.</div>', unsafe_allow_html=True)
                 
+                # --- FIX: Generate a deterministic hash of the CURRENT simulation context ---
+                # We reuse your excellent float scrubber to ensure no false-positive hash mismatches!
+                current_clean_ctx = sanitize_for_cache(sim_ctx)
+                current_ctx_json = json.dumps(current_clean_ctx, sort_keys=True)
+                current_ctx_hash = hash(current_ctx_json)
+                
                 if st.button("✨ Run Sensitivity Analysis", type="primary", use_container_width=True, key="btn_sens"):
                     with st.spinner("Running 10 divergent timelines to map risk..."):
                         base_nw_sens = final_nw
-                        
-                        base_ctx_json = json.dumps(sim_ctx)
+                        base_ctx_json = current_ctx_json # Use the sanitized JSON we just made!
                         
                         sens_scenarios = [
                             ("Market Returns", "mkt", -1.0, 1.0, "%"),
@@ -2601,8 +2606,7 @@ def render_simulation():
                                     c[key] += shift
                                     
                                 m_seq = tuple([c['mkt']] * (c['max_years'] + 1))
-
-                                # --- FIX: Scrub the shifted scenario data and sort keys to guarantee cache hits ---
+                                
                                 clean_scenario_ctx = sanitize_for_cache(c)
                                 df_s, _, _, _ = execute_sim_engine_v8(m_seq, json.dumps(clean_scenario_ctx, sort_keys=True))
                                 val = df_s.iloc[-1]['Net Worth'] if not df_s.empty else 0
@@ -2638,7 +2642,14 @@ def render_simulation():
                         results = sorted(results, key=lambda x: x['Spread'], reverse=False)
                         st.session_state['sens_results'] = results
                         
+                        # --- FIX: Store the hash of the context used to generate these results ---
+                        st.session_state['sens_ctx_hash'] = current_ctx_hash
+                        
                 if 'sens_results' in st.session_state and HAS_PLOTLY:
+                    # --- FIX: Compare current hash to the stored hash. If mismatch, render the warning! ---
+                    if st.session_state.get('sens_ctx_hash') != current_ctx_hash:
+                        info_banner("⚠️ Inputs have changed. These results are based on a previous configuration. Please re-run the sensitivity analysis for updated metrics.", type="warning")
+                        
                     r_data = st.session_state['sens_results']
                     y_vals = [r['Parameter'] for r in r_data]
                     
@@ -2677,7 +2688,12 @@ def render_simulation():
                         margin=dict(l=20, r=80, t=50, b=80) 
                     )
                     fig_tor = apply_chart_theme(fig_tor, "Sensitivity Tornado Chart")
-                    st.plotly_chart(fig_tor, use_container_width=True)
+                    
+                    # Optional: Dim the chart slightly if it's stale to emphasize the warning
+                    if st.session_state.get('sens_ctx_hash') != current_ctx_hash:
+                        st.plotly_chart(fig_tor, use_container_width=True, config={'staticPlot': False}, kwargs={"style": "opacity: 0.6;"})
+                    else:
+                        st.plotly_chart(fig_tor, use_container_width=True)
 
             # --- AND SAME FOR THIS ONE ---
             with out_tab_mc:
