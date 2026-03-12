@@ -1233,7 +1233,64 @@ def run_simulation(mkt_sequence, ctx_input):
 
             pre_tax_ord += max(0, r['rent'] - r['exp'] - interest_paid)
 
-        tax_base_ord_pre = max(0, pre_tax_ord - pre_conversion_qbi)
+        # GET OOP CONTRIBUTIONS (TO DEDUCT FROM TAXES)
+        user_out_of_pocket_contribs = 0
+        pre_tax_deductions = 0
+        person_401k_contribs = {'Me': 0, 'Spouse': 0, 'Joint': 0}
+
+        plan_401k_limit = PLAN_401K_LIMIT_BASE * ((1 + ctx['infl'] / 100) ** year_offset)
+        catchup_401k = CATCHUP_401K_BASE * ((1 + ctx['infl'] / 100) ** year_offset)
+        ira_limit = IRA_LIMIT_BASE * ((1 + ctx['infl'] / 100) ** year_offset)
+        catchup_ira = CATCHUP_IRA_BASE * ((1 + ctx['infl'] / 100) ** year_offset)
+
+        for owner, match_left in list(match_income_by_owner.items()):
+            if match_left <= 0: continue
+            for acct_type_target in ['Traditional 401(k)', 'Traditional 401k/IRA', 'Roth 401(k)', 'Roth 401k/IRA',
+                                     'HSA']:
+                for a in sim_assets:
+                    if a.get('Type') == acct_type_target and a.get('Owner') == owner:
+                        a['match_contrib_queue'] = a.get('match_contrib_queue', 0) + match_left
+                        match_income_by_owner[owner] = 0
+                        break
+                if match_income_by_owner[owner] == 0: break
+
+        for owner, match_left in match_income_by_owner.items():
+            if match_left > 0:
+                found_fallback = False
+                for a in sim_assets:
+                    if a.get('Owner') == owner and a.get('Type') in ['Brokerage (Taxable)', 'HYSA', 'Checking/Savings']:
+                        a['match_contrib_queue'] = a.get('match_contrib_queue', 0) + match_left
+                        found_fallback = True
+                        break
+                if not found_fallback and len(sim_assets) > 0:
+                    sim_assets[0]['match_contrib_queue'] = sim_assets[0].get('match_contrib_queue', 0) + match_left
+                match_income_by_owner[owner] = 0
+
+        for a in sim_assets:
+            o_acct = a.get('Owner', 'Me')
+            o_birth = ctx['my_birth_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_birth_year']
+            o_ret = ctx['primary_retire_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_retire_year']
+            o_alive = is_my_alive if o_acct in ['Me', 'Joint'] else is_spouse_alive
+            added_this_year = 0
+
+            if o_alive and not (a.get('stop_at_ret', True) and year >= o_ret):
+                added_this_year = a['contrib']
+                if a.get('Type') in ['Traditional 401(k)', 'Traditional 401k/IRA', 'Roth 401(k)', 'Roth 401k/IRA']:
+                    limit = plan_401k_limit + (catchup_401k if (year - o_birth) >= 50 else 0)
+                    added_this_year = min(added_this_year, max(0, limit - person_401k_contribs[o_acct]))
+                    person_401k_contribs[o_acct] += added_this_year
+                elif a.get('Type') in ['Traditional IRA', 'Roth IRA']:
+                    limit = ira_limit + (catchup_ira if (year - o_birth) >= 50 else 0)
+                    added_this_year = min(added_this_year, limit)
+                user_out_of_pocket_contribs += added_this_year
+
+                # BUG FIX 1: Capture Pre-Tax Deductions to lower AGI!
+                if a.get('Type') in ['Traditional 401(k)', 'Traditional 401k/IRA', 'Traditional IRA', 'HSA']:
+                    pre_tax_deductions += added_this_year
+
+            a['approved_oop_contrib'] = added_this_year
+
+        tax_base_ord_pre = max(0, pre_tax_ord - pre_conversion_qbi - pre_tax_deductions)
 
         for ev in ctx['exp_records']:
             desc = str(ev.get("Description", "")).strip()
@@ -1363,60 +1420,10 @@ def run_simulation(mkt_sequence, ctx_input):
             prev_debt_bals[d['name']] = d['bal']
             debt_bal_total += d['bal']
 
-        base_fed_tax_pre_conversion, marginal_rate_pre_conversion = calc_federal_tax(tax_base_ord, active_mfj,
+        base_fed_tax_pre_conversion, marginal_rate_pre_conversion = calc_federal_tax(tax_base_ord_pre, active_mfj,
                                                                                      year_offset, ctx['infl'])
         state_tax_rate = ctx['cur_t'] if not is_retired else ctx['ret_t']
         base_state_tax_pre_conversion = tax_base_ord_pre * (state_tax_rate / 100.0)
-
-        user_out_of_pocket_contribs = 0
-        person_401k_contribs = {'Me': 0, 'Spouse': 0, 'Joint': 0}
-
-        plan_401k_limit = PLAN_401K_LIMIT_BASE * ((1 + ctx['infl'] / 100) ** year_offset)
-        catchup_401k = CATCHUP_401K_BASE * ((1 + ctx['infl'] / 100) ** year_offset)
-        ira_limit = IRA_LIMIT_BASE * ((1 + ctx['infl'] / 100) ** year_offset)
-        catchup_ira = CATCHUP_IRA_BASE * ((1 + ctx['infl'] / 100) ** year_offset)
-
-        for owner, match_left in list(match_income_by_owner.items()):
-            if match_left <= 0: continue
-            for acct_type_target in ['Traditional 401(k)', 'Traditional 401k/IRA', 'Roth 401(k)', 'Roth 401k/IRA',
-                                     'HSA']:
-                for a in sim_assets:
-                    if a.get('Type') == acct_type_target and a.get('Owner') == owner:
-                        a['match_contrib_queue'] = a.get('match_contrib_queue', 0) + match_left
-                        match_income_by_owner[owner] = 0
-                        break
-                if match_income_by_owner[owner] == 0: break
-
-        for owner, match_left in match_income_by_owner.items():
-            if match_left > 0:
-                found_fallback = False
-                for a in sim_assets:
-                    if a.get('Owner') == owner and a.get('Type') in ['Brokerage (Taxable)', 'HYSA', 'Checking/Savings']:
-                        a['match_contrib_queue'] = a.get('match_contrib_queue', 0) + match_left
-                        found_fallback = True
-                        break
-                if not found_fallback and len(sim_assets) > 0:
-                    sim_assets[0]['match_contrib_queue'] = sim_assets[0].get('match_contrib_queue', 0) + match_left
-                match_income_by_owner[owner] = 0
-
-        for a in sim_assets:
-            o_acct = a.get('Owner', 'Me')
-            o_birth = ctx['my_birth_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_birth_year']
-            o_ret = ctx['primary_retire_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_retire_year']
-            o_alive = is_my_alive if o_acct in ['Me', 'Joint'] else is_spouse_alive
-            added_this_year = 0
-
-            if o_alive and not (a.get('stop_at_ret', True) and year >= o_ret):
-                added_this_year = a['contrib']
-                if a.get('Type') in ['Traditional 401(k)', 'Traditional 401k/IRA', 'Roth 401(k)', 'Roth 401k/IRA']:
-                    limit = plan_401k_limit + (catchup_401k if (year - o_birth) >= 50 else 0)
-                    added_this_year = min(added_this_year, max(0, limit - person_401k_contribs[o_acct]))
-                    person_401k_contribs[o_acct] += added_this_year
-                elif a.get('Type') in ['Traditional IRA', 'Roth IRA']:
-                    limit = ira_limit + (catchup_ira if (year - o_birth) >= 50 else 0)
-                    added_this_year = min(added_this_year, limit)
-                user_out_of_pocket_contribs += added_this_year
-            a['approved_oop_contrib'] = added_this_year
 
         total_converted = 0
         if ctx['roth_conversions'] and is_retired:
@@ -1452,11 +1459,21 @@ def run_simulation(mkt_sequence, ctx_input):
                             tax_cost = convert * est_tax_rate
                             for ca in sim_assets:
                                 if tax_cost <= 0: break
-                                if ca.get('Type') in ['Checking/Savings', 'HYSA', 'Brokerage (Taxable)',
-                                                      'Unallocated Cash']:
+                                if ca.get('Type') in ['Checking/Savings', 'HYSA', 'Unallocated Cash']:
                                     pull = min(ca['bal'], tax_cost)
                                     ca['bal'] -= pull
                                     tax_cost -= pull
+
+                            # BUG FIX 2: If we drain Brokerage to pay Roth taxes, it triggers 15% Capital Gains on the pull!
+                            for ca in sim_assets:
+                                if tax_cost <= 0: break
+                                if ca.get('Type') == 'Brokerage (Taxable)':
+                                    req_gross = tax_cost / 0.85
+                                    pull = min(ca['bal'], req_gross)
+                                    ca['bal'] -= pull
+                                    net_yield = pull * 0.85
+                                    tax_cost -= net_yield
+                                    yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + (pull - net_yield)
 
                             roth_found = False
                             for ra in sim_assets:
@@ -1478,7 +1495,7 @@ def run_simulation(mkt_sequence, ctx_input):
                 yd["Roth Conversion Amount"] = total_converted
 
         final_qbi = get_qbi(pre_tax_ord)
-        tax_base_ord = max(0, pre_tax_ord - final_qbi)
+        tax_base_ord = max(0, pre_tax_ord - final_qbi - pre_tax_deductions)
 
         for a in sim_assets:
             g = float(a.get('growth')) if pd.notna(a.get('growth')) and str(a.get('growth')).strip() != "" and str(
@@ -1498,7 +1515,7 @@ def run_simulation(mkt_sequence, ctx_input):
             if ei > 0: fica_tax += min(ei, wage_base) * 0.062 + ei * 0.0145 + max(0, ei - addl_thresh) * 0.009
 
         total_tax = base_fed_tax + state_tax + fica_tax
-        yd["Expense: Taxes"] = total_tax
+        yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + total_tax
 
         num_medicare = (1 if is_my_alive and my_current_age >= 65 else 0) + (
             1 if is_spouse_alive and spouse_current_age >= 65 else 0)
@@ -1537,7 +1554,7 @@ def run_simulation(mkt_sequence, ctx_input):
         if user_out_of_pocket_contribs > 0:
             yd["Expense: Portfolio Contributions"] = user_out_of_pocket_contribs
 
-        organic_cash_outflows = total_exp + user_out_of_pocket_contribs + total_tax
+        organic_cash_outflows = total_exp + user_out_of_pocket_contribs + yd["Expense: Taxes"]
         organic_net_cash_flow = annual_inc - organic_cash_outflows
         yd["Organic Net Savings"] = organic_net_cash_flow
 
@@ -1588,7 +1605,6 @@ def run_simulation(mkt_sequence, ctx_input):
                     shortfall, t_inc, wd = _withdraw(a, shortfall, 'cg', ctx, my_current_age, spouse_current_age,
                                                      active_mfj, year_offset, tax_base_ord, marginal_rate,
                                                      state_tax_rate, year, yd)
-                    total_tax += t_inc
                     yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
                     total_withdrawals += wd
 
@@ -1620,7 +1636,6 @@ def run_simulation(mkt_sequence, ctx_input):
                         shortfall, t_inc, wd = _withdraw(a, shortfall, 'ordinary' if is_trad else 'free', ctx,
                                                          my_current_age, spouse_current_age, active_mfj, year_offset,
                                                          tax_base_ord, marginal_rate, state_tax_rate, year, yd)
-                        total_tax += t_inc
                         yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
                         total_withdrawals += wd
 
@@ -1632,7 +1647,6 @@ def run_simulation(mkt_sequence, ctx_input):
                         shortfall, t_inc, wd = _withdraw(a, shortfall, 'ordinary', ctx, my_current_age,
                                                          spouse_current_age, active_mfj, year_offset, tax_base_ord,
                                                          marginal_rate, state_tax_rate, year, yd)
-                        total_tax += t_inc
                         yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
                         total_withdrawals += wd
 
