@@ -773,9 +773,15 @@ def run_simulation(mkt_sequence, ctx_input):
         {"Account Name": "Unallocated Cash", "Type": "Checking/Savings", "Owner": "Me", "bal": 0.0, "contrib": 0.0,
          "growth": 0.0, "stop_at_ret": False}]
 
-    sim_debts = [{"bal": safe_num(d.get("Current Balance ($)")), "pmt": safe_num(d.get("Monthly Payment ($)")) * 12,
-                  "rate": safe_num(d.get("Interest Rate (%)")) / 100, "name": d.get("Debt Name")} for d in
-                 ctx['debt_records'] if d.get("Debt Name")]
+    # --- FIX: Hard filter out phantom debts with missing names or zero/negative balances ---
+    sim_debts = [
+        {"bal": safe_num(d.get("Current Balance ($)")), 
+         "pmt": safe_num(d.get("Monthly Payment ($)")) * 12,
+         "rate": safe_num(d.get("Interest Rate (%)")) / 100, 
+         "name": str(d.get("Debt Name")).strip()} 
+        for d in ctx.get('debt_records', []) 
+        if d.get("Debt Name") and str(d.get("Debt Name")).strip() != "" and safe_num(d.get("Current Balance ($)")) > 0
+    ]
     sim_re = [{"name": r.get("Property Name", "Property"), "is_primary": r.get("Is Primary Residence?", False),
                "val": safe_num(r.get("Market Value ($)")), "debt": safe_num(r.get("Mortgage Balance ($)")),
                "pmt": safe_num(r.get("Mortgage Payment ($)")) * 12, "exp": safe_num(r.get("Monthly Expenses ($)")) * 12,
