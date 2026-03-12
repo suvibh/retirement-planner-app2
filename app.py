@@ -814,8 +814,12 @@ def run_simulation(mkt_sequence, ctx_input):
             if year not in milestones_by_year: milestones_by_year[year] = []
             milestones_by_year[year].append({"desc": "🏦 Spouse RMDs Begin", "amt": 0, "type": "system"})
 
-        is_retired = year >= ctx['primary_retire_year']
-        yd = {"Year": year, "Age (Primary)": my_current_age, "Age (Spouse)": spouse_current_age}
+        # --- FIX: Pre-initialize all tax keys so Pandas always sees them ---
+        yd = {
+            "Year": year, "Age (Primary)": my_current_age, "Age (Spouse)": spouse_current_age,
+            "Tax Breakdown: Federal": 0.0, "Tax Breakdown: State": 0.0, 
+            "Tax Breakdown: FICA": 0.0, "Tax Breakdown: Withdrawals": 0.0
+        }
         nw_yd = {"Year": year, "Age (Primary)": my_current_age, "Age (Spouse)": spouse_current_age}
 
         annual_inc, annual_ss, pre_tax_ord, total_tax = 0, 0, 0, 0
@@ -1499,7 +1503,7 @@ def run_simulation(mkt_sequence, ctx_input):
     return sim_res, det_res, nw_det_res, milestones_by_year
 
 @st.cache_data(show_spinner=False)
-def execute_sim_engine_v5(mkt_sequence_tuple, ctx):
+def execute_sim_engine_v6(mkt_sequence_tuple, ctx):
     s_res, d_res, nw_res, milestones = run_simulation(list(mkt_sequence_tuple), ctx)
     return pd.DataFrame(s_res), pd.DataFrame(d_res).fillna(0), pd.DataFrame(nw_res).fillna(0), milestones
 
@@ -1577,7 +1581,7 @@ def render_dashboard():
 
     with st.spinner("Running high-precision simulation engine..."):
         mkt_seq = tuple([sim_ctx['mkt']] * (sim_ctx['max_years'] + 1))
-        df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v5(mkt_seq, sim_ctx)
+        df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v6(mkt_seq, sim_ctx)
         st.session_state['df_sim_nominal'] = df_sim_nominal
         st.session_state['df_det'] = df_det_nominal
         st.session_state['df_nw'] = df_nw_nominal
@@ -2278,7 +2282,7 @@ def render_simulation():
         mkt_seq = tuple([sim_ctx['mkt']] * (sim_ctx['max_years'] + 1))
 
         with st.spinner("Running high-precision simulation engine..."):
-            df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v5(mkt_seq, sim_ctx)
+            df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v6(mkt_seq, sim_ctx)
 
         if not df_sim_nominal.empty:
             df_sim, df_det, df_nw = df_sim_nominal.copy(), df_det_nominal.copy(), df_nw_nominal.copy()
@@ -2472,7 +2476,7 @@ def render_simulation():
 
                         try:
                             with ThreadPoolExecutor(max_workers=min(mc_runs, 8)) as executor:
-                                futures = {executor.submit(execute_sim_engine_v5, seq, sim_ctx): i for i, seq in
+                                futures = {executor.submit(execute_sim_engine_v6, seq, sim_ctx): i for i, seq in
                                            enumerate(random_sequences)}
 
                                 for completed_idx, future in enumerate(concurrent.futures.as_completed(futures)):
@@ -2565,7 +2569,26 @@ def render_simulation():
                             ), row=2, col=1)
 
                     # Ensure both rows stack the bars independently
-                    fig_tax.update_layout(barmode='stack', hovermode='x unified', height=800)
+                    # --- NEW: Link Subplots with a unified crosshair ---
+                    fig_tax.update_layout(
+                        barmode='stack', 
+                        hovermode='x unified', 
+                        height=800,
+                        hoverdistance=-1,
+                        spikedistance=-1
+                    )
+                    # Force a vertical line through both rows
+                    fig_tax.update_xaxes(
+                        showspikes=True, 
+                        spikemode="across", 
+                        spikesnap="cursor", 
+                        showline=True, 
+                        showgrid=True,
+                        spikecolor="#94a3b8",
+                        spikethickness=1,
+                        spikedash="solid"
+                    )
+                    
                     fig_tax = apply_chart_theme(fig_tax)
                     st.plotly_chart(fig_tax, use_container_width=True)
                 else:
@@ -2574,10 +2597,17 @@ def render_simulation():
             with out_tab_logs:
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    inc_c = sorted([c for c in df_det.columns if
-                                    c.startswith("Income:") or c.startswith("Roth") or c.startswith("Cashflow:")])
+                    # --- NEW: Grab Tax Breakdowns for Export ---
+                    tax_c = sorted([c for c in df_det.columns if c.startswith("Tax Breakdown:") or c.startswith("Tax: ")])
+                    inc_c = sorted([c for c in df_det.columns if c.startswith("Income:") or c.startswith("Roth") or c.startswith("Cashflow:")])
                     exp_c = sorted([c for c in df_det.columns if c.startswith("Expense:")])
-                    ord_det = ["Year", "Age (Primary)", "Age (Spouse)"] + inc_c + exp_c + ["Net Savings"]
+                    
+                    # Combine all ordered columns
+                    ord_det = ["Year", "Age (Primary)", "Age (Spouse)"] + inc_c + exp_c + tax_c + ["Net Savings"]
+                    
+                    # Filter existing columns to prevent KeyErrors
+                    ord_det = [c for c in ord_det if c in df_det.columns]
+                    
                     df_det[ord_det].to_excel(writer, sheet_name='Income_Expense_Log', index=False)
 
                     ast_c = sorted([c for c in df_nw.columns if c.startswith("Asset:")])
@@ -2602,10 +2632,7 @@ def render_simulation():
                                    type="primary", use_container_width=True)
 
                 t1, t2 = st.tabs(["Income & Expense Log", "Net Worth Log"])
-                with t1:
-                    st.dataframe(df_det[ord_det].set_index("Year").style.format(
-                        {c: "${:,.0f}" for c in ord_det if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
-                            "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
+                with t1: st.dataframe(df_det[ord_det].set_index("Year").style.format({c: "${:,.0f}" for c in ord_det if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {"Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
                 with t2:
                     st.dataframe(df_nw[ord_nw].set_index("Year").style.format(
                         {c: "${:,.0f}" for c in ord_nw if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
