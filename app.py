@@ -175,11 +175,24 @@ def apply_chart_theme(fig, title=""):
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="Inter", color="#64748b", size=12), hovermode="x unified",
         hoverlabel=dict(bgcolor="white", bordercolor="#e2e8f0", font_size=13, font_family="Inter"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor="rgba(0,0,0,0)",
-                    font=dict(size=12)),
+        
+        # --- FIX: Center the legend globally and push it slightly higher ---
+        legend=dict(
+            orientation="h", 
+            yanchor="bottom", 
+            y=1.08, 
+            xanchor="center", 
+            x=0.5, 
+            bgcolor="rgba(0,0,0,0)",
+            font=dict(size=12)
+        ),
+        
         xaxis=dict(showgrid=False, zeroline=False, color="#94a3b8", tickfont=dict(size=11)),
         yaxis=dict(gridcolor="#f1f5f9", zeroline=False, tickformat="$,.0f", color="#94a3b8", tickfont=dict(size=11)),
-        margin=dict(l=0, r=0, t=50, b=0)
+        
+        # --- FIX: Only enforce the top margin (to protect the legend). 
+        # Let Plotly auto-calculate Left, Right, and Bottom margins to prevent clipping! ---
+        margin=dict(t=90) 
     )
     return fig
 
