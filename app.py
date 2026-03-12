@@ -529,11 +529,58 @@ if 'user_email' not in st.session_state:
         st.divider()
         if st.button("🚀 Try the Demo (Guest Mode)", use_container_width=True):
             st.session_state.pop('logged_out_flag', None)
-            st.session_state['user_email'] = "guest_demo";
-            st.session_state['user_data'] = {}
-            cookie_manager.set("user_email", "guest_demo",
-                               expires_at=datetime.datetime.now() + datetime.timedelta(days=1))
-            st.toast("Guest mode active. Data will be lost upon refreshing.", icon="⚠️");
+            st.session_state['user_email'] = "guest_demo"
+            
+            # --- FIX: Pre-load the "Johnson Family" to demonstrate the engine's capabilities immediately ---
+            st.session_state['user_data'] = {
+                "personal_info": {
+                    "name": "John Johnson", "dob": "1984-05-15",
+                    "retire_age": 60, "spouse_retire_age": 62,
+                    "my_life_exp": 92, "spouse_life_exp": 95,
+                    "current_city": "San Francisco, CA, USA",
+                    "has_spouse": True, "spouse_name": "Jane Johnson", "spouse_dob": "1986-08-20",
+                    "kids": [{"name": "Timmy", "age": 10}, {"name": "Sarah", "age": 8}]
+                },
+                "retire_city": "Sedona, AZ, USA",
+                "income": [
+                    {"Description": "John Base Salary", "Category": "Base Salary (W-2)", "Owner": "Me", "Annual Amount ($)": 180000, "Start Year": 2024, "End Year": 2100, "Stop at Ret.?": True, "Override Growth (%)": 3.0},
+                    {"Description": "Jane Base Salary", "Category": "Base Salary (W-2)", "Owner": "Spouse", "Annual Amount ($)": 120000, "Start Year": 2024, "End Year": 2100, "Stop at Ret.?": True, "Override Growth (%)": 3.0},
+                    {"Description": "John Social Security", "Category": "Social Security", "Owner": "Me", "Annual Amount ($)": 42000, "Start Year": 2051, "End Year": 2100, "Stop at Ret.?": False, "Override Growth (%)": 0},
+                    {"Description": "Jane Social Security", "Category": "Social Security", "Owner": "Spouse", "Annual Amount ($)": 36000, "Start Year": 2053, "End Year": 2100, "Stop at Ret.?": False, "Override Growth (%)": 0}
+                ],
+                "liquid_assets": [
+                    {"Account Name": "John 401(k)", "Type": "Traditional 401(k)", "Owner": "Me", "Current Balance ($)": 400000, "Annual Contribution ($/yr)": 15000, "Est. Annual Growth (%)": 7.0, "Stop Contrib at Ret.?": True},
+                    {"Account Name": "Jane 401(k)", "Type": "Traditional 401(k)", "Owner": "Spouse", "Current Balance ($)": 300000, "Annual Contribution ($/yr)": 12000, "Est. Annual Growth (%)": 7.0, "Stop Contrib at Ret.?": True},
+                    {"Account Name": "Joint Brokerage", "Type": "Brokerage (Taxable)", "Owner": "Joint", "Current Balance ($)": 150000, "Annual Contribution ($/yr)": 6000, "Est. Annual Growth (%)": 7.0, "Stop Contrib at Ret.?": False},
+                    {"Account Name": "Emergency Fund", "Type": "HYSA", "Owner": "Joint", "Current Balance ($)": 45000, "Annual Contribution ($/yr)": 0, "Est. Annual Growth (%)": 4.0, "Stop Contrib at Ret.?": False},
+                    {"Account Name": "Timmy 529", "Type": "529 Plan", "Owner": "Joint", "Current Balance ($)": 35000, "Annual Contribution ($/yr)": 2400, "Est. Annual Growth (%)": 7.0, "Stop Contrib at Ret.?": False},
+                    {"Account Name": "Sarah 529", "Type": "529 Plan", "Owner": "Joint", "Current Balance ($)": 28000, "Annual Contribution ($/yr)": 2400, "Est. Annual Growth (%)": 7.0, "Stop Contrib at Ret.?": False}
+                ],
+                "real_estate": [
+                    {"Property Name": "SF Primary Home", "Is Primary Residence?": True, "Market Value ($)": 1200000, "Mortgage Balance ($)": 650000, "Interest Rate (%)": 3.5, "Mortgage Payment ($)": 3500, "Monthly Expenses ($)": 1200, "Monthly Rent ($)": 0, "Override Prop Growth (%)": 4.0, "Override Rent Growth (%)": 3.0}
+                ],
+                "business": [],
+                "liabilities": [
+                    {"Debt Name": "Family SUV", "Type": "Auto", "Current Balance ($)": 24000, "Interest Rate (%)": 4.9, "Monthly Payment ($)": 650}
+                ],
+                "lifetime_expenses": [
+                    {"Description": "Base Living Expenses", "Category": "Other", "Frequency": "Monthly", "Amount ($)": 6000, "Start Phase": "Now", "Start Year": None, "End Phase": "At Retirement", "End Year": None, "AI Estimate?": False},
+                    {"Description": "Retirement Go-Go Years", "Category": "Other", "Frequency": "Monthly", "Amount ($)": 8500, "Start Phase": "At Retirement", "Start Year": None, "End Phase": "Custom Year", "End Year": 2054, "AI Estimate?": False},
+                    {"Description": "Retirement Slow-Go Years", "Category": "Other", "Frequency": "Monthly", "Amount ($)": 6000, "Start Phase": "Custom Year", "Start Year": 2055, "End Phase": "End of Life", "End Year": None, "AI Estimate?": False},
+                    {"Description": "Timmy College", "Category": "Education", "Frequency": "Yearly", "Amount ($)": 35000, "Start Phase": "Custom Year", "Start Year": 2032, "End Phase": "Custom Year", "End Year": 2035, "AI Estimate?": False},
+                    {"Description": "Sarah College", "Category": "Education", "Frequency": "Yearly", "Amount ($)": 35000, "Start Phase": "Custom Year", "Start Year": 2034, "End Phase": "Custom Year", "End Year": 2037, "AI Estimate?": False}
+                ],
+                "assumptions": {
+                    "inflation": 3.0, "inflation_healthcare": 5.5, "inflation_education": 4.5, "market_growth": 7.0,
+                    "income_growth": 3.0, "property_growth": 3.0, "rent_growth": 3.0, "current_tax_rate": 9.3,
+                    "retire_tax_rate": 4.5, "roth_conversions": True, "roth_target": "24%", "withdrawal_strategy": "Standard",
+                    "stress_test": False, "glidepath": True, "medicare_gap": True, "medicare_cliff": True,
+                    "ltc_shock": False, "shortfall_rate": 12.0
+                }
+            }
+            
+            cookie_manager.set("user_email", "guest_demo", expires_at=datetime.datetime.now() + datetime.timedelta(days=1))
+            st.toast("Guest mode active: Demo profile loaded successfully!", icon="🚀")
             st.rerun()
     st.stop()
 
