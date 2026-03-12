@@ -2006,7 +2006,6 @@ def render_assets():
     section_header("Assets, Debts & Net Worth",
                    "Construct your balance sheet. The AI draws down these buckets dynamically.", "🏦")
 
-    # Initialize default empty scopes to prevent NameError
     edited_re = pd.DataFrame()
     edited_biz = pd.DataFrame()
     edited_ast = pd.DataFrame()
@@ -2861,19 +2860,44 @@ with st.sidebar:
                 unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
-    current_page = st.radio("Navigation", list(PAGES.keys()), label_visibility="collapsed")
-    st.session_state['current_page'] = current_page
+    # Generate navigation options with dynamic checkmarks based on completion status
+    status = get_completion_status()
+
+    nav_options = []
+    for page_name in list(PAGES.keys()):
+        if "Profile" in page_name:
+            nav_options.append(f"{'✅ ' if status['profile'] else ''}{page_name}")
+        elif "Income" in page_name:
+            nav_options.append(f"{'✅ ' if status['income'] else ''}{page_name}")
+        elif "Assets" in page_name:
+            nav_options.append(f"{'✅ ' if status['assets'] else ''}{page_name}")
+        elif "Cash Flows" in page_name:
+            nav_options.append(f"{'✅ ' if status['expenses'] else ''}{page_name}")
+        else:
+            nav_options.append(page_name)
+
+    # Find index of currently active page to set as default in radio button
+    current_active_idx = 0
+    if st.session_state.get('current_page'):
+        for i, opt in enumerate(nav_options):
+            if st.session_state['current_page'] in opt:
+                current_active_idx = i
+                break
+
+    selected_nav_item = st.radio("Navigation", nav_options, index=current_active_idx, label_visibility="collapsed")
+
+    # Strip the checkmark prefix back off to route to the correct function in PAGES dictionary
+    clean_page_name = selected_nav_item.replace("✅ ", "")
+    st.session_state['current_page'] = clean_page_name
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    status = get_completion_status()
     st.progress(status['score'] / 100)
     st.caption(
         f"<div style='text-align: center; font-family: Inter; color: #cbd5e1; font-weight: 600; margin-bottom: 16px;'>Profile {status['score']}% Complete</div>",
         unsafe_allow_html=True)
 
-    stepper_html = f"<div style='background: rgba(255,255,255,0.03); border-radius: 12px; padding: 16px; margin-bottom: 24px; border: 1px solid rgba(255,255,255,0.05);'><div style='font-size: 0.75rem; color: #94a3b8; font-weight: 700; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px;'>Setup Progress</div><div style='display: flex; align-items: center; gap: 12px; margin-bottom: 12px;'><div style='width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; background: {'#10b981' if status['profile'] else 'transparent'}; border: 2px solid {'#10b981' if status['profile'] else '#475569'}; color: white;'>{'✓' if status['profile'] else '1'}</div><div style='color: {'white' if status['profile'] else '#94a3b8'}; font-size: 0.95rem; font-weight: {'600' if status['profile'] else '500'};'>Basic Info</div></div><div style='display: flex; align-items: center; gap: 12px; margin-bottom: 12px;'><div style='width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; background: {'#10b981' if status['income'] else 'transparent'}; border: 2px solid {'#10b981' if status['income'] else '#475569'}; color: white;'>{'✓' if status['income'] else '2'}</div><div style='color: {'white' if status['income'] else '#94a3b8'}; font-size: 0.95rem; font-weight: {'600' if status['income'] else '500'};'>Income Streams</div></div><div style='display: flex; align-items: center; gap: 12px; margin-bottom: 12px;'><div style='width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; background: {'#10b981' if status['assets'] else 'transparent'}; border: 2px solid {'#10b981' if status['assets'] else '#475569'}; color: white;'>{'✓' if status['assets'] else '3'}</div><div style='color: {'white' if status['assets'] else '#94a3b8'}; font-size: 0.95rem; font-weight: {'600' if status['assets'] else '500'};'>Assets & Debts</div></div><div style='display: flex; align-items: center; gap: 12px;'><div style='width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; background: {'#10b981' if status['expenses'] else 'transparent'}; border: 2px solid {'#10b981' if status['expenses'] else '#475569'}; color: white;'>{'✓' if status['expenses'] else '4'}</div><div style='color: {'white' if status['expenses'] else '#94a3b8'}; font-size: 0.95rem; font-weight: {'600' if status['expenses'] else '500'};'>Lifetime Budgets</div></div></div>"
-    st.markdown(stepper_html, unsafe_allow_html=True)
+    st.markdown("<br><br>", unsafe_allow_html=True)
 
     save_btn_label = "⚠️ Save Changes" if st.session_state.get('dirty', False) else "🚀 Save Profile"
     if st.button(save_btn_label, type="primary", use_container_width=True):
