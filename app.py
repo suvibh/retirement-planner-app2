@@ -1935,8 +1935,8 @@ def render_income():
             "Annual Amount ($)": st.column_config.NumberColumn("Amount per Year ($)", step=1000, format="$%d"),
             "Start Year": st.column_config.NumberColumn("Start Year", min_value=1900, max_value=2100, format="%d"),
             "End Year": st.column_config.NumberColumn("End Year", min_value=1900, max_value=2100, format="%d"),
-            "Stop at Ret.?": st.column_config.CheckboxColumn("Stop at Retirement?"),
-            "Override Growth (%)": st.column_config.NumberColumn("Custom Growth (%)", step=0.1, format="%.1f%%")
+            "Stop at Ret.?": st.column_config.CheckboxColumn("Stop at Retirement?", help="If checked, this income permanently stops the year the owner retires."),
+            "Override Growth (%)": st.column_config.NumberColumn("Custom Growth (%)", step=0.1, format="%.1f%%", help="Overrides the default income growth rate. Leave blank to use the global assumption.")
         }, num_rows="dynamic", use_container_width=True, key="inc_editor", on_change=mark_dirty
     )
     
@@ -2041,16 +2041,15 @@ def render_assets():
                           "Override Prop Growth (%)", "Override Rent Growth (%)"],
             column_config={
                 "Property Name": st.column_config.TextColumn("Property Name"),
-                "Is Primary Residence?": st.column_config.CheckboxColumn("Primary Home?", default=False),
+                "Is Primary Residence?": st.column_config.CheckboxColumn("Primary Home?", default=False, help="Check if you live here. Its expenses will be counted as living costs instead of business deductions."),
                 "Market Value ($)": st.column_config.NumberColumn("Market Value ($)", step=10000, format="$%d"),
                 "Mortgage Balance ($)": st.column_config.NumberColumn("Mortgage Balance ($)", step=10000, format="$%d"),
                 "Interest Rate (%)": st.column_config.NumberColumn("Interest Rate (%)", step=0.001, format="%.3f%%"),
-                "Mortgage Payment ($)": st.column_config.NumberColumn("Monthly P&I ($)", step=100, format="$%d"),
-                "Monthly Expenses ($)": st.column_config.NumberColumn("Taxes/Ins/HOA ($)", step=100, format="$%d"),
+                "Mortgage Payment ($)": st.column_config.NumberColumn("Monthly P&I ($)", step=100, format="$%d", help="Principal and Interest only. The engine amortizes this to zero automatically."),
+                "Monthly Expenses ($)": st.column_config.NumberColumn("Taxes/Ins/HOA ($)", step=100, format="$%d", help="Include property taxes, insurance, and HOA. Do not include the mortgage payment."),
                 "Monthly Rent ($)": st.column_config.NumberColumn("Monthly Rent ($)", step=100, format="$%d"),
-                "Override Prop Growth (%)": st.column_config.NumberColumn("Property Growth (%)", step=0.1,
-                                                                          format="%.1f%%"),
-                "Override Rent Growth (%)": st.column_config.NumberColumn("Rent Growth (%)", step=0.1, format="%.1f%%")
+                "Override Prop Growth (%)": st.column_config.NumberColumn("Property Growth (%)", step=0.1, format="%.1f%%", help="Custom annual appreciation rate for this property. Leave blank to use the global assumption."),
+                "Override Rent Growth (%)": st.column_config.NumberColumn("Rent Growth (%)", step=0.1, format="%.1f%%", help="Custom annual rent increase rate. Leave blank to use the global assumption.")
             }, num_rows="dynamic", use_container_width=True, key="re_editor", on_change=mark_dirty
         )
         st.session_state['real_estate_data'] = edited_re.to_dict('records')
@@ -2075,12 +2074,9 @@ def render_assets():
             column_config={
                 "Total Valuation ($)": st.column_config.NumberColumn("Total Value ($)", step=10000, format="$%d"),
                 "Annual Distribution ($)": st.column_config.NumberColumn("Annual Income ($)", step=1000, format="$%d"),
-                "Your Ownership (%)": st.column_config.NumberColumn("Your Ownership (%)", min_value=0, max_value=100,
-                                                                    format="%d%%"),
-                "Override Val. Growth (%)": st.column_config.NumberColumn("Value Growth (%)", step=0.1,
-                                                                          format="%.1f%%"),
-                "Override Dist. Growth (%)": st.column_config.NumberColumn("Income Growth (%)", step=0.1,
-                                                                           format="%.1f%%")
+                "Your Ownership (%)": st.column_config.NumberColumn("Your Ownership (%)", min_value=0, max_value=100, format="%d%%"),
+                "Override Val. Growth (%)": st.column_config.NumberColumn("Value Growth (%)", step=0.1, format="%.1f%%", help="Custom annual valuation growth. Leave blank to use global market growth."),
+                "Override Dist. Growth (%)": st.column_config.NumberColumn("Income Growth (%)", step=0.1, format="%.1f%%", help="Custom annual income distribution growth. Leave blank to use global income growth.")
             }, num_rows="dynamic", use_container_width=True, key="biz_editor", on_change=mark_dirty
         )
         st.session_state['business_data'] = edited_biz.to_dict('records')
@@ -2108,17 +2104,12 @@ def render_assets():
             column_order=["Account Name", "Type", "Owner", "Current Balance ($)", "Annual Contribution ($/yr)",
                           "Est. Annual Growth (%)", "Stop Contrib at Ret.?"],
             column_config={
-                "Type": st.column_config.SelectboxColumn("Account Type",
-                                                         options=["Checking/Savings", "HYSA", "Brokerage (Taxable)",
-                                                                  "Traditional 401(k)", "Traditional IRA",
-                                                                  "Roth 401(k)", "Roth IRA", "HSA", "Crypto",
-                                                                  "529 Plan", "Other"]),
+                "Type": st.column_config.SelectboxColumn("Account Type", options=["Checking/Savings", "HYSA", "Brokerage (Taxable)", "Traditional 401(k)", "Traditional IRA", "Roth 401(k)", "Roth IRA", "HSA", "Crypto", "529 Plan", "Other"], help="Dictates exactly how this account is taxed upon withdrawal."),
                 "Owner": st.column_config.SelectboxColumn("Whose Account?", options=["Me", "Spouse", "Joint"]),
                 "Current Balance ($)": st.column_config.NumberColumn("Current Balance ($)", step=5000, format="$%d"),
-                "Annual Contribution ($/yr)": st.column_config.NumberColumn("Your Contributions ($/yr)", step=1000,
-                                                                            format="$%d"),
-                "Est. Annual Growth (%)": st.column_config.NumberColumn("Custom Return (%)", format="%.1f%%"),
-                "Stop Contrib at Ret.?": st.column_config.CheckboxColumn("Stop Adding at Ret.?")
+                "Annual Contribution ($/yr)": st.column_config.NumberColumn("Your Contributions ($/yr)", step=1000, format="$%d", help="Your out-of-pocket additions. Exclude employer matches, the AI routes those automatically."),
+                "Est. Annual Growth (%)": st.column_config.NumberColumn("Custom Return (%)", format="%.1f%%", help="Custom annual return for this account. Leave blank to use global market growth."),
+                "Stop Contrib at Ret.?": st.column_config.CheckboxColumn("Stop Adding at Ret.?", help="If checked, contributions cease the year the owner retires.")
             }, num_rows="dynamic", use_container_width=True, key="assets_editor", on_change=mark_dirty
         )
         st.session_state['liquid_assets_data'] = edited_ast.to_dict('records')
@@ -2199,14 +2190,11 @@ def render_cashflows():
             "Category": st.column_config.SelectboxColumn("Category", options=BUDGET_CATEGORIES),
             "Frequency": st.column_config.SelectboxColumn("Frequency", options=["Monthly", "Yearly", "One-Time"]),
             "Amount ($)": st.column_config.NumberColumn("Amount ($)", step=100, format="$%d"),
-            "Start Phase": st.column_config.SelectboxColumn("Starts", options=["Now", "At Retirement", "Custom Year"]),
-            "Start Year": st.column_config.NumberColumn("Start Year (If Custom)", format="%d", min_value=1900,
-                                                        max_value=2100),
-            "End Phase": st.column_config.SelectboxColumn("Ends",
-                                                          options=["End of Life", "At Retirement", "Custom Year"]),
-            "End Year": st.column_config.NumberColumn("End Year (If Custom)", format="%d", min_value=1900,
-                                                      max_value=2100),
-            "AI Estimate?": st.column_config.CheckboxColumn("🤖 AI?")
+            "Start Phase": st.column_config.SelectboxColumn("Starts", options=["Now", "At Retirement", "Custom Year"], help="When this expense begins in your timeline."),
+            "Start Year": st.column_config.NumberColumn("Start Year (If Custom)", format="%d", min_value=1900, max_value=2100),
+            "End Phase": st.column_config.SelectboxColumn("Ends", options=["End of Life", "At Retirement", "Custom Year"], help="When this expense permanently stops in your timeline."),
+            "End Year": st.column_config.NumberColumn("End Year (If Custom)", format="%d", min_value=1900, max_value=2100),
+            "AI Estimate?": st.column_config.CheckboxColumn("🤖 AI?", help="Indicates this row was generated by the AI based on your location and profile.")
         }, num_rows="dynamic", use_container_width=True, key="exp_ed", on_change=mark_dirty
     )
     st.session_state['lifetime_expenses'] = edited_exp.to_dict('records')
