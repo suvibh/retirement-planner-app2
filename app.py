@@ -2339,8 +2339,7 @@ def render_simulation():
             render_status_bar(deplete_year, deplete_age, final_nw)
 
             # --- NEW OUTPUT TABS START HERE ---
-            out_tab_main, out_tab_mc, out_tab_tax, out_tab_logs = st.tabs(
-                ["📊 Main Projection", "🎲 Monte Carlo Risk", "🏛️ Tax & Roth Optimizer", "📋 Detailed Logs & Export"])
+            out_tab_main, out_tab_sens, out_tab_mc, out_tab_tax, out_tab_logs = st.tabs(["📊 Main Projection", "🌪️ Sensitivity", "🎲 Monte Carlo Risk", "🏛️ Tax & Roth Optimizer", "📋 Detailed Logs & Export"])
 
             with out_tab_main:
                 if HAS_PLOTLY:
@@ -2464,6 +2463,110 @@ def render_simulation():
                     st.plotly_chart(fig_cf, use_container_width=True)
                 else:
                     st.info("Please install Plotly to view the charts.")
+
+            with out_tab_sens:
+                st.markdown('<div class="info-text" style="margin-bottom: 20px;">💡 <strong>Tornado Chart (Sensitivity Analysis):</strong> This isolates your biggest risks by stress-testing key variables one at a time. It reveals which assumption moving slightly has the most drastic impact on your Final Net Worth.</div>', unsafe_allow_html=True)
+                
+                if st.button("✨ Run Sensitivity Analysis", type="primary", use_container_width=True, key="btn_sens"):
+                    with st.spinner("Running 10 divergent timelines to map risk..."):
+                        base_nw_sens = final_nw
+                        
+                        # Define the parameters we want to stress test (Name, Context Key, Down Shift, Up Shift, Unit Label)
+                        sens_scenarios = [
+                            ("Market Returns", "mkt", -1.0, 1.0, "%"),
+                            ("General Inflation", "infl", -1.0, 1.0, "%"),
+                            ("Retirement Age", "ret_age", -2, 2, " yrs"),
+                            ("Living Expenses", "expenses", -10, 10, "%"),
+                            ("Real Estate Growth", "prop_g", -1.5, 1.5, "%")
+                        ]
+                        
+                        results = []
+                        for name, key, down_val, up_val, unit in sens_scenarios:
+                            def run_scenario(shift):
+                                c = copy.deepcopy(sim_ctx)
+                                
+                                # Apply the custom parameter shifts
+                                if key == 'ret_age':
+                                    c['primary_retire_year'] += int(shift)
+                                    if c['has_spouse']: c['spouse_retire_year'] += int(shift)
+                                elif key == 'expenses':
+                                    for e in c['exp_records']: 
+                                        e['Amount ($)'] = safe_num(e.get('Amount ($)')) * (1 + shift/100.0)
+                                else:
+                                    c[key] += shift
+                                    
+                                m_seq = tuple([c['mkt']] * (c['max_years'] + 1))
+                                
+                                # Run the engine
+                                df_s, _, _, _ = execute_sim_engine_v7(m_seq, c)
+                                val = df_s.iloc[-1]['Net Worth'] if not df_s.empty else 0
+                                
+                                # Deflate the result appropriately if the user is viewing in today's dollars
+                                if view_todays_dollars:
+                                    val /= ((1 + c['infl'] / 100) ** c['max_years'])
+                                return val
+
+                            nw_down = run_scenario(down_val)
+                            nw_up = run_scenario(up_val)
+                            
+                            d_down = nw_down - base_nw_sens
+                            d_up = nw_up - base_nw_sens
+                            
+                            # Logically sort out which tweak caused a positive vs negative impact
+                            if d_up > d_down:
+                                p_d, n_d = d_up, d_down
+                                p_l = f"+{up_val}{unit}" if up_val > 0 else f"{up_val}{unit}"
+                                n_l = f"{down_val}{unit}" if down_val < 0 else f"+{down_val}{unit}"
+                            else:
+                                p_d, n_d = d_down, d_up
+                                p_l = f"{down_val}{unit}" if down_val < 0 else f"+{down_val}{unit}"
+                                n_l = f"+{up_val}{unit}" if up_val > 0 else f"{up_val}{unit}"
+                                
+                            results.append({
+                                "Parameter": name,
+                                "Spread": abs(p_d - n_d),
+                                "Pos_Delta": p_d,
+                                "Neg_Delta": n_d,
+                                "Pos_Label": p_l,
+                                "Neg_Label": n_l
+                            })
+                            
+                        # Sort by biggest spread to create the "Tornado" funnel effect
+                        results = sorted(results, key=lambda x: x['Spread'], reverse=False)
+                        st.session_state['sens_results'] = results
+                        
+                if 'sens_results' in st.session_state and HAS_PLOTLY:
+                    r_data = st.session_state['sens_results']
+                    y_vals = [r['Parameter'] for r in r_data]
+                    
+                    fig_tor = go.Figure()
+                    
+                    # Negative (Red) Bars
+                    fig_tor.add_trace(go.Bar(
+                        y=y_vals, x=[r['Neg_Delta'] for r in r_data],
+                        orientation='h', name='Downside Risk', marker_color='#ef4444',
+                        text=[r['Neg_Label'] for r in r_data], textposition='inside', insidetextanchor='end',
+                        hoverinfo='x+name'
+                    ))
+                    
+                    # Positive (Green) Bars
+                    fig_tor.add_trace(go.Bar(
+                        y=y_vals, x=[r['Pos_Delta'] for r in r_data],
+                        orientation='h', name='Upside Potential', marker_color='#10b981',
+                        text=[r['Pos_Label'] for r in r_data], textposition='inside', insidetextanchor='start',
+                        hoverinfo='x+name'
+                    ))
+                    
+                    fig_tor.update_layout(
+                        barmode='relative',
+                        xaxis=dict(title='Impact on Final Net Worth (Variance from Baseline)', tickformat='$,.0f', zeroline=True, zerolinecolor='#0f172a', zerolinewidth=2),
+                        yaxis=dict(title='Tested Assumption'),
+                        hovermode='y unified',
+                        height=450,
+                        margin=dict(l=0, r=0, t=40, b=0)
+                    )
+                    fig_tor = apply_chart_theme(fig_tor, "Sensitivity Tornado Chart")
+                    st.plotly_chart(fig_tor, use_container_width=True)
 
             with out_tab_mc:
                 st.markdown(
