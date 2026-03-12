@@ -2554,7 +2554,6 @@ def render_simulation():
                         # Significantly increased the Right (r) and Bottom (b) margins
                         margin=dict(l=20, r=80, t=50, b=80) 
                     )
-                    )
                     fig_tor = apply_chart_theme(fig_tor, "Sensitivity Tornado Chart")
                     st.plotly_chart(fig_tor, use_container_width=True)
 
