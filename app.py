@@ -1990,14 +1990,33 @@ def render_income():
         st.session_state['income_data'] = edited_inc_records
         st.rerun()
 
-    # --- FIX: Formatted Summary Metric for Income ---
+    # --- FIX: Premium Income Summary Metrics ---
     st.divider()
     total_inc_val = pd.to_numeric(edited_inc['Annual Amount ($)'], errors='coerce').fillna(0).sum()
     
-    # We'll use a single-column layout or a multi-column if you want to break it down later
-    met_col1, met_col2 = st.columns([1, 3]) 
+    # Calculate an estimated monthly net
+    # 1. Grab assumptions
+    asm = st.session_state.get('assumptions', {})
+    state_tax_rate = float(asm.get('current_tax_rate', 5.0)) / 100.0
+    is_mfj = st.session_state.get('has_spouse', False)
+    
+    # 2. Get quick federal estimate (Year 0 offset)
+    fed_tax_est, _ = calc_federal_tax(total_inc_val, is_mfj, 0, float(asm.get('inflation', 3.0)))
+    state_tax_est = total_inc_val * state_tax_rate
+    
+    # 3. Final monthly net calculation
+    annual_net = total_inc_val - fed_tax_est - state_tax_est
+    monthly_net = annual_net / 12.0
+
+    met_col1, met_col2, met_col3 = st.columns([1, 1, 2]) 
     with met_col1:
-        st.metric("Total Annual Income", f"${total_inc_val:,.0f}", help="Sum of all active pre-tax income streams entered above.")
+        st.metric("Total Annual (Gross)", f"${total_inc_val:,.0f}", 
+                  help="Total pre-tax income from all sources.")
+    
+    with met_col2:
+        # Show monthly net with a helpful tooltip about the math
+        st.metric("Monthly Net (Est.)", f"${monthly_net:,.0f}", 
+                  help=f"Estimated take-home pay after Federal and {asm.get('current_tax_rate', 5.0)}% State tax assumptions.")
     
     st.markdown("<br>", unsafe_allow_html=True)
 
