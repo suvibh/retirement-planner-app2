@@ -2563,13 +2563,14 @@ def render_simulation():
                     st.plotly_chart(fig_tor, use_container_width=True)
 
             with out_tab_mc:
-                st.markdown(
-                    '<div class="info-text" style="margin-bottom: 20px;">💡 <strong>Stress Test Your Plan:</strong> The Monte Carlo simulation runs your exact plan through hundreds of randomized market scenarios (based on historical volatility) to find your true probability of success.</div>',
-                    unsafe_allow_html=True)
+                st.markdown('<div class="info-text" style="margin-bottom: 10px;">💡 <strong>Stress Test Your Plan:</strong> The Monte Carlo simulation runs your exact plan through hundreds of randomized market scenarios to find your true probability of success.</div>', unsafe_allow_html=True)
+                
+                # --- FIX: Inject clear fiduciary guidance mapping allocation to volatility ---
+                st.caption("🎯 **Volatility Guidance by Asset Allocation:** 100% Stocks ≈ **15%** | 80/20 Stocks/Bonds ≈ **12%** | 60/40 Stocks/Bonds ≈ **9%** | 40/60 Stocks/Bonds ≈ **7%**")
+                st.markdown("<br>", unsafe_allow_html=True)
 
                 col_mc1, col_mc2, col_mc3 = st.columns([1, 1, 2])
-                mc_vol = col_mc1.number_input("Portfolio Volatility (%)", value=15.0,
-                                              help="Historically, the S&P 500 maintains a volatility (standard deviation) proximal to 15%.")
+                mc_vol = col_mc1.number_input("Portfolio Volatility (%)", value=15.0, help="Adjust this based on your stock/bond ratio. Lower volatility narrows the spread of outcomes.")
                 mc_runs = col_mc2.number_input("Number of Simulations", min_value=10, max_value=500, value=100, step=10)
 
                 with col_mc3:
@@ -2577,32 +2578,29 @@ def render_simulation():
                     run_mc = st.button("✨ Run Monte Carlo Simulation", type="primary", use_container_width=True)
 
                 if run_mc:
-                    with st.spinner(f"Rendering {mc_runs} parallel market sequences (NumPy Vectorized)..."):
+                    with st.spinner(f"Rendering {mc_runs} parallel market sequences (NumPy Vectorized & Thread-Safe)..."):
                         success_count = 0
                         all_nw_paths = []
                         mc_progress = st.progress(0)
 
-                        # --- FIX: NumPy Vectorization ---
                         years_count = sim_ctx['max_years'] + 1
                         
-                        # Generate the entire (runs x years) matrix in one compiled C call
+                        # Vectorized sequence generation
                         mc_matrix = np.random.normal(loc=sim_ctx['mkt'], scale=mc_vol, size=(mc_runs, years_count))
-                        
-                        # Vectorized floor at -99.0%
                         mc_matrix = np.maximum(-99.0, mc_matrix)
-                        
-                        # Convert back to tuples for the hashing executor
                         random_sequences = [tuple(row) for row in mc_matrix]
-                        
-                        # Serialize the baseline context once
-                        ctx_json_mc = json.dumps(sim_ctx)
 
+                        # --- FIX: Call run_simulation directly to bypass Streamlit's cache locks in threaded contexts ---
                         try:
                             with ThreadPoolExecutor(max_workers=min(mc_runs, 8)) as executor:
-                                futures = {executor.submit(execute_sim_engine_v8, seq, ctx_json_mc): i for i, seq in enumerate(random_sequences)}
+                                # We can safely pass the raw sim_ctx dict because run_simulation does a deepcopy on line 1
+                                futures = {executor.submit(run_simulation, list(seq), sim_ctx): i for i, seq in enumerate(random_sequences)}
 
                                 for completed_idx, future in enumerate(concurrent.futures.as_completed(futures)):
-                                    res_mc, _, _, _ = future.result()
+                                    # run_simulation returns a tuple of lists/dicts, so we unpack and convert the first one to a DataFrame
+                                    s_res, _, _, _ = future.result()
+                                    res_mc = pd.DataFrame(s_res)
+                                    
                                     if not res_mc.empty:
                                         nw_path = res_mc["Net Worth"].tolist()
                                         all_nw_paths.append(nw_path)
