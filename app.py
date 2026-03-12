@@ -1295,12 +1295,16 @@ def run_simulation(mkt_sequence, ctx_input):
                             # --- FIX: EXACT TAX DELTA CALCULATION ---
                             base_fed, _ = calc_federal_tax(tax_base_ord_pre, active_mfj, year_offset, ctx['infl'])
                             base_state = tax_base_ord_pre * (state_tax_rate / 100.0)
-
+                            
                             proposed_tax_base = tax_base_ord_pre + convert
                             prop_fed, _ = calc_federal_tax(proposed_tax_base, active_mfj, year_offset, ctx['infl'])
                             prop_state = proposed_tax_base * (state_tax_rate / 100.0)
-
+                            
                             tax_cost = (prop_fed + prop_state) - (base_fed + base_state)
+                            
+                            # --- NEW: Track Roth Taxes ---
+                            yd["Tax Breakdown: Federal"] = yd.get("Tax Breakdown: Federal", 0) + (prop_fed - base_fed)
+                            yd["Tax Breakdown: State"] = yd.get("Tax Breakdown: State", 0) + (prop_state - base_state)
 
                             for ca in sim_assets:
                                 if tax_cost <= 0: break
@@ -1318,6 +1322,8 @@ def run_simulation(mkt_sequence, ctx_input):
                                     net_yield = pull * 0.85
                                     tax_cost -= net_yield
                                     yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + (pull - net_yield)
+                                    # --- NEW: Track Cap Gains ---
+                                    yd["Tax Breakdown: Withdrawals"] = yd.get("Tax Breakdown: Withdrawals", 0) + (pull - net_yield)
 
                             roth_found = False
                             for ra in sim_assets:
@@ -1352,14 +1358,17 @@ def run_simulation(mkt_sequence, ctx_input):
         base_fed_tax, marginal_rate = calc_federal_tax(tax_base_ord, active_mfj, year_offset, ctx['infl'])
         state_tax = tax_base_ord * (state_tax_rate / 100.0)
         fica_tax = 0
-        wage_base, addl_thresh = SS_WAGE_BASE_2026 * (
-                    (1 + ctx['infl'] / 100) ** year_offset), ADDL_MED_TAX_THRESHOLD * (
-                                             (1 + ctx['infl'] / 100) ** year_offset)
+        wage_base, addl_thresh = SS_WAGE_BASE_2026 * ((1 + ctx['infl'] / 100) ** year_offset), ADDL_MED_TAX_THRESHOLD * ((1 + ctx['infl'] / 100) ** year_offset)
         for ei in [earned_income_me, earned_income_spouse]:
             if ei > 0: fica_tax += min(ei, wage_base) * 0.062 + ei * 0.0145 + max(0, ei - addl_thresh) * 0.009
 
         total_tax = base_fed_tax + state_tax + fica_tax
         yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + total_tax
+        
+        # --- NEW: Track Base Taxes ---
+        yd["Tax Breakdown: Federal"] = yd.get("Tax Breakdown: Federal", 0) + base_fed_tax
+        yd["Tax Breakdown: State"] = yd.get("Tax Breakdown: State", 0) + state_tax
+        yd["Tax Breakdown: FICA"] = yd.get("Tax Breakdown: FICA", 0) + fica_tax
 
         num_medicare = (1 if is_my_alive and my_current_age >= 65 else 0) + (
             1 if is_spouse_alive and spouse_current_age >= 65 else 0)
@@ -1450,7 +1459,8 @@ def run_simulation(mkt_sequence, ctx_input):
                                                      active_mfj, year_offset, tax_base_ord, marginal_rate,
                                                      state_tax_rate, year, yd)
                     yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
-                    total_withdrawals += wd
+                    # --- NEW: Track Shortfall Withdrawal Taxes ---
+                    yd["Tax Breakdown: Withdrawals"] = yd.get("Tax Breakdown: Withdrawals", 0) + t_inc
 
             trad_types = ['Traditional 401(k)', 'Traditional 401k/IRA', 'Traditional IRA']
             roth_types = ['Roth 401(k)', 'Roth 401k/IRA', 'Roth IRA']
@@ -1479,6 +1489,8 @@ def run_simulation(mkt_sequence, ctx_input):
                                                          my_current_age, spouse_current_age, active_mfj, year_offset,
                                                          tax_base_ord, marginal_rate, state_tax_rate, year, yd)
                         yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
+                        # --- NEW: Track Shortfall Withdrawal Taxes ---
+                        yd["Tax Breakdown: Withdrawals"] = yd.get("Tax Breakdown: Withdrawals", 0) + t_inc
                         total_withdrawals += wd
 
             if shortfall > 0:
@@ -1490,6 +1502,8 @@ def run_simulation(mkt_sequence, ctx_input):
                                                          spouse_current_age, active_mfj, year_offset, tax_base_ord,
                                                          marginal_rate, state_tax_rate, year, yd)
                         yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
+                        # --- NEW: Track Shortfall Withdrawal Taxes ---
+                        yd["Tax Breakdown: Withdrawals"] = yd.get("Tax Breakdown: Withdrawals", 0) + t_inc
                         total_withdrawals += wd
 
             if shortfall > 0:
@@ -2599,6 +2613,32 @@ def render_simulation():
                     fig_tax.update_layout(barmode='stack', hovermode='x unified')
                     fig_tax = apply_chart_theme(fig_tax, "Ordinary Income vs. Progressive Tax Brackets")
                     st.plotly_chart(fig_tax, use_container_width=True)
+                    st.markdown("<br><hr><br>", unsafe_allow_html=True)
+                    st.write("#### Total Annual Tax Breakdown")
+                    st.markdown('<div class="info-text" style="margin-bottom: 20px;">💡 <strong>Where are your taxes going?</strong> This isolates your total tax obligations by type. Watch out for the red IRMAA spikes at age 65, and the yellow Capital Gains/Penalty spikes if you are forced to draw down taxable assets or draw from a 401(k) before age 59.5.</div>', unsafe_allow_html=True)
+
+                    fig_tax_breakdown = go.Figure()
+
+                    tax_categories = [
+                        ("Tax Breakdown: Federal", "#3b82f6", "Federal Income Tax"),
+                        ("Tax Breakdown: State", "#8b5cf6", "State Income Tax"),
+                        ("Tax Breakdown: FICA", "#10b981", "FICA (SS & Medicare)"),
+                        ("Tax Breakdown: Withdrawals", "#f59e0b", "Cap Gains & Penalties"),
+                        ("Expense: Medicare IRMAA Surcharge", "#ef4444", "Medicare IRMAA Surcharge")
+                    ]
+
+                    for col_key, color, name in tax_categories:
+                        if col_key in df_det.columns:
+                            fig_tax_breakdown.add_trace(go.Bar(
+                                x=df_det["Year"], 
+                                y=df_det[col_key], 
+                                name=name, 
+                                marker_color=color
+                            ))
+
+                    fig_tax_breakdown.update_layout(barmode='stack', hovermode='x unified')
+                    fig_tax_breakdown = apply_chart_theme(fig_tax_breakdown, "Tax Obligations Over Time")
+                    st.plotly_chart(fig_tax_breakdown, use_container_width=True)
                 else:
                     st.info("Please install Plotly to view the charts.")
 
