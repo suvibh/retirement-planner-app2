@@ -2559,11 +2559,11 @@ def render_simulation():
                     
                     fig_tor.update_layout(
                         barmode='relative',
-                        xaxis=dict(title='Impact on Final Net Worth (Variance from Baseline)', tickformat='$,.0f', zeroline=True, zerolinecolor='#0f172a', zerolinewidth=2),
-                        yaxis=dict(title='Tested Assumption'),
+                        xaxis=dict(title='Impact on Final Net Worth', tickformat='$,.0f', zeroline=True, zerolinecolor='#0f172a', zerolinewidth=2),
+                        yaxis=dict(title=''), # Removed title to save horizontal space
                         hovermode='y unified',
-                        height=450,
-                        margin=dict(l=0, r=0, t=40, b=0)
+                        height=600, # Increased from 450 to 600
+                        margin=dict(l=10, r=20, t=50, b=20) # Added slight padding so labels don't clip
                     )
                     fig_tor = apply_chart_theme(fig_tor, "Sensitivity Tornado Chart")
                     st.plotly_chart(fig_tor, use_container_width=True)
