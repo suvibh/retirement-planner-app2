@@ -11,6 +11,7 @@ import re
 import copy
 import io
 import os
+import numpy as np
 import concurrent.futures
 from dateutil.relativedelta import relativedelta
 import warnings
@@ -1518,10 +1519,11 @@ def run_simulation(mkt_sequence, ctx_input):
     return sim_res, det_res, nw_det_res, milestones_by_year
 
 @st.cache_data(show_spinner=False)
-def execute_sim_engine_v7(mkt_sequence_tuple, ctx):
+def execute_sim_engine_v8(mkt_sequence_tuple, ctx_json):
+    # Deserialize the string back into a dict for the engine
+    ctx = json.loads(ctx_json)
     s_res, d_res, nw_res, milestones = run_simulation(list(mkt_sequence_tuple), ctx)
     return pd.DataFrame(s_res), pd.DataFrame(d_res).fillna(0), pd.DataFrame(nw_res).fillna(0), milestones
-
 
 # =====================================================================
 # 3. UI RENDERING PAGES
@@ -1596,7 +1598,7 @@ def render_dashboard():
 
     with st.spinner("Running high-precision simulation engine..."):
         mkt_seq = tuple([sim_ctx['mkt']] * (sim_ctx['max_years'] + 1))
-        df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v7(mkt_seq, sim_ctx)
+        df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v8(mkt_seq, sim_ctx)
         st.session_state['df_sim_nominal'] = df_sim_nominal
         st.session_state['df_det'] = df_det_nominal
         st.session_state['df_nw'] = df_nw_nominal
@@ -2296,8 +2298,8 @@ def render_simulation():
     else:
         mkt_seq = tuple([sim_ctx['mkt']] * (sim_ctx['max_years'] + 1))
 
-        with st.spinner("Running high-precision simulation engine..."):
-            df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v7(mkt_seq, sim_ctx)
+        # --- FIX: Serialize context to guarantee stable, instant cache hits ---
+            df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v8(mkt_seq, json.dumps(sim_ctx))
 
         if not df_sim_nominal.empty:
             df_sim, df_det, df_nw = df_sim_nominal.copy(), df_det_nominal.copy(), df_nw_nominal.copy()
@@ -2474,9 +2476,8 @@ def render_simulation():
                                     c[key] += shift
                                     
                                 m_seq = tuple([c['mkt']] * (c['max_years'] + 1))
-                                
-                                # Run the engine
-                                df_s, _, _, _ = execute_sim_engine_v7(m_seq, c)
+                                # --- FIX: Serialize the tweaked context ---
+                                df_s, _, _, _ = execute_sim_engine_v8(m_seq, json.dumps(c))
                                 val = df_s.iloc[-1]['Net Worth'] if not df_s.empty else 0
                                 
                                 # Deflate the result appropriately if the user is viewing in today's dollars
@@ -2572,19 +2573,29 @@ def render_simulation():
                     run_mc = st.button("✨ Run Monte Carlo Simulation", type="primary", use_container_width=True)
 
                 if run_mc:
-                    with st.spinner(f"Rendering {mc_runs} parallel market sequences (Multi-threaded)..."):
+                    with st.spinner(f"Rendering {mc_runs} parallel market sequences (NumPy Vectorized)..."):
                         success_count = 0
                         all_nw_paths = []
                         mc_progress = st.progress(0)
 
-                        random_sequences = [
-                            [max(-99.0, random.gauss(sim_ctx['mkt'], mc_vol)) for _ in range(sim_ctx['max_years'] + 1)]
-                            for _ in range(mc_runs)]
+                        # --- FIX: NumPy Vectorization ---
+                        years_count = sim_ctx['max_years'] + 1
+                        
+                        # Generate the entire (runs x years) matrix in one compiled C call
+                        mc_matrix = np.random.normal(loc=sim_ctx['mkt'], scale=mc_vol, size=(mc_runs, years_count))
+                        
+                        # Vectorized floor at -99.0%
+                        mc_matrix = np.maximum(-99.0, mc_matrix)
+                        
+                        # Convert back to tuples for the hashing executor
+                        random_sequences = [tuple(row) for row in mc_matrix]
+                        
+                        # Serialize the baseline context once
+                        ctx_json_mc = json.dumps(sim_ctx)
 
                         try:
                             with ThreadPoolExecutor(max_workers=min(mc_runs, 8)) as executor:
-                                futures = {executor.submit(execute_sim_engine_v7, seq, sim_ctx): i for i, seq in
-                                           enumerate(random_sequences)}
+                                futures = {executor.submit(execute_sim_engine_v8, seq, ctx_json_mc): i for i, seq in enumerate(random_sequences)}
 
                                 for completed_idx, future in enumerate(concurrent.futures.as_completed(futures)):
                                     res_mc, _, _, _ = future.result()
@@ -2592,8 +2603,7 @@ def render_simulation():
                                         nw_path = res_mc["Net Worth"].tolist()
                                         all_nw_paths.append(nw_path)
                                         if res_mc.iloc[-1].get("Unfunded Debt", 0) <= 0: success_count += 1
-                                    if completed_idx % max(1, mc_runs // 20) == 0: mc_progress.progress(
-                                        min(1.0, (completed_idx + 1) / mc_runs))
+                                    if completed_idx % max(1, mc_runs // 20) == 0: mc_progress.progress(min(1.0, (completed_idx + 1) / mc_runs))
                         except Exception as e:
                             st.error(f"Simulation failed during multi-threading: {e}")
                         finally:
@@ -2615,21 +2625,13 @@ def render_simulation():
                                 p50.append(step_vals[int(len(all_nw_paths) * 0.50)] / discount)
                                 p90.append(step_vals[int(len(all_nw_paths) * 0.90)] / discount)
 
-                            st.markdown(
-                                f"<h3 style='text-align: center; color: {'#10b981' if success_rate > 80 else '#f59e0b' if success_rate > 50 else '#f43f5e'};'>Probability of Success: {success_rate:.1f}%</h3>",
-                                unsafe_allow_html=True)
+                            st.markdown(f"<h3 style='text-align: center; color: {'#10b981' if success_rate > 80 else '#f59e0b' if success_rate > 50 else '#f43f5e'};'>Probability of Success: {success_rate:.1f}%</h3>", unsafe_allow_html=True)
 
                             if HAS_PLOTLY:
                                 fig_mc = go.Figure()
-                                fig_mc.add_trace(go.Scatter(x=years_list, y=p90, mode='lines',
-                                                            name='90th Percentile (Favorable Timeline)',
-                                                            line=dict(color='#10b981', dash='dot')))
-                                fig_mc.add_trace(go.Scatter(x=years_list, y=p50, mode='lines',
-                                                            name='50th Percentile (Median Expectation)',
-                                                            line=dict(color='#3b82f6', width=3)))
-                                fig_mc.add_trace(go.Scatter(x=years_list, y=p10, mode='lines',
-                                                            name='10th Percentile (Severe Contraction)',
-                                                            line=dict(color='#f43f5e', dash='dot')))
+                                fig_mc.add_trace(go.Scatter(x=years_list, y=p90, mode='lines', name='90th Percentile (Favorable Timeline)', line=dict(color='#10b981', dash='dot')))
+                                fig_mc.add_trace(go.Scatter(x=years_list, y=p50, mode='lines', name='50th Percentile (Median Expectation)', line=dict(color='#3b82f6', width=3)))
+                                fig_mc.add_trace(go.Scatter(x=years_list, y=p10, mode='lines', name='10th Percentile (Severe Contraction)', line=dict(color='#f43f5e', dash='dot')))
                                 fig_mc = apply_chart_theme(fig_mc, "Stochastic Net Worth Projections")
                                 st.plotly_chart(fig_mc, use_container_width=True)
 
