@@ -2868,37 +2868,7 @@ def render_simulation():
                         {c: "${:,.0f}" for c in ord_nw if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
                             "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
 
-def render_ai():
-    section_header("AI Fiduciary Health & What-If Simulator",
-                   "Analyze your cash flows chronologically to provide tactical, phase-by-phase advice.", "🤖")
 
-    df_sim = st.session_state.get('df_sim_display')
-    if df_sim is not None and not df_sim.empty:
-        shortfall_mask = df_sim['Unfunded Debt'] > 0
-        deplete_year = df_sim[shortfall_mask]['Year'].min() if not df_sim[shortfall_mask].empty else None
-        my_age = relativedelta(datetime.date.today(), st.session_state.get('my_dob', datetime.date(1980, 1, 1))).years
-
-        sim_summary = {
-            "Current Age": my_age, "Retirement Age": st.session_state.get('ret_age', 65),
-            "Life Expectancy": st.session_state.get('my_life_exp', 95),
-            "Current Net Worth": df_sim.iloc[0]['Net Worth'], "Final Net Worth": df_sim.iloc[-1]['Net Worth'],
-            "Shortfall Year": str(deplete_year) if deplete_year is not None else "None"
-        }
-
-        timeline_summary = []
-        for idx, row in df_sim.iloc[::5].iterrows():
-            timeline_summary.append({
-                "Age": int(row["Age (Primary)"]), "Income": int(row["Annual Income"]),
-                "Expenses": int(row["Annual Expenses"]), "Taxes": int(row["Annual Taxes"]),
-                "Liquid_Assets": int(row["Liquid Assets"]), "Net_Worth": int(row["Net Worth"])
-            })
-        last_row = df_sim.iloc[-1]
-        timeline_summary.append({"Age": int(last_row["Age (Primary)"]), "Income": int(last_row["Annual Income"]),
-                                 "Expenses": int(last_row["Annual Expenses"]), "Taxes": int(last_row["Annual Taxes"]),
-                                 "Liquid_Assets": int(last_row["Liquid Assets"]),
-                                 "Net_Worth": int(last_row["Net Worth"])})
-    else:
-        sim_summary, timeline_summary = {}, []
 def render_ai():
     section_header("AI Fiduciary Health & What-If Simulator", "Analyze your cash flows chronologically to provide tactical, phase-by-phase advice.", "🤖")
 
