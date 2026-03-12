@@ -2451,14 +2451,13 @@ def render_simulation():
                 else:
                     st.info("Please install Plotly to view the charts.")
 
-            with out_tab_sens:
-                st.markdown('<div class="info-text" style="margin-bottom: 20px;">💡 <strong>Tornado Chart (Sensitivity Analysis):</strong> This isolates your biggest risks by stress-testing key variables one at a time. It reveals which assumption moving slightly has the most drastic impact on your Final Net Worth.</div>', unsafe_allow_html=True)
-                
-                if st.button("✨ Run Sensitivity Analysis", type="primary", use_container_width=True, key="btn_sens"):
+            if st.button("✨ Run Sensitivity Analysis", type="primary", use_container_width=True, key="btn_sens"):
                     with st.spinner("Running 10 divergent timelines to map risk..."):
                         base_nw_sens = final_nw
                         
-                        # Define the parameters we want to stress test (Name, Context Key, Down Shift, Up Shift, Unit Label)
+                        # --- FIX: Serialize once outside the loop for ultra-fast instantiation ---
+                        base_ctx_json = json.dumps(sim_ctx)
+                        
                         sens_scenarios = [
                             ("Market Returns", "mkt", -1.0, 1.0, "%"),
                             ("General Inflation", "infl", -1.0, 1.0, "%"),
@@ -2470,9 +2469,9 @@ def render_simulation():
                         results = []
                         for name, key, down_val, up_val, unit in sens_scenarios:
                             def run_scenario(shift):
-                                c = copy.deepcopy(sim_ctx)
+                                # --- FIX: Fast C-level deserialization instead of slow recursive deepcopy ---
+                                c = json.loads(base_ctx_json)
                                 
-                                # Apply the custom parameter shifts
                                 if key == 'ret_age':
                                     c['primary_retire_year'] += int(shift)
                                     if c['has_spouse']: c['spouse_retire_year'] += int(shift)
@@ -2483,11 +2482,9 @@ def render_simulation():
                                     c[key] += shift
                                     
                                 m_seq = tuple([c['mkt']] * (c['max_years'] + 1))
-                                # --- FIX: Serialize the tweaked context ---
                                 df_s, _, _, _ = execute_sim_engine_v8(m_seq, json.dumps(c))
                                 val = df_s.iloc[-1]['Net Worth'] if not df_s.empty else 0
                                 
-                                # Deflate the result appropriately if the user is viewing in today's dollars
                                 if view_todays_dollars:
                                     val /= ((1 + c['infl'] / 100) ** c['max_years'])
                                 return val
@@ -2623,14 +2620,25 @@ def render_simulation():
                             path_len = len(all_nw_paths[0])
                             current_year = datetime.date.today().year
                             years_list = [sim_ctx['current_year'] + i for i in range(path_len)]
-                            p10, p50, p90 = [], [], []
+                            
+                            # --- FIX: Fully Vectorized NumPy Percentiles & Discounting ---
+                            nw_array = np.array(all_nw_paths)
+                            
+                            p10_arr = np.percentile(nw_array, 10, axis=0)
+                            p50_arr = np.percentile(nw_array, 50, axis=0)
+                            p90_arr = np.percentile(nw_array, 90, axis=0)
 
-                            for i in range(path_len):
-                                step_vals = sorted([path[i] for path in all_nw_paths])
-                                discount = (1 + sim_ctx['infl'] / 100) ** i if view_todays_dollars else 1.0
-                                p10.append(step_vals[int(len(all_nw_paths) * 0.10)] / discount)
-                                p50.append(step_vals[int(len(all_nw_paths) * 0.50)] / discount)
-                                p90.append(step_vals[int(len(all_nw_paths) * 0.90)] / discount)
+                            # Vectorize the inflation discounting array as well
+                            if view_todays_dollars:
+                                discounts = (1 + sim_ctx['infl'] / 100) ** np.arange(path_len)
+                                p10_arr = p10_arr / discounts
+                                p50_arr = p50_arr / discounts
+                                p90_arr = p90_arr / discounts
+
+                            p10 = p10_arr.tolist()
+                            p50 = p50_arr.tolist()
+                            p90 = p90_arr.tolist()
+                            # -------------------------------------------------------------
 
                             st.markdown(f"<h3 style='text-align: center; color: {'#10b981' if success_rate > 80 else '#f59e0b' if success_rate > 50 else '#f43f5e'};'>Probability of Success: {success_rate:.1f}%</h3>", unsafe_allow_html=True)
 
