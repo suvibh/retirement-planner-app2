@@ -3262,24 +3262,24 @@ with st.sidebar:
             nav_options.append(page_name)
 
     current_active_idx = 0
-    if st.session_state.get('current_page'):
-        for i, opt in enumerate(nav_options):
-            # --- FIX: Exact string match to prevent routing hijacks ---
-            clean_opt = opt.replace("✅ ", "")
-            if st.session_state['current_page'] == clean_opt:
-                current_active_idx = i
-                break
+    curr_page = st.session_state.get('current_page', '🏠 Dashboard')
+    
+    for i, opt in enumerate(nav_options):
+        clean_opt = opt.replace("✅ ", "")
+        if curr_page == clean_opt:
+            current_active_idx = i
+            break
 
     selected_nav_item = st.radio("Navigation", nav_options, index=current_active_idx, label_visibility="collapsed")
     clean_page_name = selected_nav_item.replace("✅ ", "")
-    st.session_state['current_page'] = clean_page_name
+    
+    # --- FIX: Only update state and force a rerun if the USER clicked the radio button ---
+    # This prevents the radio widget's old internal state from overriding dashboard button clicks!
+    if clean_page_name != curr_page:
+        st.session_state['current_page'] = clean_page_name
+        st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.progress(status['score'] / 100)
-    st.caption(
-        f"<div style='text-align: center; font-family: Inter; color: #cbd5e1; font-weight: 600; margin-bottom: 16px;'>Profile {status['score']}% Complete</div>",
-        unsafe_allow_html=True)
-    st.markdown("<br><br>", unsafe_allow_html=True)
 
     save_btn_label = "⚠️ Save Changes" if st.session_state.get('dirty', False) else "🚀 Save Profile"
     if st.button(save_btn_label, type="primary", use_container_width=True):
