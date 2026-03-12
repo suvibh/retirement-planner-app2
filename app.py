@@ -2699,17 +2699,19 @@ def render_simulation():
                         mc_matrix = np.maximum(-99.0, mc_matrix)
                         random_sequences = [tuple(row) for row in mc_matrix]
 
-                        # --- FIX 1: Serialize context to a string to completely sever Streamlit proxy references ---
+                        # 1. Create the immutable JSON string in the main thread FIRST
+                        # (Use clean_ctx if you already implemented the float scrubber here, otherwise sim_ctx)
                         ctx_json_mc = json.dumps(sim_ctx)
                         
-                        # --- FIX 2: Create an isolated worker that deserializes fresh memory per thread ---
+                        # 2. Define a worker function that deserializes INSIDE the isolated thread
                         def thread_worker(seq_tuple, ctx_str):
-                            # json.loads guarantees 100% pure Python dicts with zero shared references
-                            return run_simulation(list(seq_tuple), json.loads(ctx_str))
+                            # json.loads guarantees 100% pure Python dicts with zero shared memory references
+                            isolated_ctx = json.loads(ctx_str)
+                            return run_simulation(list(seq_tuple), isolated_ctx)
 
                         try:
                             with ThreadPoolExecutor(max_workers=min(mc_runs, 8)) as executor:
-                                # Pass the pure JSON string and the worker function
+                                # 3. Pass the immutable string to the worker
                                 futures = {executor.submit(thread_worker, seq, ctx_json_mc): i for i, seq in enumerate(random_sequences)}
 
                                 for completed_idx, future in enumerate(concurrent.futures.as_completed(futures)):
@@ -2720,7 +2722,9 @@ def render_simulation():
                                         nw_path = res_mc["Net Worth"].tolist()
                                         all_nw_paths.append(nw_path)
                                         if res_mc.iloc[-1].get("Unfunded Debt", 0) <= 0: success_count += 1
-                                    if completed_idx % max(1, mc_runs // 20) == 0: mc_progress.progress(min(1.0, (completed_idx + 1) / mc_runs))
+                                        
+                                    if completed_idx % max(1, mc_runs // 20) == 0: 
+                                        mc_progress.progress(min(1.0, (completed_idx + 1) / mc_runs))
                         except Exception as e:
                             st.error(f"Simulation failed during multi-threading: {e}")
                         finally:
