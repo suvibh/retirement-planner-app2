@@ -1398,13 +1398,38 @@ def run_simulation(mkt_sequence, ctx_input):
         final_qbi = get_qbi(pre_tax_ord)
         tax_base_ord = max(0, pre_tax_ord - final_qbi - pre_tax_deductions)
 
+        # --- FIX: Smart Asset-Class Volatility Routing (Cash Crash Immunity) ---
         for a in sim_assets:
-            g = float(a.get('growth')) if pd.notna(a.get('growth')) and str(a.get('growth')).strip() != "" and str(
-                a.get('growth')).strip() != "None" else (
-                0.0 if a.get('Type') in ['Checking/Savings', 'HYSA', 'Unallocated Cash'] else mkt_glide)
+            # 1. Pop the deferred contributions we calculated earlier in the year
             add = a.pop('approved_oop_contrib', 0)
             match = a.pop('match_contrib_queue', 0)
-            a['bal'] = (a['bal'] + (add + match) * 0.5) * (1 + g / 100) + (add + match) * 0.5
+            
+            # 2. Identify if this is a cash-equivalent account
+            is_cash_equiv = any(kw in str(a.get('Type', '')).upper() for kw in ['HYSA', 'CASH', 'CD', 'SAVINGS', 'CHECKING', 'MONEY MARKET']) or \
+                            any(kw in str(a.get('Account Name', '')).upper() for kw in ['EMERGENCY', 'CASH', 'SAVINGS'])
+
+            # 3. Determine the baseline expected growth of this specific asset
+            asset_baseline_g = float(a.get('growth', ctx.get('mkt', 7.0))) if pd.notna(a.get('growth')) and str(a.get('growth')).strip() not in ["", "None"] else ctx.get('mkt', 7.0)
+
+            # 4. Apply the correct volatility and glidepath logic
+            if is_cash_equiv:
+                # Cash ignores the Monte Carlo market sequence and yields its fixed rate
+                actual_growth = asset_baseline_g
+            else:
+                # Investments take the Monte Carlo sequence, adjusted by their custom premium/discount relative to the global baseline
+                # Example: If global baseline is 7%, but this asset is bonds at 5% (a -2% discount)
+                # If the Monte Carlo sequence gives us -10% this year, the bonds safely experience -12%
+                mc_sequence_year = mkt_sequence[year_offset]
+                actual_growth = mc_sequence_year + (asset_baseline_g - ctx.get('mkt', 7.0))
+                
+                # Apply Glidepath (if enabled) to de-risk investments in retirement
+                if ctx.get('glidepath', True) and is_retired:
+                    years_in_ret = year - ctx['primary_retire_year']
+                    glide_reduction = min(3.0, years_in_ret * 0.2)
+                    actual_growth -= glide_reduction
+
+            # 5. Apply the compounding math (Mid-Year Convention for contributions)
+            a['bal'] = (a['bal'] + (add + match) * 0.5) * (1 + actual_growth / 100.0) + (add + match) * 0.5
 
         base_fed_tax, marginal_rate = calc_federal_tax(tax_base_ord, active_mfj, year_offset, ctx['infl'])
         state_tax = tax_base_ord * (state_tax_rate / 100.0)
