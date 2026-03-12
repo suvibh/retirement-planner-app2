@@ -2361,7 +2361,10 @@ def render_simulation():
             render_status_bar(deplete_year, deplete_age, final_nw)
 
             # --- NEW OUTPUT TABS START HERE ---
-            out_tab_main, out_tab_sens, out_tab_mc, out_tab_tax, out_tab_logs = st.tabs(["📊 Main Projection", "🌪️ Sensitivity", "🎲 Monte Carlo Risk", "🏛️ Tax & Roth Optimizer", "📋 Detailed Logs & Export"])
+            out_tab_main, out_tab_sens, out_tab_mc, out_tab_tax, out_tab_logs = st.tabs([
+                "📊 Main Projection", "🌪️ Sensitivity", "🎲 Monte Carlo Risk", 
+                "🏛️ Tax & Roth Optimizer", "📋 Detailed Logs & Export"
+            ])
 
             with out_tab_main:
                 if HAS_PLOTLY:
@@ -2374,101 +2377,66 @@ def render_simulation():
                             row = df_sim[df_sim['Year'] == y]
                             nw_val = row['Net Worth'].values[0] if not row.empty else 0
                             events = run_milestones[y]
-                            normals, systems, alerts = [e for e in events if e.get('type') == 'normal'], [e for e in
-                                                                                                          events if
-                                                                                                          e.get(
-                                                                                                              'type') == 'system'], [
-                                e for e in events if e.get('type') == 'critical']
+                            normals, systems, alerts = [e for e in events if e.get('type') == 'normal'], [e for e in events if e.get('type') == 'system'], [e for e in events if e.get('type') == 'critical']
                             discount = (1 + sim_ctx['infl'] / 100) ** (y - current_year) if view_todays_dollars else 1.0
 
                             if normals:
-                                m_x_normal.append(y);
-                                m_y_normal.append(nw_val)
-                                m_text_normal.append(f"<b>Year {y}:</b><br>" + "<br>".join(
-                                    [f"• {html.escape(m['desc'])} (${m['amt'] / discount:,.0f})" for m in normals]))
+                                m_x_normal.append(y); m_y_normal.append(nw_val)
+                                m_text_normal.append(f"<b>Year {y}:</b><br>" + "<br>".join([f"• {html.escape(m['desc'])} (${m['amt'] / discount:,.0f})" for m in normals]))
                             if systems:
-                                m_x_system.append(y);
-                                m_y_system.append(nw_val)
-                                m_text_system.append(f"<b>System Event ({y}):</b><br>" + "<br>".join(
-                                    [f"• {html.escape(m['desc'])}" for m in systems]))
+                                m_x_system.append(y); m_y_system.append(nw_val)
+                                m_text_system.append(f"<b>System Event ({y}):</b><br>" + "<br>".join([f"• {html.escape(m['desc'])}" for m in systems]))
                             if alerts:
-                                m_x_alert.append(y);
-                                m_y_alert.append(nw_val)
-                                m_text_alert.append(f"<b>⚠️ ALERT ({y}):</b><br>" + "<br>".join(
-                                    [f"• {html.escape(m['desc'])}" for m in alerts]))
+                                m_x_alert.append(y); m_y_alert.append(nw_val)
+                                m_text_alert.append(f"<b>⚠️ ALERT ({y}):</b><br>" + "<br>".join([f"• {html.escape(m['desc'])}" for m in alerts]))
 
                     st.write("#### Net Worth Composition (Smart Asset Drawdown)")
                     fig_nw = go.Figure()
                     ast_cols = [c for c in df_nw.columns if c.startswith("Asset: ")]
                     
-                    # High contrast categorical palette
                     bar_colors = ['#2563eb', '#059669', '#d97706', '#0d9488', '#db2777', '#eab308', '#0891b2', '#65a30d', '#8b5cf6', '#ea580c']
 
-                    # 1. Stacked Bars for Assets (Positive Values)
                     for i, col in enumerate(ast_cols):
                         fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw[col], name=col.replace("Asset: ", ""), marker_color=bar_colors[i % len(bar_colors)]))
 
-                    fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Real Estate Equity"], name='Real Estate Equity', marker_color='#4338ca')) # Deep Indigo
-                    fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Business Equity"], name='Business Equity', marker_color='#92400e')) # Rust/Brown
-                    
-                    # 2. Stacked Bars for Liabilities (Negative Values drop below the 0 axis)
-                    fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Debt Liabilities"], name='Total Liabilities (Inc. Shortfalls)', marker_color='#dc2626')) # Solid Red
-                    
-                    # 3. Overall Net Worth plotted as a thick line overlaying the bars
+                    fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Real Estate Equity"], name='Real Estate Equity', marker_color='#4338ca'))
+                    fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Business Equity"], name='Business Equity', marker_color='#92400e'))
+                    fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Debt Liabilities"], name='Total Liabilities (Inc. Shortfalls)', marker_color='#dc2626'))
                     fig_nw.add_trace(go.Scatter(x=df_nw["Year"], y=df_nw["Total Net Worth"], mode='lines', name='Total Net Worth', line=dict(color='#0f172a', width=3, dash='solid')))
 
                     if m_x_normal: fig_nw.add_trace(go.Scatter(x=m_x_normal, y=m_y_normal, mode='markers', marker=dict(symbol='star', size=14, color='#eab308', line=dict(width=1.5, color='white')), name='User Milestones', hoverinfo='text', text=m_text_normal))
                     if m_x_system: fig_nw.add_trace(go.Scatter(x=m_x_system, y=m_y_system, mode='markers', marker=dict(symbol='star', size=14, color='#3b82f6', line=dict(width=1.5, color='white')), name='System Events', hoverinfo='text', text=m_text_system))
                     if m_x_alert: fig_nw.add_trace(go.Scatter(x=m_x_alert, y=m_y_alert, mode='markers', marker=dict(symbol='star', size=18, color='#ef4444', line=dict(width=2, color='white')), name='Critical Alerts', hoverinfo='text', text=m_text_alert))
 
-                    # Tell Plotly to allow stacking of positive and negative bars relative to the zero line
                     fig_nw.update_layout(barmode='relative')
                     fig_nw = apply_chart_theme(fig_nw)
                     st.plotly_chart(fig_nw, use_container_width=True)
 
                     st.write("#### Annual Cash Flow & Progressive Taxes")
                     fig_cf = go.Figure()
-                    fig_cf.add_trace(
-                        go.Scatter(x=df_sim["Year"], y=df_sim["Annual Income"], mode='lines', name='Organic Income',
-                                   line=dict(color='#4f46e5', width=3)))
-                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Asset Withdrawals"], mode='lines',
-                                                name='Asset Withdrawals',
-                                                line=dict(color='#a855f7', width=3, dash='dot')))
-                    fig_cf.add_trace(
-                        go.Scatter(x=df_sim["Year"], y=df_sim["Annual Expenses"], mode='lines', name='Expenses',
-                                   line=dict(color='#f43f5e', width=3)))
-                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Taxes"], mode='lines', name='Taxes',
-                                                line=dict(color='#f59e0b', width=3)))
-                    fig_cf.add_trace(
-                        go.Scatter(x=df_sim["Year"], y=df_sim["Annual Net Savings"], mode='lines', name='Net Cashflow',
-                                   line=dict(color='#10b981', width=3, dash='dot')))
+                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Income"], mode='lines', name='Organic Income', line=dict(color='#4f46e5', width=3)))
+                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Asset Withdrawals"], mode='lines', name='Asset Withdrawals', line=dict(color='#a855f7', width=3, dash='dot')))
+                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Expenses"], mode='lines', name='Expenses', line=dict(color='#f43f5e', width=3)))
+                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Taxes"], mode='lines', name='Taxes', line=dict(color='#f59e0b', width=3)))
+                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Net Savings"], mode='lines', name='Net Cashflow', line=dict(color='#10b981', width=3, dash='dot')))
 
-                    if m_x_normal: fig_cf.add_trace(go.Scatter(x=m_x_normal, y=[0] * len(m_x_normal), mode='markers',
-                                                               marker=dict(symbol='star', size=14, color='#eab308',
-                                                                           line=dict(width=1.5, color='white')),
-                                                               name='User Milestones', hoverinfo='text',
-                                                               text=m_text_normal))
-                    if m_x_system: fig_cf.add_trace(go.Scatter(x=m_x_system, y=[0] * len(m_x_system), mode='markers',
-                                                               marker=dict(symbol='star', size=14, color='#3b82f6',
-                                                                           line=dict(width=1.5, color='white')),
-                                                               name='System Events', hoverinfo='text',
-                                                               text=m_text_system))
-                    if m_x_alert: fig_cf.add_trace(go.Scatter(x=m_x_alert, y=[0] * len(m_x_alert), mode='markers',
-                                                              marker=dict(symbol='star', size=18, color='#ef4444',
-                                                                          line=dict(width=2, color='white')),
-                                                              name='Critical Alerts', hoverinfo='text',
-                                                              text=m_text_alert))
+                    if m_x_normal: fig_cf.add_trace(go.Scatter(x=m_x_normal, y=[0] * len(m_x_normal), mode='markers', marker=dict(symbol='star', size=14, color='#eab308', line=dict(width=1.5, color='white')), name='User Milestones', hoverinfo='text', text=m_text_normal))
+                    if m_x_system: fig_cf.add_trace(go.Scatter(x=m_x_system, y=[0] * len(m_x_system), mode='markers', marker=dict(symbol='star', size=14, color='#3b82f6', line=dict(width=1.5, color='white')), name='System Events', hoverinfo='text', text=m_text_system))
+                    if m_x_alert: fig_cf.add_trace(go.Scatter(x=m_x_alert, y=[0] * len(m_x_alert), mode='markers', marker=dict(symbol='star', size=18, color='#ef4444', line=dict(width=2, color='white')), name='Critical Alerts', hoverinfo='text', text=m_text_alert))
 
                     fig_cf = apply_chart_theme(fig_cf)
                     st.plotly_chart(fig_cf, use_container_width=True)
                 else:
                     st.info("Please install Plotly to view the charts.")
 
+            # --- ENSURE THIS 'with' STATEMENT IS ALIGNED PERFECTLY WITH THE ONE ABOVE IT ---
+            with out_tab_sens:
+                st.markdown('<div class="info-text" style="margin-bottom: 20px;">💡 <strong>Tornado Chart (Sensitivity Analysis):</strong> This isolates your biggest risks by stress-testing key variables one at a time. It reveals which assumption moving slightly has the most drastic impact on your Final Net Worth.</div>', unsafe_allow_html=True)
+                
                 if st.button("✨ Run Sensitivity Analysis", type="primary", use_container_width=True, key="btn_sens"):
                     with st.spinner("Running 10 divergent timelines to map risk..."):
                         base_nw_sens = final_nw
                         
-                        # --- FIX: Serialize once outside the loop for ultra-fast instantiation ---
                         base_ctx_json = json.dumps(sim_ctx)
                         
                         sens_scenarios = [
@@ -2482,7 +2450,6 @@ def render_simulation():
                         results = []
                         for name, key, down_val, up_val, unit in sens_scenarios:
                             def run_scenario(shift):
-                                # --- FIX: Fast C-level deserialization instead of slow recursive deepcopy ---
                                 c = json.loads(base_ctx_json)
                                 
                                 if key == 'ret_age':
@@ -2508,7 +2475,6 @@ def render_simulation():
                             d_down = nw_down - base_nw_sens
                             d_up = nw_up - base_nw_sens
                             
-                            # Logically sort out which tweak caused a positive vs negative impact
                             if d_up > d_down:
                                 p_d, n_d = d_up, d_down
                                 p_l = f"+{up_val}{unit}" if up_val > 0 else f"{up_val}{unit}"
@@ -2527,7 +2493,6 @@ def render_simulation():
                                 "Neg_Label": n_l
                             })
                             
-                        # Sort by biggest spread to create the "Tornado" funnel effect
                         results = sorted(results, key=lambda x: x['Spread'], reverse=False)
                         st.session_state['sens_results'] = results
                         
@@ -2537,7 +2502,6 @@ def render_simulation():
                     
                     fig_tor = go.Figure()
                     
-                    # Negative (Red) Bars
                     fig_tor.add_trace(go.Bar(
                         y=y_vals, x=[r['Neg_Delta'] for r in r_data],
                         orientation='h', name='Downside Risk', marker_color='#ef4444',
@@ -2545,7 +2509,6 @@ def render_simulation():
                         hoverinfo='x+name'
                     ))
                     
-                    # Positive (Green) Bars
                     fig_tor.add_trace(go.Bar(
                         y=y_vals, x=[r['Pos_Delta'] for r in r_data],
                         orientation='h', name='Upside Potential', marker_color='#10b981',
@@ -2561,20 +2524,20 @@ def render_simulation():
                             zeroline=True, 
                             zerolinecolor='#0f172a', 
                             zerolinewidth=2,
-                            automargin=True  # Force Plotly to prevent clipping on the bottom
+                            automargin=True
                         ),
                         yaxis=dict(
                             title='', 
-                            automargin=True  # Force Plotly to prevent clipping on the left
+                            automargin=True
                         ),
                         hovermode='y unified',
                         height=600,
-                        # Significantly increased the Right (r) and Bottom (b) margins
                         margin=dict(l=20, r=80, t=50, b=80) 
                     )
                     fig_tor = apply_chart_theme(fig_tor, "Sensitivity Tornado Chart")
                     st.plotly_chart(fig_tor, use_container_width=True)
 
+            # --- AND SAME FOR THIS ONE ---
             with out_tab_mc:
                 st.markdown('<div class="info-text" style="margin-bottom: 10px;">💡 <strong>Stress Test Your Plan:</strong> The Monte Carlo simulation runs your exact plan through hundreds of randomized market scenarios to find your true probability of success.</div>', unsafe_allow_html=True)
                 
