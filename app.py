@@ -2254,12 +2254,39 @@ def render_cashflows():
     # --- FIX: AI Loading State Machine ---
     is_loading = st.session_state.get('ai_loading', False)
     
+    # --- FIX: AI Safety Confirmation Gate ---
     col_ai_cb, _ = st.columns([3, 1])
+    
+    # Count how many rows are currently marked as AI-generated
+    ai_row_count = len([x for x in st.session_state.get('lifetime_expenses', []) if x.get('AI Estimate?')])
+    is_loading = st.session_state.get('ai_loading', False)
+
     with col_ai_cb:
-        if st.button("✨ Auto-Estimate Budget & Milestones for selected locations (AI)", type="primary", use_container_width=True, disabled=is_loading):
-            st.session_state['trigger_budget_ai'] = True
-            st.session_state['ai_loading'] = True
-            st.rerun()
+        if not st.session_state.get('confirm_budget_overwrite', False):
+            # Step 1: Initial Trigger
+            if st.button("✨ Auto-Estimate Budget & Milestones (AI)", type="primary", use_container_width=True, disabled=is_loading):
+                if ai_row_count > 0:
+                    st.session_state['confirm_budget_overwrite'] = True
+                    st.rerun()
+                else:
+                    # If no AI rows exist, just skip the warning and trigger immediately
+                    st.session_state['trigger_budget_ai'] = True
+                    st.session_state['ai_loading'] = True
+                    st.rerun()
+        else:
+            # Step 2: Confirmation Warning
+            st.warning(f"⚠️ This will overwrite {ai_row_count} existing AI-generated rows. Your manually entered rows (where AI? is unchecked) will be safe.")
+            c1, c2 = st.columns(2)
+            if c1.button("✅ Confirm Overwrite", type="primary", use_container_width=True):
+                st.session_state['confirm_budget_overwrite'] = False
+                st.session_state['trigger_budget_ai'] = True
+                st.session_state['ai_loading'] = True
+                st.rerun()
+            if c2.button("❌ Cancel", use_container_width=True):
+                st.session_state['confirm_budget_overwrite'] = False
+                st.rerun()
+
+    # The rest of your 'if st.session_state.get('trigger_budget_ai'):' block remains the same...
 
     if st.session_state.get('trigger_budget_ai'):
         try:
