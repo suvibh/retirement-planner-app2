@@ -161,7 +161,8 @@ def scrub_records(records):
     for r in records:
         new_r = {}
         for k, v in r.items():
-            if v is None or (isinstance(v, float) and math.isnan(v)):
+            # pd.isna() is the magic bullet—it catches ALL Pandas missing types universally
+            if pd.isna(v):
                 new_r[k] = None
             else:
                 new_r[k] = v
