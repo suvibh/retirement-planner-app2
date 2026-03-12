@@ -2387,30 +2387,32 @@ def render_simulation():
                 mark_dirty()
 
         with sc1:
-            medicare_gap = st.toggle("🏥 Model Pre-Medicare Gap", value=st.session_state.get('assumptions', {}).get('medicare_gap', True), help="Adds a $15,000/yr proxy cost if you retire before Medicare kicks in at 65.")
+            medicare_gap = st.toggle("🏥 Model Pre-Medicare Gap", value=st.session_state.get('assumptions', {}).get('medicare_gap', True), help="Adds a $15,000/yr proxy cost if you retire before Medicare kicks in at 65.", key="tgl_med_gap")
             update_asm_toggle('medicare_gap', medicare_gap)
-            medicare_cliff = st.toggle("🏥 Apply Medicare Cliff (Drop Healthcare at 65)", value=st.session_state.get('assumptions', {}).get('medicare_cliff', True), help="Reduces your general healthcare expense by 25% per person at age 65 to simulate Medicare taking over.")
+            
+            medicare_cliff = st.toggle("🏥 Apply Medicare Cliff (Drop Healthcare at 65)", value=st.session_state.get('assumptions', {}).get('medicare_cliff', True), help="Reduces your general healthcare expense by 25% per person at age 65 to simulate Medicare taking over.", key="tgl_med_cliff")
             update_asm_toggle('medicare_cliff', medicare_cliff)
-            glidepath = st.toggle("📉 Apply Investment Glidepath", value=st.session_state.get('assumptions', {}).get('glidepath', True), help="Gradually reduces your investment growth rate by up to 3% in retirement to simulate shifting to safer assets (bonds).")
+            
+            glidepath = st.toggle("📉 Apply Investment Glidepath", value=st.session_state.get('assumptions', {}).get('glidepath', True), help="Gradually reduces your investment growth rate by up to 3% in retirement to simulate shifting to safer assets (bonds).", key="tgl_glidepath")
             update_asm_toggle('glidepath', glidepath)
-            stress_test = st.toggle("📉 Apply -25% Market Crash at Retirement", value=st.session_state.get('assumptions', {}).get('stress_test', False), help="Applies a severe market drop in your exact first year of retirement to test Sequence of Returns Risk.")
+            
+            stress_test = st.toggle("📉 Apply -25% Market Crash at Retirement", value=st.session_state.get('assumptions', {}).get('stress_test', False), help="Applies a severe market drop in your exact first year of retirement to test Sequence of Returns Risk.", key="tgl_stress_test")
             update_asm_toggle('stress_test', stress_test)
-            ltc_shock = st.toggle("🛏️ Long-Term Care (LTC) Shock", value=st.session_state.get('assumptions', {}).get('ltc_shock', False), help="Simulates a massive $100k+ annual expense in the final two years of life for nursing home care.")
+            
+            ltc_shock = st.toggle("🛏️ Long-Term Care (LTC) Shock", value=st.session_state.get('assumptions', {}).get('ltc_shock', False), help="Simulates a massive $100k+ annual expense in the final two years of life for nursing home care.", key="tgl_ltc")
             update_asm_toggle('ltc_shock', ltc_shock)
 
         with sc2:
-            active_withdrawal_strategy = st.selectbox("Shortfall Withdrawal Sequence", options=["Standard (Taxable -> 401k -> Roth)", "Roth Preferred (Taxable -> Roth -> 401k)"], index=0 if "Standard" in st.session_state.get('assumptions', {}).get('withdrawal_strategy', 'Standard') else 1, help="Standard drains Traditional accounts before Roth. Roth Preferred drains Roth before Traditional to keep taxable income artificially low.")
-            roth_conversions = st.toggle("🔄 Enable Roth Conversion Optimizer", value=st.session_state.get('assumptions', {}).get('roth_conversions', False), help="Automatically converts Traditional balances to Roth up to your target tax bracket during low-income years.")
+            active_withdrawal_strategy = st.selectbox("Shortfall Withdrawal Sequence", options=["Standard (Taxable -> 401k -> Roth)", "Roth Preferred (Taxable -> Roth -> 401k)"], index=0 if "Standard" in st.session_state.get('assumptions', {}).get('withdrawal_strategy', 'Standard') else 1, help="Standard drains Traditional accounts before Roth. Roth Preferred drains Roth before Traditional to keep taxable income artificially low.", key="sel_wd_strat")
+            
+            roth_conversions = st.toggle("🔄 Enable Roth Conversion Optimizer", value=st.session_state.get('assumptions', {}).get('roth_conversions', False), help="Automatically converts Traditional balances to Roth up to your target tax bracket during low-income years.", key="tgl_roth_conv")
+            
             roth_target_idx = ["12%", "22%", "24%", "32%"].index(st.session_state.get('assumptions', {}).get('roth_target', "24%"))
-            roth_target = st.selectbox("Target Bracket to Fill", options=["12%", "22%", "24%", "32%"], index=roth_target_idx, help="The highest tax bracket you are willing to 'fill up' with Roth conversions each year.")
+            roth_target = st.selectbox("Target Bracket to Fill", options=["12%", "22%", "24%", "32%"], index=roth_target_idx, help="The highest tax bracket you are willing to 'fill up' with Roth conversions each year.", key="sel_roth_target")
             
             update_asm_toggle('roth_conversions', roth_conversions)
             update_asm_toggle('roth_target', roth_target)
             update_asm_toggle('withdrawal_strategy', active_withdrawal_strategy.split(' ')[0])
-
-    with tab_stress:
-        st.markdown("<div class='card' style='margin-bottom: 24px;'><h3 style='margin-top:0;'>Tax Engine & Stress Tests</h3></div>", unsafe_allow_html=True)
-        sc1, sc2 = st.columns(2)
 
         def update_asm_toggle(key, val):
             if st.session_state.get('assumptions', {}).get(key) != val:
