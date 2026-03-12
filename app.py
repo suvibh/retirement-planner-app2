@@ -2837,7 +2837,14 @@ def render_ai():
                     res = None
                     try:
                         with st.spinner("AI extracting timeseries data and acting as fiduciary advisor..."):
-                            prompt = f"Act as an expert fiduciary financial planner. Review this user's summary: {json.dumps(sim_summary)} and their chronological 5-year cash flow progression: {json.dumps(timeline_summary)}. Provide a highly detailed, year-by-year or phase-by-phase tactical analysis. Focus on specific strategies they can use to optimize their tax buckets (e.g., when exactly to execute Roth conversions before RMDs begin), sequence of withdrawals, and managing the gaps between retirement and Social Security/Medicare. Format your response in clean Markdown."
+                            prompt = f"""Act as an expert fiduciary financial planner. Review this user's summary: {json.dumps(sim_summary)} and their chronological 5-year cash flow progression: {json.dumps(timeline_summary)}. 
+
+                            Provide a highly detailed, year-by-year or phase-by-phase tactical analysis. 
+
+                            CRITICAL INSTRUCTION: You MUST include a distinct, bolded section titled "Roth Conversion Strategy Blueprint". In this section, provide actionable, mathematical advice on EXACTLY when they should execute Roth conversions. For example: "Between ages X and Y, convert $Z per year to fill the 24% bracket before RMDs begin at age 75." Be as specific as possible using their exact numbers and tax data.
+
+                            Format your response in clean Markdown."""
+
                             res = call_gemini_text(prompt)
                             if res:
                                 st.session_state['ai_analysis_report'] = res
