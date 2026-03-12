@@ -1992,47 +1992,43 @@ def render_income():
 
     render_total("Total Pre-Tax Income", edited_inc['Annual Amount ($)'])
 
-    # --- FIX: Safe AI State Machine ---
+    # --- FIX: AI Loading State Machine ---
+    is_loading = st.session_state.get('ai_loading', False)
+    
     col_ai_inc, _ = st.columns([3, 1])
     with col_ai_inc:
-        if st.button("✨ Auto-Estimate My Social Security (AI)", type="primary", use_container_width=True):
+        if st.button("✨ Auto-Estimate My Social Security (AI)", type="primary", use_container_width=True, disabled=is_loading):
             st.session_state['trigger_ss_ai'] = True
+            st.session_state['ai_loading'] = True
+            st.rerun()
 
     if st.session_state.get('trigger_ss_ai'):
-        if check_ai_rate_limit():
-            try:
+        try:
+            # FIX: Rate limit check moved INSIDE the try/finally so it clears properly if it fails
+            if check_ai_rate_limit():
                 with st.spinner("Asking AI to estimate your Social Security benefits based on your age and income..."):
-                    spouse_age = relativedelta(datetime.date.today(), st.session_state.get('spouse_dob',
-                                                                                           datetime.date(1982, 1,
-                                                                                                         1))).years if st.session_state.get(
-                        'has_spouse') else 0
+                    spouse_age = relativedelta(datetime.date.today(), st.session_state.get('spouse_dob', datetime.date(1982, 1, 1))).years if st.session_state.get('has_spouse') else 0
                     curr_inc = pd.to_numeric(edited_inc['Annual Amount ($)'], errors='coerce').fillna(0).sum()
                     if st.session_state.get('has_spouse'):
                         prompt = f"User is {my_age} years old making ${curr_inc}/year. Spouse is {spouse_age} years old. Estimate realistic annual Social Security primary insurance amounts (PIA) at Full Retirement Age for both. Return JSON: {{'ss_amount_me': integer, 'ss_amount_spouse': integer}}"
                     else:
                         prompt = f"User is {my_age} years old making ${curr_inc}/year. Estimate their annual Social Security primary insurance amount (PIA) at Full Retirement Age. Return JSON: {{'ss_amount_me': integer}}"
+                    
                     res = call_gemini_json(prompt)
                     if res:
-                        current_inc = [row for row in edited_inc.to_dict('records') if
-                                       row.get("Category") != "Social Security"]
+                        current_inc = [row for row in edited_inc.to_dict('records') if row.get("Category") != "Social Security"]
                         my_birth_year = st.session_state.get('my_dob', datetime.date(1980, 1, 1)).year
-                        spouse_birth_year = st.session_state.get('spouse_dob', datetime.date(1982, 1,
-                                                                                             1)).year if st.session_state.get(
-                            'has_spouse') else current_year
-                        if 'ss_amount_me' in res: current_inc.append(
-                            {"Description": "Estimated Social Security (Primary)", "Category": "Social Security",
-                             "Owner": "Me", "Annual Amount ($)": res['ss_amount_me'], "Start Year": my_birth_year + 67,
-                             "End Year": 2100, "Stop at Ret.?": False, "Override Growth (%)": None})
-                        if 'ss_amount_spouse' in res and st.session_state.get('has_spouse'): current_inc.append(
-                            {"Description": "Estimated Social Security (Spouse)", "Category": "Social Security",
-                             "Owner": "Spouse", "Annual Amount ($)": res['ss_amount_spouse'],
-                             "Start Year": spouse_birth_year + 67, "End Year": 2100, "Stop at Ret.?": False,
-                             "Override Growth (%)": None})
+                        spouse_birth_year = st.session_state.get('spouse_dob', datetime.date(1982, 1, 1)).year if st.session_state.get('has_spouse') else current_year
+                        
+                        if 'ss_amount_me' in res: current_inc.append({"Description": "Estimated Social Security (Primary)", "Category": "Social Security", "Owner": "Me", "Annual Amount ($)": res['ss_amount_me'], "Start Year": my_birth_year + 67, "End Year": 2100, "Stop at Ret.?": False, "Override Growth (%)": None})
+                        if 'ss_amount_spouse' in res and st.session_state.get('has_spouse'): current_inc.append({"Description": "Estimated Social Security (Spouse)", "Category": "Social Security", "Owner": "Spouse", "Annual Amount ($)": res['ss_amount_spouse'], "Start Year": spouse_birth_year + 67, "End Year": 2100, "Stop at Ret.?": False, "Override Growth (%)": None})
+                        
                         st.session_state['income_data'] = current_inc
                         mark_dirty()
-            finally:
-                st.session_state['trigger_ss_ai'] = False
-                st.rerun()
+        finally:
+            st.session_state['trigger_ss_ai'] = False
+            st.session_state['ai_loading'] = False
+            st.rerun()
 
 
 def render_assets():
@@ -2227,44 +2223,38 @@ def render_cashflows():
     )
     st.session_state['lifetime_expenses'] = edited_exp.to_dict('records')
 
-    # --- FIX: Safe AI State Machine ---
+    # --- FIX: AI Loading State Machine ---
+    is_loading = st.session_state.get('ai_loading', False)
+    
     col_ai_cb, _ = st.columns([3, 1])
     with col_ai_cb:
-        if st.button("✨ Auto-Estimate Budget & Milestones for selected locations (AI)", type="primary",
-                     use_container_width=True):
+        if st.button("✨ Auto-Estimate Budget & Milestones for selected locations (AI)", type="primary", use_container_width=True, disabled=is_loading):
             st.session_state['trigger_budget_ai'] = True
+            st.session_state['ai_loading'] = True
+            st.rerun()
 
     if st.session_state.get('trigger_budget_ai'):
-        if check_ai_rate_limit():
-            try:
+        try:
+            if check_ai_rate_limit():
                 with st.spinner("Analyzing localized CPI data, timelines, and family needs..."):
                     valid = edited_exp[edited_exp["Description"].astype(str) != ""].copy()
                     locked = valid[valid["AI Estimate?"] == False].to_dict('records')
                     locked_desc = [x['Description'] for x in locked]
 
                     current_year = datetime.date.today().year
-                    my_age = relativedelta(datetime.date.today(),
-                                           st.session_state.get('my_dob', datetime.date(1980, 1, 1))).years
-                    spouse_age = relativedelta(datetime.date.today(), st.session_state.get('spouse_dob',
-                                                                                           datetime.date(1982, 1,
-                                                                                                         1))).years if st.session_state.get(
-                        'has_spouse') else 0
+                    my_age = relativedelta(datetime.date.today(), st.session_state.get('my_dob', datetime.date(1980, 1, 1))).years
+                    spouse_age = relativedelta(datetime.date.today(), st.session_state.get('spouse_dob', datetime.date(1982, 1, 1))).years if st.session_state.get('has_spouse') else 0
                     k_ctx_list = [f"{k['name']}:{k['age']}" for k in st.session_state.get('kids_data', [])]
                     k_ctx_str = ", ".join(k_ctx_list)
-                    f_ctx = f"User({my_age})" + (
-                        f", Spouse({st.session_state.get('spouse_name', '')}:{spouse_age})" if st.session_state.get(
-                            'has_spouse') else "") + f", Dependents({k_ctx_str})"
+                    f_ctx = f"User({my_age})" + (f", Spouse({st.session_state.get('spouse_name', '')}:{spouse_age})" if st.session_state.get('has_spouse') else "") + f", Dependents({k_ctx_str})"
 
                     df_inc = pd.DataFrame(st.session_state.get('income_data', []))
-                    curr_inc_total = pd.to_numeric(df_inc['Annual Amount ($)'], errors='coerce').fillna(
-                        0).sum() if not df_inc.empty else 0
+                    curr_inc_total = pd.to_numeric(df_inc['Annual Amount ($)'], errors='coerce').fillna(0).sum() if not df_inc.empty else 0
                     df_ast = pd.DataFrame(st.session_state.get('liquid_assets_data', []))
-                    liq_ast_total = pd.to_numeric(df_ast['Current Balance ($)'], errors='coerce').fillna(
-                        0).sum() if not df_ast.empty else 0
+                    liq_ast_total = pd.to_numeric(df_ast['Current Balance ($)'], errors='coerce').fillna(0).sum() if not df_ast.empty else 0
 
                     df_re = pd.DataFrame(st.session_state.get('real_estate_data', []))
-                    primary_re = df_re[df_re[
-                                           "Is Primary Residence?"] == True] if not df_re.empty and "Is Primary Residence?" in df_re.columns else pd.DataFrame()
+                    primary_re = df_re[df_re["Is Primary Residence?"] == True] if not df_re.empty and "Is Primary Residence?" in df_re.columns else pd.DataFrame()
                     owns_home = not primary_re.empty
 
                     curr_city_flow_clean = re.sub(r'[^a-zA-Z0-9, ]', '', str(curr_city_flow))[:100]
@@ -2278,13 +2268,15 @@ def render_cashflows():
                     wealth_ctx = f"The household has a current annual pre-tax income of ${curr_inc_total:,.0f} and liquid assets totaling ${liq_ast_total:,.0f}. VERY IMPORTANT: assume these users are savvy spenders."
                     allowed_cats = ", ".join(BUDGET_CATEGORIES)
                     prompt = f"Current City: {curr_city_flow_clean}. Planned Retirement City: {ret_city_flow_clean}. Family: {f_ctx}. Current Year is {current_year}. {wealth_ctx} Generate a comprehensive list of missing living expenses AND expected future life milestones. {ai_exclusion} Skip these items: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (MUST be exactly one of: {allowed_cats}), 'Frequency' (Monthly/Yearly/One-Time), 'Amount ($)' (number), 'Start Phase' (Now/At Retirement/Custom Year), 'Start Year' (integer or null), 'End Phase' (End of Life/At Retirement/Custom Year), 'End Year' (integer or null), and 'AI Estimate?' (true)."
+                    
                     res = call_gemini_json(prompt)
                     if res and isinstance(res, list) and len(res) > 0:
                         st.session_state['lifetime_expenses'] = locked + res
                         mark_dirty()
-            finally:
-                st.session_state['trigger_budget_ai'] = False
-                st.rerun()
+        finally:
+            st.session_state['trigger_budget_ai'] = False
+            st.session_state['ai_loading'] = False
+            st.rerun()
 
     st.divider()
     pre_ret_monthly = 0
@@ -2312,11 +2304,11 @@ def render_simulation():
     section_header("Simulation", "Fine-tune your timeline and run Monte Carlo scenarios.", "📈")
 
     def ai_number_input(label, state_key, prompt, col, help_text=""):
+        is_loading = st.session_state.get('ai_loading', False)
         with col:
             sub_c1, sub_c2 = st.columns([5, 2])
             widget_key = f"in_{state_key}"
 
-            # --- FIX: Inject the help_text parameter into the number_input ---
             val = sub_c1.number_input(label, step=0.1, key=widget_key,
                                       value=float(st.session_state.get('assumptions', {}).get(state_key, 0.0)),
                                       help=help_text)
@@ -2327,12 +2319,16 @@ def render_simulation():
                 mark_dirty()
 
             sub_c2.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-            if sub_c2.button("✨ AI", key=f"btn_{state_key}", help=f"AI Estimate for {label}", use_container_width=True, type="primary"):
+            
+            # Disable the button if ANY AI call is running
+            if sub_c2.button("✨ AI", key=f"btn_{state_key}", help=f"AI Estimate for {label}", use_container_width=True, type="primary", disabled=is_loading):
                 st.session_state[f'trigger_ai_{state_key}'] = True
+                st.session_state['ai_loading'] = True
+                st.rerun()
 
             if st.session_state.get(f'trigger_ai_{state_key}'):
-                if check_ai_rate_limit():
-                    try:
+                try:
+                    if check_ai_rate_limit():
                         with st.spinner("AI estimating..."):
                             enhanced_prompt = prompt + " CRITICAL INSTRUCTION: You MUST return the value as a percentage number between 0 and 100 (e.g., return 5.5 for 5.5%, DO NOT return 0.055). Return ONLY a JSON object."
                             res = call_gemini_json(enhanced_prompt)
@@ -2343,9 +2339,10 @@ def render_simulation():
                                 new_assumptions[state_key] = new_val
                                 st.session_state['assumptions'] = new_assumptions
                                 mark_dirty()
-                    finally:
-                        st.session_state[f'trigger_ai_{state_key}'] = False
-                        st.rerun()
+                finally:
+                    st.session_state[f'trigger_ai_{state_key}'] = False
+                    st.session_state['ai_loading'] = False
+                    st.rerun()
         return val
 
     tab_ages, tab_assumptions, tab_stress = st.tabs(
@@ -2959,24 +2956,24 @@ def render_ai():
     else:
         sim_summary, ai_assumptions, timeline_summary = {}, {}, []
 
+    is_loading = st.session_state.get('ai_loading', False)
+    
     tab_report, tab_whatif = st.tabs(["📊 Comprehensive Health Report", "🔮 What-If Simulator"])
     
     with tab_report:
-        if st.button("✨ Generate Comprehensive AI Report", type="primary", use_container_width=True, key="btn_report"):
+        if st.button("✨ Generate Comprehensive AI Report", type="primary", use_container_width=True, key="btn_report", disabled=is_loading):
             st.session_state['trigger_report_ai'] = True
+            st.session_state['ai_loading'] = True
+            st.rerun()
             
         if st.session_state.get('trigger_report_ai'):
-            if check_ai_rate_limit():
-                if sim_summary:
-                    try:
+            try:
+                if check_ai_rate_limit():
+                    if sim_summary:
                         with st.spinner("AI extracting timeseries data and acting as fiduciary advisor..."):
-                            # --- FIX: Injected ai_assumptions into the prompt ---
                             prompt = f"""Act as an expert fiduciary financial planner. Review this user's summary: {json.dumps(sim_summary)}, their core economic & strategic assumptions: {json.dumps(ai_assumptions)}, and their chronological 5-year cash flow progression: {json.dumps(timeline_summary)}. 
-
                             Provide a highly detailed, year-by-year or phase-by-phase tactical analysis based strictly on these parameters. 
-
                             CRITICAL INSTRUCTION: You MUST include a distinct, bolded section titled "Roth Conversion Strategy Blueprint". In this section, provide actionable, mathematical advice on EXACTLY when they should execute Roth conversions. For example: "Between ages X and Y, convert $Z per year to fill the 24% bracket before RMDs begin at age 75." Be as specific as possible using their exact numbers and tax data.
-
                             Format your response in clean Markdown."""
 
                             res = call_gemini_text(prompt)
@@ -2985,28 +2982,29 @@ def render_ai():
                                 mark_dirty()
                             else:
                                 st.error("⚠️ AI Analysis failed to generate.")
-                    finally:
-                        st.session_state['trigger_report_ai'] = False
-                        st.rerun()
-                else:
-                    st.warning("Please run the baseline simulation first on the Dashboard or Simulation tab.")
-                    st.session_state['trigger_report_ai'] = False
+                    else:
+                        st.warning("Please run the baseline simulation first on the Dashboard or Simulation tab.")
+            finally:
+                st.session_state['trigger_report_ai'] = False
+                st.session_state['ai_loading'] = False
+                st.rerun()
 
         if 'ai_analysis_report' in st.session_state:
             st.markdown(st.session_state['ai_analysis_report'].replace('$', '&#36;'), unsafe_allow_html=True)
 
     with tab_whatif:
-        what_if_query = st.text_area("Ask the AI to simulate a scenario (e.g., 'What if I sold my rental property in 2030 and put the cash in my brokerage?' or 'What if inflation hits 5% for the next decade?')", key="what_if_text")
+        what_if_query = st.text_area("Ask the AI to simulate a scenario (e.g., 'What if I sold my rental property in 2030 and put the cash in my brokerage?')", key="what_if_text")
         
-        if st.button("✨ Run What-If Analysis (AI)", type="primary", use_container_width=True, key="btn_whatif"):
+        if st.button("✨ Run What-If Analysis (AI)", type="primary", use_container_width=True, key="btn_whatif", disabled=is_loading):
             st.session_state['trigger_whatif_ai'] = True
+            st.session_state['ai_loading'] = True
+            st.rerun()
 
         if st.session_state.get('trigger_whatif_ai'):
-            if check_ai_rate_limit():
-                if sim_summary and what_if_query:
-                    try:
+            try:
+                if check_ai_rate_limit():
+                    if sim_summary and what_if_query:
                         with st.spinner("AI processing alternative timelines and computing what-if scenario..."):
-                            # --- FIX: Injected ai_assumptions into the prompt ---
                             prompt = f"Act as an expert fiduciary financial planner. Review this user's baseline simulation summary: {json.dumps(sim_summary)}, their baseline economic assumptions: {json.dumps(ai_assumptions)}, and their chronological 5-year cash flow progression: {json.dumps(timeline_summary)}. The user wants to run the following 'what-if' scenario: '{what_if_query}'. Analyze how this change would mathematically and strategically impact their net worth, cash flow, and tax strategy compared to their baseline assumptions. Provide a highly detailed, reasonable estimate and tactical breakdown of this scenario. Format your response in clean Markdown."
                             res = call_gemini_text(prompt)
                             if res:
@@ -3014,15 +3012,14 @@ def render_ai():
                                 mark_dirty()
                             else:
                                 st.error("⚠️ AI Analysis failed to generate.")
-                    finally:
-                        st.session_state['trigger_whatif_ai'] = False
-                        st.rerun()
-                elif not what_if_query:
-                    st.warning("Please enter a scenario to simulate.")
-                    st.session_state['trigger_whatif_ai'] = False
-                else:
-                    st.warning("Please run the baseline simulation first.")
-                    st.session_state['trigger_whatif_ai'] = False
+                    elif not what_if_query:
+                        st.warning("Please enter a scenario to simulate.")
+                    else:
+                        st.warning("Please run the baseline simulation first.")
+            finally:
+                st.session_state['trigger_whatif_ai'] = False
+                st.session_state['ai_loading'] = False
+                st.rerun()
 
         if 'what_if_analysis_report' in st.session_state:
             st.markdown(st.session_state['what_if_analysis_report'].replace('$', '&#36;'), unsafe_allow_html=True)
