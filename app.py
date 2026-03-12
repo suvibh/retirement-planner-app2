@@ -1990,7 +1990,16 @@ def render_income():
         st.session_state['income_data'] = edited_inc_records
         st.rerun()
 
-    render_total("Total Pre-Tax Income", edited_inc['Annual Amount ($)'])
+    # --- FIX: Formatted Summary Metric for Income ---
+    st.divider()
+    total_inc_val = pd.to_numeric(edited_inc['Annual Amount ($)'], errors='coerce').fillna(0).sum()
+    
+    # We'll use a single-column layout or a multi-column if you want to break it down later
+    met_col1, met_col2 = st.columns([1, 3]) 
+    with met_col1:
+        st.metric("Total Annual Income", f"${total_inc_val:,.0f}", help="Sum of all active pre-tax income streams entered above.")
+    
+    st.markdown("<br>", unsafe_allow_html=True)
 
     # --- FIX: AI Loading State Machine ---
     is_loading = st.session_state.get('ai_loading', False)
