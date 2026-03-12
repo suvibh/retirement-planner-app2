@@ -2665,7 +2665,11 @@ def render_simulation():
                                     if c['has_spouse']: c['spouse_retire_year'] += int(shift)
                                 elif key == 'expenses':
                                     for e in c['exp_records']: 
-                                        e['Amount ($)'] = safe_num(e.get('Amount ($)')) * (1 + shift/100.0)
+                                        # --- FIX: Only shift records that actually have an amount ---
+                                        # This prevents zeroing out uninitialized rows which would skew the sensitivity delta.
+                                        raw_amt = e.get('Amount ($)')
+                                        if raw_amt is not None and str(raw_amt).strip() != "":
+                                            e['Amount ($)'] = safe_num(raw_amt) * (1 + shift/100.0)
                                 else:
                                     c[key] += shift
                                     
