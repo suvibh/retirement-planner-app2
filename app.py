@@ -1672,7 +1672,10 @@ def render_dashboard():
 
     with st.spinner("Running high-precision simulation engine..."):
         mkt_seq = tuple([sim_ctx['mkt']] * (sim_ctx['max_years'] + 1))
-        df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v8(mkt_seq, sim_ctx)
+        
+        # --- FIX: Serialize sim_ctx to JSON to match the new high-speed cache wrapper ---
+        df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v8(mkt_seq, json.dumps(sim_ctx))
+        
         st.session_state['df_sim_nominal'] = df_sim_nominal
         st.session_state['df_det'] = df_det_nominal
         st.session_state['df_nw'] = df_nw_nominal
