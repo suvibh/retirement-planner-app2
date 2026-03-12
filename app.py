@@ -183,17 +183,9 @@ def stat_card(label, value, color="indigo", icon=""):
     c = hex_map.get(color, "#4f46e5")
     bg = bg_map.get(color, "#e0e7ff")
 
-    st.markdown(f"""
-    <div style='background: white; border: 1px solid #e2e8f0; padding: 20px; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); display: flex; align-items: center; gap: 16px;'>
-        <div style='background: {bg}; width: 52px; height: 52px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; flex-shrink: 0;'>
-            {icon}
-        </div>
-        <div>
-            <div style='color: #64748b; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;'>{html.escape(str(label))}</div>
-            <div style='color: #0f172a; font-size: 1.6rem; font-weight: 800; letter-spacing: -0.5px; margin-top: 2px;'>{html.escape(str(value))}</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background: white; border: 1px solid #e2e8f0; padding: 20px; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); display: flex; align-items: center; gap: 16px;'><div style='background: {bg}; width: 52px; height: 52px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; flex-shrink: 0;'>{icon}</div><div><div style='color: #64748b; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;'>{html.escape(str(label))}</div><div style='color: #0f172a; font-size: 1.6rem; font-weight: 800; letter-spacing: -0.5px; margin-top: 2px;'>{html.escape(str(value))}</div></div></div>",
+        unsafe_allow_html=True)
 
 
 def section_header(title, subtitle="", icon=""):
@@ -212,28 +204,17 @@ def info_banner(text, type="info"):
         "danger": ("#fef2f2", "#ef4444", "#b91c1c", "🚨")
     }
     bg, border, text_color, emoji = configs.get(type, configs["info"])
-    st.markdown(f"""
-    <div style='background:{bg}; border-left:4px solid {border}; padding:14px 18px; border-radius:8px; margin-bottom:20px; display: flex; align-items: flex-start; gap: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>
-        <span style='font-size:1.1rem; line-height: 1.2;'>{emoji}</span>
-        <span style='color:{text_color}; font-size:0.95rem; font-weight: 500; line-height: 1.5;'>{html.escape(str(text))}</span>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background:{bg}; border-left:4px solid {border}; padding:14px 18px; border-radius:8px; margin-bottom:20px; display: flex; align-items: flex-start; gap: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'><span style='font-size:1.1rem; line-height: 1.2;'>{emoji}</span><span style='color:{text_color}; font-size:0.95rem; font-weight: 500; line-height: 1.5;'>{html.escape(str(text))}</span></div>",
+        unsafe_allow_html=True)
 
 
 def retirement_health_score(score):
     color = "#10b981" if score > 75 else "#f59e0b" if score > 50 else "#ef4444"
     label = "Excellent" if score > 75 else "Needs Work" if score > 50 else "At Risk"
-    st.markdown(f"""
-    <div style='text-align:center; padding:20px; background:white; border-radius:16px; border:1px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);'>
-        <svg width='140' height='140' viewBox='0 0 140 140'>
-            <circle cx='70' cy='70' r='56' fill='none' stroke='#f1f5f9' stroke-width='12'/>
-            <circle cx='70' cy='70' r='56' fill='none' stroke='{color}' stroke-width='12' stroke-dasharray='{2 * 3.14159 * 56}' stroke-dashoffset='{2 * 3.14159 * 56 * (1 - score / 100)}' stroke-linecap='round' transform='rotate(-90 70 70)'/>
-            <text x='70' y='66' text-anchor='middle' font-size='26' font-weight='900' fill='{color}' font-family='Inter'>{score}</text>
-            <text x='70' y='84' text-anchor='middle' font-size='11' font-weight='600' fill='#64748b'>{label}</text>
-        </svg>
-        <div style='color:#0f172a; font-weight:700; font-size:0.95rem; margin-top:8px;'>Monte Carlo Success</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='text-align:center; padding:20px; background:white; border-radius:16px; border:1px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);'><svg width='140' height='140' viewBox='0 0 140 140'><circle cx='70' cy='70' r='56' fill='none' stroke='#f1f5f9' stroke-width='12'/><circle cx='70' cy='70' r='56' fill='none' stroke='{color}' stroke-width='12' stroke-dasharray='{2 * 3.14159 * 56}' stroke-dashoffset='{2 * 3.14159 * 56 * (1 - score / 100)}' stroke-linecap='round' transform='rotate(-90 70 70)'/><text x='70' y='66' text-anchor='middle' font-size='26' font-weight='900' fill='{color}' font-family='Inter'>{score}</text><text x='70' y='84' text-anchor='middle' font-size='11' font-weight='600' fill='#64748b'>{label}</text></svg><div style='color:#0f172a; font-weight:700; font-size:0.95rem; margin-top:8px;'>Monte Carlo Success</div></div>",
+        unsafe_allow_html=True)
 
 
 def render_status_bar(deplete_year, deplete_age, final_nw, mc_success_rate=None):
@@ -245,29 +226,16 @@ def render_status_bar(deplete_year, deplete_age, final_nw, mc_success_rate=None)
         bg, icon, msg, sub = "#fffbeb", "🟡", "Solvent but Tight", f"${final_nw:,.0f} margin at end of plan. Small changes could significantly improve outcome."
     else:
         bg, icon, msg, sub = "#fef2f2", "🔴", "Projected Insolvency", "Net worth goes negative before end of plan."
-
     mc_html = f"<div style='margin-top: 10px; display: inline-block; background: white; padding: 4px 12px; border-radius: 999px; font-size: 0.85rem; font-weight: 700; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0,0,0,0.05);'>Monte Carlo: <span style='color: #4f46e5;'>{mc_success_rate:.0f}% Success Rate</span></div>" if mc_success_rate is not None else ""
-
-    st.markdown(f"""
-    <div style='background:{bg}; border-radius:16px; padding:20px 24px; display:flex; align-items:flex-start; gap:16px; margin-bottom:24px; border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);'>
-        <span style='font-size:2.2rem; line-height: 1;'>{icon}</span>
-        <div>
-            <div style='font-weight:800; font-size:1.2rem; color:#0f172a; letter-spacing: -0.5px;'>{html.escape(msg)}</div>
-            <div style='font-size:0.95rem; color:#475569; margin-top:4px; line-height: 1.5;'>{html.escape(sub)}</div>
-            {mc_html}
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background:{bg}; border-radius:16px; padding:20px 24px; display:flex; align-items:flex-start; gap:16px; margin-bottom:24px; border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);'><span style='font-size:2.2rem; line-height: 1;'>{icon}</span><div><div style='font-weight:800; font-size:1.2rem; color:#0f172a; letter-spacing: -0.5px;'>{html.escape(msg)}</div><div style='font-size:0.95rem; color:#475569; margin-top:4px; line-height: 1.5;'>{html.escape(sub)}</div>{mc_html}</div></div>",
+        unsafe_allow_html=True)
 
 
 def render_empty_state(section, icon):
-    st.markdown(f"""
-    <div style='text-align:center; padding:48px 24px; background:#f8fafc; border-radius:16px; border:2px dashed #cbd5e1; margin-bottom:24px;'>
-        <div style='font-size:3rem; margin-bottom:12px;'>{icon}</div>
-        <h3 style='color:#0f172a; margin:0 0 8px; font-weight: 700;'>No {html.escape(section)} Added Yet</h3>
-        <p style='color:#64748b; margin:0 0 20px; font-size:0.95rem;'>Use the table to add rows, or click the AI button to auto-populate based on your profile.</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='text-align:center; padding:48px 24px; background:#f8fafc; border-radius:16px; border:2px dashed #cbd5e1; margin-bottom:24px;'><div style='font-size:3rem; margin-bottom:12px;'>{icon}</div><h3 style='color:#0f172a; margin:0 0 8px; font-weight: 700;'>No {html.escape(section)} Added Yet</h3><p style='color:#64748b; margin:0 0 20px; font-size:0.95rem;'>Use the table to add rows, or click the AI button to auto-populate based on your profile.</p></div>",
+        unsafe_allow_html=True)
 
 
 def render_total(label, series):
@@ -1719,12 +1687,9 @@ def execute_sim_engine_v5(mkt_sequence_tuple, ctx):
 def render_dashboard():
     status = get_completion_status()
     if status['score'] < 100:
-        st.markdown("""
-        <div style='background: linear-gradient(135deg, #4f46e5 0%, #0ea5e9 100%); border-radius: 16px; padding: 32px; text-align: center; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2); margin-top: 24px; margin-bottom: 32px; color: white;'>
-            <h2 style='margin-top:0; color: white !important; font-weight: 800; font-size: 2rem;'>👋 Welcome to your Financial Blueprint</h2>
-            <p style='font-size: 1.1rem; opacity: 0.95; margin-bottom: 0; max-width: 600px; margin-left: auto; margin-right: auto;'>Complete the four foundational steps below to unlock your high-precision Monte Carlo simulation and AI Fiduciary analysis.</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            "<div style='background: linear-gradient(135deg, #4f46e5 0%, #0ea5e9 100%); border-radius: 16px; padding: 32px; text-align: center; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2); margin-top: 24px; margin-bottom: 32px; color: white;'><h2 style='margin-top:0; color: white !important; font-weight: 800; font-size: 2rem;'>👋 Welcome to your Financial Blueprint</h2><p style='font-size: 1.1rem; opacity: 0.95; margin-bottom: 0; max-width: 600px; margin-left: auto; margin-right: auto;'>Complete the four foundational steps below to unlock your high-precision Monte Carlo simulation and AI Fiduciary analysis.</p></div>",
+            unsafe_allow_html=True)
 
         c1, c2, c3, c4 = st.columns(4)
 
@@ -2415,7 +2380,7 @@ def render_simulation():
 
     with tab_assumptions:
         st.markdown(
-            """<div class='card' style='margin-bottom: 24px;'><h3 style='margin-top:0;'>Macroeconomic Assumptions</h3></div>""",
+            "<div class='card' style='margin-bottom: 24px;'><h3 style='margin-top:0;'>Macroeconomic Assumptions</h3></div>",
             unsafe_allow_html=True)
         ac1, ac2, ac3 = st.columns(3)
         mkt = ai_number_input("Market Growth (%)", 'market_growth',
@@ -2458,7 +2423,7 @@ def render_simulation():
 
     with tab_stress:
         st.markdown(
-            """<div class='card' style='margin-bottom: 24px;'><h3 style='margin-top:0;'>Tax Engine & Stress Tests</h3></div>""",
+            "<div class='card' style='margin-bottom: 24px;'><h3 style='margin-top:0;'>Tax Engine & Stress Tests</h3></div>",
             unsafe_allow_html=True)
         sc1, sc2 = st.columns(2)
 
@@ -2907,31 +2872,7 @@ with st.sidebar:
         f"<div style='text-align: center; font-family: Inter; color: #cbd5e1; font-weight: 600; margin-bottom: 16px;'>Profile {status['score']}% Complete</div>",
         unsafe_allow_html=True)
 
-    stepper_html = f"""
-    <div style='background: rgba(255,255,255,0.03); border-radius: 12px; padding: 16px; margin-bottom: 24px; border: 1px solid rgba(255,255,255,0.05);'>
-        <div style='font-size: 0.75rem; color: #94a3b8; font-weight: 700; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px;'>Setup Progress</div>
-
-        <div style='display: flex; align-items: center; gap: 12px; margin-bottom: 12px;'>
-            <div style='width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; background: {'#10b981' if status['profile'] else 'transparent'}; border: 2px solid {'#10b981' if status['profile'] else '#475569'}; color: white;'>{'✓' if status['profile'] else '1'}</div>
-            <div style='color: {'white' if status['profile'] else '#94a3b8'}; font-size: 0.95rem; font-weight: {'600' if status['profile'] else '500'};'>Basic Info</div>
-        </div>
-
-        <div style='display: flex; align-items: center; gap: 12px; margin-bottom: 12px;'>
-            <div style='width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; background: {'#10b981' if status['income'] else 'transparent'}; border: 2px solid {'#10b981' if status['income'] else '#475569'}; color: white;'>{'✓' if status['income'] else '2'}</div>
-            <div style='color: {'white' if status['income'] else '#94a3b8'}; font-size: 0.95rem; font-weight: {'600' if status['income'] else '500'};'>Income Streams</div>
-        </div>
-
-        <div style='display: flex; align-items: center; gap: 12px; margin-bottom: 12px;'>
-            <div style='width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; background: {'#10b981' if status['assets'] else 'transparent'}; border: 2px solid {'#10b981' if status['assets'] else '#475569'}; color: white;'>{'✓' if status['assets'] else '3'}</div>
-            <div style='color: {'white' if status['assets'] else '#94a3b8'}; font-size: 0.95rem; font-weight: {'600' if status['assets'] else '500'};'>Assets & Debts</div>
-        </div>
-
-        <div style='display: flex; align-items: center; gap: 12px;'>
-            <div style='width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; background: {'#10b981' if status['expenses'] else 'transparent'}; border: 2px solid {'#10b981' if status['expenses'] else '#475569'}; color: white;'>{'✓' if status['expenses'] else '4'}</div>
-            <div style='color: {'white' if status['expenses'] else '#94a3b8'}; font-size: 0.95rem; font-weight: {'600' if status['expenses'] else '500'};'>Lifetime Budgets</div>
-        </div>
-    </div>
-    """
+    stepper_html = f"<div style='background: rgba(255,255,255,0.03); border-radius: 12px; padding: 16px; margin-bottom: 24px; border: 1px solid rgba(255,255,255,0.05);'><div style='font-size: 0.75rem; color: #94a3b8; font-weight: 700; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px;'>Setup Progress</div><div style='display: flex; align-items: center; gap: 12px; margin-bottom: 12px;'><div style='width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; background: {'#10b981' if status['profile'] else 'transparent'}; border: 2px solid {'#10b981' if status['profile'] else '#475569'}; color: white;'>{'✓' if status['profile'] else '1'}</div><div style='color: {'white' if status['profile'] else '#94a3b8'}; font-size: 0.95rem; font-weight: {'600' if status['profile'] else '500'};'>Basic Info</div></div><div style='display: flex; align-items: center; gap: 12px; margin-bottom: 12px;'><div style='width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; background: {'#10b981' if status['income'] else 'transparent'}; border: 2px solid {'#10b981' if status['income'] else '#475569'}; color: white;'>{'✓' if status['income'] else '2'}</div><div style='color: {'white' if status['income'] else '#94a3b8'}; font-size: 0.95rem; font-weight: {'600' if status['income'] else '500'};'>Income Streams</div></div><div style='display: flex; align-items: center; gap: 12px; margin-bottom: 12px;'><div style='width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; background: {'#10b981' if status['assets'] else 'transparent'}; border: 2px solid {'#10b981' if status['assets'] else '#475569'}; color: white;'>{'✓' if status['assets'] else '3'}</div><div style='color: {'white' if status['assets'] else '#94a3b8'}; font-size: 0.95rem; font-weight: {'600' if status['assets'] else '500'};'>Assets & Debts</div></div><div style='display: flex; align-items: center; gap: 12px;'><div style='width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; background: {'#10b981' if status['expenses'] else 'transparent'}; border: 2px solid {'#10b981' if status['expenses'] else '#475569'}; color: white;'>{'✓' if status['expenses'] else '4'}</div><div style='color: {'white' if status['expenses'] else '#94a3b8'}; font-size: 0.95rem; font-weight: {'600' if status['expenses'] else '500'};'>Lifetime Budgets</div></div></div>"
     st.markdown(stepper_html, unsafe_allow_html=True)
 
     save_btn_label = "⚠️ Save Changes" if st.session_state.get('dirty', False) else "🚀 Save Profile"
