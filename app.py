@@ -2642,10 +2642,21 @@ def render_simulation():
 
                             if HAS_PLOTLY:
                                 fig_mc = go.Figure()
-                                fig_mc.add_trace(go.Scatter(x=years_list, y=p90, mode='lines', name='90th Percentile (Favorable Timeline)', line=dict(color='#10b981', dash='dot')))
-                                fig_mc.add_trace(go.Scatter(x=years_list, y=p50, mode='lines', name='50th Percentile (Median Expectation)', line=dict(color='#3b82f6', width=3)))
-                                fig_mc.add_trace(go.Scatter(x=years_list, y=p10, mode='lines', name='10th Percentile (Severe Contraction)', line=dict(color='#f43f5e', dash='dot')))
+                                fig_mc.add_trace(go.Scatter(x=years_list, y=p90, mode='lines', name='90th Percentile (Favorable)', line=dict(color='#10b981', dash='dot')))
+                                fig_mc.add_trace(go.Scatter(x=years_list, y=p50, mode='lines', name='50th Percentile (Median)', line=dict(color='#3b82f6', width=3)))
+                                fig_mc.add_trace(go.Scatter(x=years_list, y=p10, mode='lines', name='10th Percentile (Severe)', line=dict(color='#f43f5e', dash='dot')))
                                 fig_mc = apply_chart_theme(fig_mc, "Stochastic Net Worth Projections")
+                                
+                                # --- FIX: Expand top margin and center the legend so it doesn't clip on the right ---
+                                fig_mc.update_layout(
+                                    margin=dict(t=90), # Increase top margin from default 50 to 90
+                                    legend=dict(
+                                        x=0.5,         # Center horizontally
+                                        xanchor='center',
+                                        y=1.08,        # Push slightly higher above the grid
+                                        yanchor='bottom'
+                                    )
+                                )
                                 st.plotly_chart(fig_mc, use_container_width=True)
 
             with out_tab_tax:
