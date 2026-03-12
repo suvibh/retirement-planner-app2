@@ -647,7 +647,7 @@ def build_sim_context():
         'infl_hc': float(asm.get('inflation_healthcare', 5.5)), 'infl_ed': float(asm.get('inflation_education', 4.5)),
         'inc_g': float(asm.get('income_growth', 3.0)), 'prop_g': float(asm.get('property_growth', 3.0)),
         'rent_g': float(asm.get('rent_growth', 3.0)), 'cur_t': float(asm.get('current_tax_rate', 5.0)),
-        'ret_t': float(asm.get('retire_tax_rate', 0.0)),sanitize_for_cache
+        'ret_t': float(asm.get('retire_tax_rate', 0.0)),
         'stress_test': asm.get('stress_test', False), 'glidepath': asm.get('glidepath', True),
         'medicare_gap': asm.get('medicare_gap', True), 'medicare_cliff': asm.get('medicare_cliff', True),
         'ltc_shock': asm.get('ltc_shock', False), 'shortfall_rate': float(asm.get('shortfall_rate', 12.0)) / 100.0,
