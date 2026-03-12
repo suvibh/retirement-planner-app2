@@ -1026,6 +1026,12 @@ def run_simulation(mkt_sequence, ctx_input):
                 return biz_income_total * 0.20 * ((qbi_phaseout - pto) / (qbi_phaseout - qbi_threshold))
             return 0
 
+        # --- QBI DEDUCTION LOGIC ---
+        # Note: We calculate QBI twice. First, based on 'pre_tax_ord' to determine our baseline AGI and 
+        # figure out exactly how much Roth conversion room we have. 
+        # Later, we calculate 'final_qbi' based on the post-conversion AGI. 
+        # This is a critical feature: Roth conversions increase AGI, which can push a user into the QBI 
+        # phase-out range, effectively increasing the marginal tax cost of the conversion!
         pre_conversion_qbi = get_qbi(pre_tax_ord)
 
         for r in sim_re:
@@ -1365,9 +1371,22 @@ def run_simulation(mkt_sequence, ctx_input):
         base_fed_tax, marginal_rate = calc_federal_tax(tax_base_ord, active_mfj, year_offset, ctx['infl'])
         state_tax = tax_base_ord * (state_tax_rate / 100.0)
         fica_tax = 0
-        wage_base, addl_thresh = SS_WAGE_BASE_2026 * ((1 + ctx['infl'] / 100) ** year_offset), ADDL_MED_TAX_THRESHOLD * ((1 + ctx['infl'] / 100) ** year_offset)
+        wage_base = SS_WAGE_BASE_2026 * ((1 + ctx['infl'] / 100) ** year_offset)
+        
+        # IRS thresholds: $250k for MFJ, $200k for Single (historically unindexed, but we index here to prevent extreme long-term bracket creep)
+        addl_thresh_base = 250000 if active_mfj else 200000
+        addl_med_thresh = addl_thresh_base * ((1 + ctx['infl'] / 100) ** year_offset)
+        
+        combined_earned_income = 0
         for ei in [earned_income_me, earned_income_spouse]:
-            if ei > 0: fica_tax += min(ei, wage_base) * 0.062 + ei * 0.0145 + max(0, ei - addl_thresh) * 0.009
+            if ei > 0: 
+                # Standard SS (6.2% up to wage base) + Standard Medicare (1.45% infinite)
+                fica_tax += min(ei, wage_base) * 0.062 + ei * 0.0145
+                combined_earned_income += ei
+
+        # --- FIX: Additional Medicare Tax (0.9%) applies to COMBINED household earned income for MFJ ---
+        if combined_earned_income > addl_med_thresh:
+            fica_tax += (combined_earned_income - addl_med_thresh) * 0.009
 
         total_tax = base_fed_tax + state_tax + fica_tax
         yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + total_tax
@@ -2265,12 +2284,22 @@ def render_simulation():
         rent_g = ai_number_input("Rent Growth (%)", 'rent_growth',
                                  f"Projected average annual rent increase rate for {curr_city_flow_clean}? Return JSON: {{'rent_growth': float}}",
                                  ac7)
-        cur_t = ai_number_input("Current State Tax (%)", 'current_tax_rate',
-                                f"User lives in {curr_city_flow_clean} with ${curr_inc_total:,.0f} income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'current_tax_rate': float}}",
-                                ac8)
-        ret_t = ai_number_input("Retire State Tax (%)", 'retire_tax_rate',
-                                f"User plans to retire in {ret_city_flow_clean} with estimated retirement income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'retire_tax_rate': float}}",
-                                ac9)
+        cur_t = ai_number_input(
+            "Current State Tax (%)", 
+            'current_tax_rate', 
+            f"User lives in {curr_city_flow_clean} with ${curr_inc_total:,.0f} income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'current_tax_rate': float}}", 
+            ac8
+        )
+        # Inject the UI warning immediately below the input
+        with ac8:
+            st.caption("*(Note: Applied to Fed AGI. If your state—like PA or NJ—does not allow 401k deductions, adjust this rate slightly higher.)*")
+
+        ret_t = ai_number_input(
+            "Retire State Tax (%)", 
+            'retire_tax_rate', 
+            f"User plans to retire in {ret_city_flow_clean} with estimated retirement income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'retire_tax_rate': float}}", 
+            ac9
+        )
 
         ac10, _, _ = st.columns(3)
         shortfall_rate = ai_number_input("Shortfall Penalty/Borrowing Rate (%)", 'shortfall_rate',
