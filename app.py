@@ -3149,7 +3149,9 @@ with st.sidebar:
     current_active_idx = 0
     if st.session_state.get('current_page'):
         for i, opt in enumerate(nav_options):
-            if st.session_state['current_page'] in opt:
+            # --- FIX: Exact string match to prevent routing hijacks ---
+            clean_opt = opt.replace("✅ ", "")
+            if st.session_state['current_page'] == clean_opt:
                 current_active_idx = i
                 break
 
@@ -3169,9 +3171,16 @@ with st.sidebar:
         save_profile()
 
     if st.button("Logout", type="secondary", use_container_width=True):
-        if cookie_manager.get("user_email"): cookie_manager.delete("user_email")
+        if cookie_manager.get("user_email"): 
+            cookie_manager.delete("user_email")
+            
+        # --- FIX: Preserve app-level state, safely nuke user data & triggers ---
+        system_keys = {'firebase_enabled', 'logged_out_flag'}
         for key in list(st.session_state.keys()):
-            if key != 'logged_out_flag': del st.session_state[key]
+            # Preserve system flags and the invisible cookie manager component state
+            if key not in system_keys and not key.startswith('auth_cookie'):
+                del st.session_state[key]
+                
         st.session_state['logged_out_flag'] = True
         time.sleep(0.5)
         st.rerun()
