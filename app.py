@@ -1111,6 +1111,23 @@ def run_simulation(mkt_sequence, ctx_input):
 
         tax_base_ord_pre = max(0, pre_tax_ord - pre_conversion_qbi - pre_tax_deductions)
 
+        # --- NEW: Log Tax Brackets & Base Income for UI Visualization ---
+        infl_factor_tax = (1 + ctx['infl'] / 100) ** year_offset
+        std_deduction_ui = (29200 if active_mfj else 14600) * infl_factor_tax
+        yd["Tax: 0% Limit (Std Ded)"] = std_deduction_ui
+        b_lims_ui = {
+            "12%": 94300 if active_mfj else 47150,
+            "22%": 201050 if active_mfj else 100525,
+            "24%": 383900 if active_mfj else 191950,
+            "32%": 487450 if active_mfj else 243725
+        }
+        yd["Tax: 12% Limit"] = b_lims_ui["12%"] * infl_factor_tax + std_deduction_ui
+        yd["Tax: 22% Limit"] = b_lims_ui["22%"] * infl_factor_tax + std_deduction_ui
+        yd["Tax: 24% Limit"] = b_lims_ui["24%"] * infl_factor_tax + std_deduction_ui
+        yd["Tax: 32% Limit"] = b_lims_ui["32%"] * infl_factor_tax + std_deduction_ui
+        yd["Tax: Base Ordinary Income"] = tax_base_ord_pre
+        # ----------------------------------------------------------------
+
         for ev in ctx['exp_records']:
             desc = str(ev.get("Description", "")).strip()
             if not desc: continue
@@ -2342,8 +2359,8 @@ def render_simulation():
             render_status_bar(deplete_year, deplete_age, final_nw)
 
             # --- NEW OUTPUT TABS START HERE ---
-            out_tab_main, out_tab_mc, out_tab_logs = st.tabs(
-                ["📊 Main Projection", "🎲 Monte Carlo Risk", "📋 Detailed Logs & Export"])
+            out_tab_main, out_tab_mc, out_tab_tax, out_tab_logs = st.tabs(
+                ["📊 Main Projection", "🎲 Monte Carlo Risk", "🏛️ Tax & Roth Optimizer", "📋 Detailed Logs & Export"])
 
             with out_tab_main:
                 if HAS_PLOTLY:
@@ -2543,6 +2560,47 @@ def render_simulation():
                                                             line=dict(color='#f43f5e', dash='dot')))
                                 fig_mc = apply_chart_theme(fig_mc, "Stochastic Net Worth Projections")
                                 st.plotly_chart(fig_mc, use_container_width=True)
+
+            with out_tab_tax:
+                st.markdown(
+                    '<div class="info-text" style="margin-bottom: 20px;">💡 <strong>Roth Conversion Optimizer:</strong> This chart visualizes your progressive tax brackets and how Roth Conversions (if enabled in Stress Tests) fill those brackets up to your target limit. <i>(Lines indicate the top edge of each bracket)</i>.</div>',
+                    unsafe_allow_html=True)
+
+                if HAS_PLOTLY:
+                    fig_tax = go.Figure()
+
+                    # 1. Stacked Bars (Base Income + Roth Conversions)
+                    fig_tax.add_trace(
+                        go.Bar(x=df_det["Year"], y=df_det.get("Tax: Base Ordinary Income", [0] * len(df_det)),
+                               name="Base Ordinary Income", marker_color="#3b82f6"))
+                    if "Roth Conversion Amount" in df_det.columns:
+                        fig_tax.add_trace(
+                            go.Bar(x=df_det["Year"], y=df_det["Roth Conversion Amount"], name="Roth Conversions",
+                                   marker_color="#8b5cf6"))
+
+                    # 2. Horizontal Threshold Lines (Tax Brackets)
+                    fig_tax.add_trace(
+                        go.Scatter(x=df_det["Year"], y=df_det.get("Tax: 0% Limit (Std Ded)", [0] * len(df_det)),
+                                   mode="lines", name="Standard Deduction",
+                                   line=dict(color="#94a3b8", dash="dot", width=2)))
+                    fig_tax.add_trace(
+                        go.Scatter(x=df_det["Year"], y=df_det.get("Tax: 12% Limit", [0] * len(df_det)), mode="lines",
+                                   name="12% Limit", line=dict(color="#10b981", dash="dot", width=2)))
+                    fig_tax.add_trace(
+                        go.Scatter(x=df_det["Year"], y=df_det.get("Tax: 22% Limit", [0] * len(df_det)), mode="lines",
+                                   name="22% Limit", line=dict(color="#f59e0b", dash="dot", width=2)))
+                    fig_tax.add_trace(
+                        go.Scatter(x=df_det["Year"], y=df_det.get("Tax: 24% Limit", [0] * len(df_det)), mode="lines",
+                                   name="24% Limit", line=dict(color="#ef4444", dash="dot", width=2)))
+                    fig_tax.add_trace(
+                        go.Scatter(x=df_det["Year"], y=df_det.get("Tax: 32% Limit", [0] * len(df_det)), mode="lines",
+                                   name="32% Limit", line=dict(color="#8b5cf6", dash="dot", width=2)))
+
+                    fig_tax.update_layout(barmode='stack', hovermode='x unified')
+                    fig_tax = apply_chart_theme(fig_tax, "Ordinary Income vs. Progressive Tax Brackets")
+                    st.plotly_chart(fig_tax, use_container_width=True)
+                else:
+                    st.info("Please install Plotly to view the charts.")
 
             with out_tab_logs:
                 output = io.BytesIO()
