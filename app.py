@@ -2140,7 +2140,6 @@ def render_simulation():
                 mark_dirty()
 
             sub_c2.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-            # --- FIX: Safe AI State Machine ---
             if sub_c2.button("✨ AI", key=f"btn_{state_key}", help=f"AI Estimate for {label}", use_container_width=True,
                              type="primary"):
                 st.session_state[f'trigger_ai_{state_key}'] = True
@@ -2235,7 +2234,6 @@ def render_simulation():
                                 f"User plans to retire in {ret_city_flow_clean} with estimated retirement income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'retire_tax_rate': float}}",
                                 ac9)
 
-        # --- FIX: Shortfall penalty rate exposed ---
         ac10, _, _ = st.columns(3)
         shortfall_rate = ai_number_input("Shortfall Penalty/Borrowing Rate (%)", 'shortfall_rate',
                                          f"What is a realistic personal loan or credit card interest rate for someone forced to borrow during retirement shortfalls? Return JSON: {{'shortfall_rate': float}}",
@@ -2341,205 +2339,212 @@ def render_simulation():
             deplete_year = df_sim[shortfall_mask]['Year'].min() if not df_sim[shortfall_mask].empty else None
             deplete_age = df_sim[shortfall_mask]['Age (Primary)'].min() if not df_sim[shortfall_mask].empty else None
 
-            c_status, c_ai_btn = st.columns([3, 2])
-            with c_status:
-                render_status_bar(deplete_year, deplete_age, final_nw)
+            render_status_bar(deplete_year, deplete_age, final_nw)
 
-            if HAS_PLOTLY:
-                current_year = datetime.date.today().year
-                m_x_normal, m_y_normal, m_text_normal, m_x_system, m_y_system, m_text_system, m_x_alert, m_y_alert, m_text_alert = [], [], [], [], [], [], [], [], []
+            # --- NEW OUTPUT TABS START HERE ---
+            out_tab_main, out_tab_mc, out_tab_logs = st.tabs(
+                ["📊 Main Projection", "🎲 Monte Carlo Risk", "📋 Detailed Logs & Export"])
 
-                if run_milestones:
-                    m_years = sorted(list(run_milestones.keys()))
-                    for y in m_years:
-                        row = df_sim[df_sim['Year'] == y]
-                        nw_val = row['Net Worth'].values[0] if not row.empty else 0
-                        events = run_milestones[y]
-                        normals, systems, alerts = [e for e in events if e.get('type') == 'normal'], [e for e in events
-                                                                                                      if e.get(
-                                'type') == 'system'], [e for e in events if e.get('type') == 'critical']
-                        discount = (1 + sim_ctx['infl'] / 100) ** (y - current_year) if view_todays_dollars else 1.0
+            with out_tab_main:
+                if HAS_PLOTLY:
+                    current_year = datetime.date.today().year
+                    m_x_normal, m_y_normal, m_text_normal, m_x_system, m_y_system, m_text_system, m_x_alert, m_y_alert, m_text_alert = [], [], [], [], [], [], [], [], []
 
-                        if normals:
-                            m_x_normal.append(y);
-                            m_y_normal.append(nw_val)
-                            m_text_normal.append(f"<b>Year {y}:</b><br>" + "<br>".join(
-                                [f"• {html.escape(m['desc'])} (${m['amt'] / discount:,.0f})" for m in normals]))
-                        if systems:
-                            m_x_system.append(y);
-                            m_y_system.append(nw_val)
-                            m_text_system.append(f"<b>System Event ({y}):</b><br>" + "<br>".join(
-                                [f"• {html.escape(m['desc'])}" for m in systems]))
-                        if alerts:
-                            m_x_alert.append(y);
-                            m_y_alert.append(nw_val)
-                            m_text_alert.append(f"<b>⚠️ ALERT ({y}):</b><br>" + "<br>".join(
-                                [f"• {html.escape(m['desc'])}" for m in alerts]))
+                    if run_milestones:
+                        m_years = sorted(list(run_milestones.keys()))
+                        for y in m_years:
+                            row = df_sim[df_sim['Year'] == y]
+                            nw_val = row['Net Worth'].values[0] if not row.empty else 0
+                            events = run_milestones[y]
+                            normals, systems, alerts = [e for e in events if e.get('type') == 'normal'], [e for e in
+                                                                                                          events if
+                                                                                                          e.get(
+                                                                                                              'type') == 'system'], [
+                                e for e in events if e.get('type') == 'critical']
+                            discount = (1 + sim_ctx['infl'] / 100) ** (y - current_year) if view_todays_dollars else 1.0
 
-                st.write("#### Net Worth Composition (Smart Asset Drawdown)")
-                fig_nw = go.Figure()
-                ast_cols = [c for c in df_nw.columns if c.startswith("Asset: ")]
-                fill_colors = ['rgba(79, 70, 229, 0.6)', 'rgba(14, 165, 233, 0.6)', 'rgba(16, 185, 129, 0.6)',
-                               'rgba(245, 158, 11, 0.6)', 'rgba(139, 92, 246, 0.6)', 'rgba(236, 72, 153, 0.6)',
-                               'rgba(52, 211, 153, 0.6)', 'rgba(251, 191, 36, 0.6)', 'rgba(163, 230, 53, 0.6)',
-                               'rgba(250, 204, 21, 0.6)']
-                line_colors = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#34d399', '#fbbf24',
-                               '#a3e635', '#facc15']
+                            if normals:
+                                m_x_normal.append(y);
+                                m_y_normal.append(nw_val)
+                                m_text_normal.append(f"<b>Year {y}:</b><br>" + "<br>".join(
+                                    [f"• {html.escape(m['desc'])} (${m['amt'] / discount:,.0f})" for m in normals]))
+                            if systems:
+                                m_x_system.append(y);
+                                m_y_system.append(nw_val)
+                                m_text_system.append(f"<b>System Event ({y}):</b><br>" + "<br>".join(
+                                    [f"• {html.escape(m['desc'])}" for m in systems]))
+                            if alerts:
+                                m_x_alert.append(y);
+                                m_y_alert.append(nw_val)
+                                m_text_alert.append(f"<b>⚠️ ALERT ({y}):</b><br>" + "<br>".join(
+                                    [f"• {html.escape(m['desc'])}" for m in alerts]))
 
-                for i, col in enumerate(ast_cols):
-                    fig_nw.add_trace(go.Scatter(x=df_nw["Year"], y=df_nw[col], mode='lines', stackgroup='one',
-                                                name=col.replace("Asset: ", ""),
-                                                fillcolor=fill_colors[i % len(fill_colors)],
-                                                line=dict(color=line_colors[i % len(line_colors)], width=1.5)))
+                    st.write("#### Net Worth Composition (Smart Asset Drawdown)")
+                    fig_nw = go.Figure()
+                    ast_cols = [c for c in df_nw.columns if c.startswith("Asset: ")]
+                    fill_colors = ['rgba(79, 70, 229, 0.6)', 'rgba(14, 165, 233, 0.6)', 'rgba(16, 185, 129, 0.6)',
+                                   'rgba(245, 158, 11, 0.6)', 'rgba(139, 92, 246, 0.6)', 'rgba(236, 72, 153, 0.6)',
+                                   'rgba(52, 211, 153, 0.6)', 'rgba(251, 191, 36, 0.6)', 'rgba(163, 230, 53, 0.6)',
+                                   'rgba(250, 204, 21, 0.6)']
+                    line_colors = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#34d399',
+                                   '#fbbf24', '#a3e635', '#facc15']
 
-                fig_nw.add_trace(
-                    go.Scatter(x=df_nw["Year"], y=df_nw["Total Real Estate Equity"], mode='lines', stackgroup='one',
-                               name='Real Estate Equity', fillcolor='rgba(139, 92, 246, 0.5)',
-                               line=dict(color='#8b5cf6', width=1.5)))
-                fig_nw.add_trace(
-                    go.Scatter(x=df_nw["Year"], y=df_nw["Total Business Equity"], mode='lines', stackgroup='one',
-                               name='Business Equity', fillcolor='rgba(245, 158, 11, 0.5)',
-                               line=dict(color='#f59e0b', width=1.5)))
-                fig_nw.add_trace(
-                    go.Scatter(x=df_nw["Year"], y=df_nw["Total Debt Liabilities"], mode='lines', stackgroup='two',
-                               name='Total Liabilities (Inc. Shortfalls)', fillcolor='rgba(244, 63, 94, 0.5)',
-                               line=dict(color='#f43f5e', width=1.5)))
-                fig_nw.add_trace(
-                    go.Scatter(x=df_nw["Year"], y=df_nw["Total Net Worth"], mode='lines', name='Total Net Worth',
-                               line=dict(color='#111827', width=3, dash='dot')))
+                    for i, col in enumerate(ast_cols):
+                        fig_nw.add_trace(go.Scatter(x=df_nw["Year"], y=df_nw[col], mode='lines', stackgroup='one',
+                                                    name=col.replace("Asset: ", ""),
+                                                    fillcolor=fill_colors[i % len(fill_colors)],
+                                                    line=dict(color=line_colors[i % len(line_colors)], width=1.5)))
 
-                if m_x_normal: fig_nw.add_trace(go.Scatter(x=m_x_normal, y=m_y_normal, mode='markers',
-                                                           marker=dict(symbol='star', size=14, color='#eab308',
-                                                                       line=dict(width=1.5, color='white')),
-                                                           name='User Milestones', hoverinfo='text',
-                                                           text=m_text_normal))
-                if m_x_system: fig_nw.add_trace(go.Scatter(x=m_x_system, y=m_y_system, mode='markers',
-                                                           marker=dict(symbol='star', size=14, color='#3b82f6',
-                                                                       line=dict(width=1.5, color='white')),
-                                                           name='System Events', hoverinfo='text', text=m_text_system))
-                if m_x_alert: fig_nw.add_trace(go.Scatter(x=m_x_alert, y=m_y_alert, mode='markers',
-                                                          marker=dict(symbol='star', size=18, color='#ef4444',
-                                                                      line=dict(width=2, color='white')),
-                                                          name='Critical Alerts', hoverinfo='text', text=m_text_alert))
+                    fig_nw.add_trace(
+                        go.Scatter(x=df_nw["Year"], y=df_nw["Total Real Estate Equity"], mode='lines', stackgroup='one',
+                                   name='Real Estate Equity', fillcolor='rgba(139, 92, 246, 0.5)',
+                                   line=dict(color='#8b5cf6', width=1.5)))
+                    fig_nw.add_trace(
+                        go.Scatter(x=df_nw["Year"], y=df_nw["Total Business Equity"], mode='lines', stackgroup='one',
+                                   name='Business Equity', fillcolor='rgba(245, 158, 11, 0.5)',
+                                   line=dict(color='#f59e0b', width=1.5)))
+                    fig_nw.add_trace(
+                        go.Scatter(x=df_nw["Year"], y=df_nw["Total Debt Liabilities"], mode='lines', stackgroup='two',
+                                   name='Total Liabilities (Inc. Shortfalls)', fillcolor='rgba(244, 63, 94, 0.5)',
+                                   line=dict(color='#f43f5e', width=1.5)))
+                    fig_nw.add_trace(
+                        go.Scatter(x=df_nw["Year"], y=df_nw["Total Net Worth"], mode='lines', name='Total Net Worth',
+                                   line=dict(color='#111827', width=3, dash='dot')))
 
-                fig_nw = apply_chart_theme(fig_nw)
-                st.plotly_chart(fig_nw, use_container_width=True)
+                    if m_x_normal: fig_nw.add_trace(go.Scatter(x=m_x_normal, y=m_y_normal, mode='markers',
+                                                               marker=dict(symbol='star', size=14, color='#eab308',
+                                                                           line=dict(width=1.5, color='white')),
+                                                               name='User Milestones', hoverinfo='text',
+                                                               text=m_text_normal))
+                    if m_x_system: fig_nw.add_trace(go.Scatter(x=m_x_system, y=m_y_system, mode='markers',
+                                                               marker=dict(symbol='star', size=14, color='#3b82f6',
+                                                                           line=dict(width=1.5, color='white')),
+                                                               name='System Events', hoverinfo='text',
+                                                               text=m_text_system))
+                    if m_x_alert: fig_nw.add_trace(go.Scatter(x=m_x_alert, y=m_y_alert, mode='markers',
+                                                              marker=dict(symbol='star', size=18, color='#ef4444',
+                                                                          line=dict(width=2, color='white')),
+                                                              name='Critical Alerts', hoverinfo='text',
+                                                              text=m_text_alert))
 
-                st.write("#### Annual Cash Flow & Progressive Taxes")
-                fig_cf = go.Figure()
-                fig_cf.add_trace(
-                    go.Scatter(x=df_sim["Year"], y=df_sim["Annual Income"], mode='lines', name='Organic Income',
-                               line=dict(color='#4f46e5', width=3)))
-                fig_cf.add_trace(
-                    go.Scatter(x=df_sim["Year"], y=df_sim["Asset Withdrawals"], mode='lines', name='Asset Withdrawals',
-                               line=dict(color='#a855f7', width=3, dash='dot')))
-                fig_cf.add_trace(
-                    go.Scatter(x=df_sim["Year"], y=df_sim["Annual Expenses"], mode='lines', name='Expenses',
-                               line=dict(color='#f43f5e', width=3)))
-                fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Taxes"], mode='lines', name='Taxes',
-                                            line=dict(color='#f59e0b', width=3)))
-                fig_cf.add_trace(
-                    go.Scatter(x=df_sim["Year"], y=df_sim["Annual Net Savings"], mode='lines', name='Net Cashflow',
-                               line=dict(color='#10b981', width=3, dash='dot')))
+                    fig_nw = apply_chart_theme(fig_nw)
+                    st.plotly_chart(fig_nw, use_container_width=True)
 
-                if m_x_normal: fig_cf.add_trace(go.Scatter(x=m_x_normal, y=[0] * len(m_x_normal), mode='markers',
-                                                           marker=dict(symbol='star', size=14, color='#eab308',
-                                                                       line=dict(width=1.5, color='white')),
-                                                           name='User Milestones', hoverinfo='text',
-                                                           text=m_text_normal))
-                if m_x_system: fig_cf.add_trace(go.Scatter(x=m_x_system, y=[0] * len(m_x_system), mode='markers',
-                                                           marker=dict(symbol='star', size=14, color='#3b82f6',
-                                                                       line=dict(width=1.5, color='white')),
-                                                           name='System Events', hoverinfo='text', text=m_text_system))
-                if m_x_alert: fig_cf.add_trace(go.Scatter(x=m_x_alert, y=[0] * len(m_x_alert), mode='markers',
-                                                          marker=dict(symbol='star', size=18, color='#ef4444',
-                                                                      line=dict(width=2, color='white')),
-                                                          name='Critical Alerts', hoverinfo='text', text=m_text_alert))
+                    st.write("#### Annual Cash Flow & Progressive Taxes")
+                    fig_cf = go.Figure()
+                    fig_cf.add_trace(
+                        go.Scatter(x=df_sim["Year"], y=df_sim["Annual Income"], mode='lines', name='Organic Income',
+                                   line=dict(color='#4f46e5', width=3)))
+                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Asset Withdrawals"], mode='lines',
+                                                name='Asset Withdrawals',
+                                                line=dict(color='#a855f7', width=3, dash='dot')))
+                    fig_cf.add_trace(
+                        go.Scatter(x=df_sim["Year"], y=df_sim["Annual Expenses"], mode='lines', name='Expenses',
+                                   line=dict(color='#f43f5e', width=3)))
+                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Taxes"], mode='lines', name='Taxes',
+                                                line=dict(color='#f59e0b', width=3)))
+                    fig_cf.add_trace(
+                        go.Scatter(x=df_sim["Year"], y=df_sim["Annual Net Savings"], mode='lines', name='Net Cashflow',
+                                   line=dict(color='#10b981', width=3, dash='dot')))
 
-                fig_cf = apply_chart_theme(fig_cf)
-                st.plotly_chart(fig_cf, use_container_width=True)
+                    if m_x_normal: fig_cf.add_trace(go.Scatter(x=m_x_normal, y=[0] * len(m_x_normal), mode='markers',
+                                                               marker=dict(symbol='star', size=14, color='#eab308',
+                                                                           line=dict(width=1.5, color='white')),
+                                                               name='User Milestones', hoverinfo='text',
+                                                               text=m_text_normal))
+                    if m_x_system: fig_cf.add_trace(go.Scatter(x=m_x_system, y=[0] * len(m_x_system), mode='markers',
+                                                               marker=dict(symbol='star', size=14, color='#3b82f6',
+                                                                           line=dict(width=1.5, color='white')),
+                                                               name='System Events', hoverinfo='text',
+                                                               text=m_text_system))
+                    if m_x_alert: fig_cf.add_trace(go.Scatter(x=m_x_alert, y=[0] * len(m_x_alert), mode='markers',
+                                                              marker=dict(symbol='star', size=18, color='#ef4444',
+                                                                          line=dict(width=2, color='white')),
+                                                              name='Critical Alerts', hoverinfo='text',
+                                                              text=m_text_alert))
 
-            # --- MONTE CARLO SECTION ---
-            st.divider()
-            st.subheader("🎲 Monte Carlo Risk Analysis")
-            st.markdown(
-                '<div class="info-text">💡 <strong>Stress Test Your Plan:</strong> The Monte Carlo simulation runs your exact plan through hundreds of randomized market scenarios (based on historical volatility) to find your true probability of success.</div>',
-                unsafe_allow_html=True)
+                    fig_cf = apply_chart_theme(fig_cf)
+                    st.plotly_chart(fig_cf, use_container_width=True)
+                else:
+                    st.info("Please install Plotly to view the charts.")
 
-            col_mc1, col_mc2, col_mc3 = st.columns([1, 1, 2])
-            mc_vol = col_mc1.number_input("Portfolio Volatility (%)", value=15.0,
-                                          help="Historically, the S&P 500 maintains a volatility (standard deviation) proximal to 15%.")
-            mc_runs = col_mc2.number_input("Number of Simulations", min_value=10, max_value=500, value=100, step=10)
+            with out_tab_mc:
+                st.markdown(
+                    '<div class="info-text" style="margin-bottom: 20px;">💡 <strong>Stress Test Your Plan:</strong> The Monte Carlo simulation runs your exact plan through hundreds of randomized market scenarios (based on historical volatility) to find your true probability of success.</div>',
+                    unsafe_allow_html=True)
 
-            with col_mc3:
-                st.markdown("<div style='height: 27px;'></div>", unsafe_allow_html=True)
-                run_mc = st.button("✨ Run Monte Carlo Simulation", type="primary", use_container_width=True)
+                col_mc1, col_mc2, col_mc3 = st.columns([1, 1, 2])
+                mc_vol = col_mc1.number_input("Portfolio Volatility (%)", value=15.0,
+                                              help="Historically, the S&P 500 maintains a volatility (standard deviation) proximal to 15%.")
+                mc_runs = col_mc2.number_input("Number of Simulations", min_value=10, max_value=500, value=100, step=10)
 
-            if run_mc:
-                with st.spinner(f"Rendering {mc_runs} parallel market sequences (Multi-threaded)..."):
-                    success_count = 0
-                    all_nw_paths = []
-                    mc_progress = st.progress(0)
+                with col_mc3:
+                    st.markdown("<div style='height: 27px;'></div>", unsafe_allow_html=True)
+                    run_mc = st.button("✨ Run Monte Carlo Simulation", type="primary", use_container_width=True)
 
-                    random_sequences = [
-                        [max(-99.0, random.gauss(sim_ctx['mkt'], mc_vol)) for _ in range(sim_ctx['max_years'] + 1)] for
-                        _ in range(mc_runs)]
+                if run_mc:
+                    with st.spinner(f"Rendering {mc_runs} parallel market sequences (Multi-threaded)..."):
+                        success_count = 0
+                        all_nw_paths = []
+                        mc_progress = st.progress(0)
 
-                    try:
-                        with ThreadPoolExecutor(max_workers=min(mc_runs, 8)) as executor:
-                            futures = {executor.submit(execute_sim_engine_v5, seq, sim_ctx): i for i, seq in
-                                       enumerate(random_sequences)}
+                        random_sequences = [
+                            [max(-99.0, random.gauss(sim_ctx['mkt'], mc_vol)) for _ in range(sim_ctx['max_years'] + 1)]
+                            for _ in range(mc_runs)]
 
-                            for completed_idx, future in enumerate(concurrent.futures.as_completed(futures)):
-                                res_mc, _, _, _ = future.result()
-                                if not res_mc.empty:
-                                    nw_path = res_mc["Net Worth"].tolist()
-                                    all_nw_paths.append(nw_path)
-                                    if res_mc.iloc[-1].get("Unfunded Debt", 0) <= 0: success_count += 1
-                                if completed_idx % max(1, mc_runs // 20) == 0: mc_progress.progress(
-                                    min(1.0, (completed_idx + 1) / mc_runs))
-                    except Exception as e:
-                        st.error(f"Simulation failed during multi-threading: {e}")
-                    finally:
-                        mc_progress.empty()
+                        try:
+                            with ThreadPoolExecutor(max_workers=min(mc_runs, 8)) as executor:
+                                futures = {executor.submit(execute_sim_engine_v5, seq, sim_ctx): i for i, seq in
+                                           enumerate(random_sequences)}
 
-                    if all_nw_paths:
-                        success_rate = (success_count / len(all_nw_paths)) * 100
-                        st.session_state['mc_success_rate'] = success_rate
+                                for completed_idx, future in enumerate(concurrent.futures.as_completed(futures)):
+                                    res_mc, _, _, _ = future.result()
+                                    if not res_mc.empty:
+                                        nw_path = res_mc["Net Worth"].tolist()
+                                        all_nw_paths.append(nw_path)
+                                        if res_mc.iloc[-1].get("Unfunded Debt", 0) <= 0: success_count += 1
+                                    if completed_idx % max(1, mc_runs // 20) == 0: mc_progress.progress(
+                                        min(1.0, (completed_idx + 1) / mc_runs))
+                        except Exception as e:
+                            st.error(f"Simulation failed during multi-threading: {e}")
+                        finally:
+                            mc_progress.empty()
 
-                        path_len = len(all_nw_paths[0])
-                        current_year = datetime.date.today().year
-                        years_list = [sim_ctx['current_year'] + i for i in range(path_len)]
-                        p10, p50, p90 = [], [], []
+                        if all_nw_paths:
+                            success_rate = (success_count / len(all_nw_paths)) * 100
+                            st.session_state['mc_success_rate'] = success_rate
 
-                        for i in range(path_len):
-                            step_vals = sorted([path[i] for path in all_nw_paths])
-                            discount = (1 + sim_ctx['infl'] / 100) ** i if view_todays_dollars else 1.0
-                            p10.append(step_vals[int(len(all_nw_paths) * 0.10)] / discount)
-                            p50.append(step_vals[int(len(all_nw_paths) * 0.50)] / discount)
-                            p90.append(step_vals[int(len(all_nw_paths) * 0.90)] / discount)
+                            path_len = len(all_nw_paths[0])
+                            current_year = datetime.date.today().year
+                            years_list = [sim_ctx['current_year'] + i for i in range(path_len)]
+                            p10, p50, p90 = [], [], []
 
-                        st.markdown(
-                            f"<h3 style='text-align: center; color: {'#10b981' if success_rate > 80 else '#f59e0b' if success_rate > 50 else '#f43f5e'};'>Probability of Success: {success_rate:.1f}%</h3>",
-                            unsafe_allow_html=True)
+                            for i in range(path_len):
+                                step_vals = sorted([path[i] for path in all_nw_paths])
+                                discount = (1 + sim_ctx['infl'] / 100) ** i if view_todays_dollars else 1.0
+                                p10.append(step_vals[int(len(all_nw_paths) * 0.10)] / discount)
+                                p50.append(step_vals[int(len(all_nw_paths) * 0.50)] / discount)
+                                p90.append(step_vals[int(len(all_nw_paths) * 0.90)] / discount)
 
-                        if HAS_PLOTLY:
-                            fig_mc = go.Figure()
-                            fig_mc.add_trace(go.Scatter(x=years_list, y=p90, mode='lines',
-                                                        name='90th Percentile (Favorable Timeline)',
-                                                        line=dict(color='#10b981', dash='dot')))
-                            fig_mc.add_trace(go.Scatter(x=years_list, y=p50, mode='lines',
-                                                        name='50th Percentile (Median Expectation)',
-                                                        line=dict(color='#3b82f6', width=3)))
-                            fig_mc.add_trace(go.Scatter(x=years_list, y=p10, mode='lines',
-                                                        name='10th Percentile (Severe Contraction)',
-                                                        line=dict(color='#f43f5e', dash='dot')))
-                            fig_mc = apply_chart_theme(fig_mc, "Stochastic Net Worth Projections")
-                            st.plotly_chart(fig_mc, use_container_width=True)
+                            st.markdown(
+                                f"<h3 style='text-align: center; color: {'#10b981' if success_rate > 80 else '#f59e0b' if success_rate > 50 else '#f43f5e'};'>Probability of Success: {success_rate:.1f}%</h3>",
+                                unsafe_allow_html=True)
 
-            # --- DATA AUDIT TABLES & EXCEL EXPORT ---
-            st.divider()
-            with st.expander("📊 View Detailed Data Logs & Export Excel", expanded=False):
+                            if HAS_PLOTLY:
+                                fig_mc = go.Figure()
+                                fig_mc.add_trace(go.Scatter(x=years_list, y=p90, mode='lines',
+                                                            name='90th Percentile (Favorable Timeline)',
+                                                            line=dict(color='#10b981', dash='dot')))
+                                fig_mc.add_trace(go.Scatter(x=years_list, y=p50, mode='lines',
+                                                            name='50th Percentile (Median Expectation)',
+                                                            line=dict(color='#3b82f6', width=3)))
+                                fig_mc.add_trace(go.Scatter(x=years_list, y=p10, mode='lines',
+                                                            name='10th Percentile (Severe Contraction)',
+                                                            line=dict(color='#f43f5e', dash='dot')))
+                                fig_mc = apply_chart_theme(fig_mc, "Stochastic Net Worth Projections")
+                                st.plotly_chart(fig_mc, use_container_width=True)
+
+            with out_tab_logs:
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
                     inc_c = sorted([c for c in df_det.columns if
@@ -2578,7 +2583,6 @@ def render_simulation():
                     st.dataframe(df_nw[ord_nw].set_index("Year").style.format(
                         {c: "${:,.0f}" for c in ord_nw if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
                             "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
-
 
 def render_ai():
     section_header("AI Fiduciary Health & What-If Simulator",
