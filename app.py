@@ -169,6 +169,20 @@ def scrub_records(records):
         scrubbed.append(new_r)
     return scrubbed
 
+def sanitize_for_cache(obj, decimals=4):
+    """
+    Recursively rounds all floats in a nested dictionary/list structure to prevent 
+    floating-point noise from busting Streamlit's JSON string cache keys.
+    """
+    if isinstance(obj, float):
+        return round(obj, decimals)
+    elif isinstance(obj, dict):
+        return {k: sanitize_for_cache(v, decimals) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_cache(item, decimals) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(sanitize_for_cache(item, decimals) for item in obj)
+    return obj
 
 def apply_chart_theme(fig, title=""):
     fig.update_layout(
@@ -633,7 +647,7 @@ def build_sim_context():
         'infl_hc': float(asm.get('inflation_healthcare', 5.5)), 'infl_ed': float(asm.get('inflation_education', 4.5)),
         'inc_g': float(asm.get('income_growth', 3.0)), 'prop_g': float(asm.get('property_growth', 3.0)),
         'rent_g': float(asm.get('rent_growth', 3.0)), 'cur_t': float(asm.get('current_tax_rate', 5.0)),
-        'ret_t': float(asm.get('retire_tax_rate', 0.0)),
+        'ret_t': float(asm.get('retire_tax_rate', 0.0)),sanitize_for_cache
         'stress_test': asm.get('stress_test', False), 'glidepath': asm.get('glidepath', True),
         'medicare_gap': asm.get('medicare_gap', True), 'medicare_cliff': asm.get('medicare_cliff', True),
         'ltc_shock': asm.get('ltc_shock', False), 'shortfall_rate': float(asm.get('shortfall_rate', 12.0)) / 100.0,
@@ -1696,11 +1710,13 @@ def render_dashboard():
         st.warning("Your Life Expectancy must be greater than your Current Age to run the simulation.")
         return
 
-    with st.spinner("Running high-precision simulation engine..."):
+    with st.spinner("Running core simulation..."):
         mkt_seq = tuple([sim_ctx['mkt']] * (sim_ctx['max_years'] + 1))
         
-        # --- FIX: Serialize sim_ctx to JSON to match the new high-speed cache wrapper ---
-        df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v8(mkt_seq, json.dumps(sim_ctx))
+        # --- FIX: Sanitize floats to prevent Streamlit cache busting ---
+        clean_ctx = sanitize_for_cache(sim_ctx)
+        ctx_json = json.dumps(clean_ctx, sort_keys=True)
+        df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v8(mkt_seq, ctx_json)
         
         st.session_state['df_sim_nominal'] = df_sim_nominal
         st.session_state['df_det'] = df_det_nominal
@@ -2433,8 +2449,10 @@ def render_simulation():
     else:
         mkt_seq = tuple([sim_ctx['mkt']] * (sim_ctx['max_years'] + 1))
 
-        # --- FIX: Serialize context to guarantee stable, instant cache hits ---
-        df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v8(mkt_seq, json.dumps(sim_ctx))
+         # --- FIX: Sanitize floats to prevent Streamlit cache busting ---
+        clean_ctx = sanitize_for_cache(sim_ctx)
+        ctx_json = json.dumps(clean_ctx, sort_keys=True)
+        df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v8(mkt_seq, ctx_json)
 
         if not df_sim_nominal.empty:
             df_sim, df_det, df_nw = df_sim_nominal.copy(), df_det_nominal.copy(), df_nw_nominal.copy()
