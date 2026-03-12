@@ -216,15 +216,16 @@ def info_banner(text, type="info"):
         unsafe_allow_html=True)
 
 
-def render_status_bar(deplete_year, deplete_age, final_nw, mc_success_rate=None):
+def render_status_bar(deplete_year, deplete_age, final_nw, mc_success_rate=None, success_threshold=2000000):
     if deplete_year is not None:
         bg, icon, msg, sub = "#fef2f2", "🔴", "Liquidity Crisis Detected", f"Assets depleted at age {int(deplete_age)} ({int(deplete_year)}). Adjust retirement age or savings rate."
-    elif final_nw > 2000000:
+    elif final_nw > success_threshold:
         bg, icon, msg, sub = "#f0fdf4", "🟢", "Strongly On Track", f"${final_nw:,.0f} projected at end of plan. Consider legacy or gifting strategies."
     elif final_nw > 0:
         bg, icon, msg, sub = "#fffbeb", "🟡", "Solvent but Tight", f"${final_nw:,.0f} margin at end of plan. Small changes could significantly improve outcome."
     else:
         bg, icon, msg, sub = "#fef2f2", "🔴", "Projected Insolvency", "Net worth goes negative before end of plan."
+        
     mc_html = f"<div style='margin-top: 10px; display: inline-block; background: white; padding: 4px 12px; border-radius: 999px; font-size: 0.85rem; font-weight: 700; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0,0,0,0.05);'>Monte Carlo: <span style='color: #4f46e5;'>{mc_success_rate:.0f}% Success Rate</span></div>" if mc_success_rate is not None else ""
     st.markdown(
         f"<div style='background:{bg}; border-radius:16px; padding:20px 24px; display:flex; align-items:flex-start; gap:16px; margin-bottom:24px; border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);'><span style='font-size:2.2rem; line-height: 1;'>{icon}</span><div><div style='font-weight:800; font-size:1.2rem; color:#0f172a; letter-spacing: -0.5px;'>{html.escape(msg)}</div><div style='font-size:0.95rem; color:#475569; margin-top:4px; line-height: 1.5;'>{html.escape(sub)}</div>{mc_html}</div></div>",
@@ -1626,7 +1627,13 @@ def render_dashboard():
     deplete_age = df_sim[shortfall_mask]['Age (Primary)'].min() if not df_sim[shortfall_mask].empty else None
 
     mc_success = st.session_state.get('mc_success_rate')
-    render_status_bar(deplete_year, deplete_age, final_nw, mc_success)
+    
+    # Scale the $2M target up by inflation if we are looking at nominal future dollars
+    target_threshold = 2000000
+    if not st.session_state.get('view_todays_dollars', True):
+        target_threshold = 2000000 * ((1 + sim_ctx['infl'] / 100) ** sim_ctx['max_years'])
+        
+    render_status_bar(deplete_year, deplete_age, final_nw, mc_success_rate=mc_success, success_threshold=target_threshold)
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
