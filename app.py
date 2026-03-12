@@ -329,10 +329,12 @@ def load_user_data(email):
 
 
 def save_profile():
-    if st.session_state.get('user_email') == "guest_demo": st.error(
-        "Persistent configurations disabled within the demonstration environment."); return
-    if not st.session_state.get('firebase_enabled', True): st.error(
-        "Cloud saving disabled due to connection issues."); return
+    if st.session_state.get('user_email') == "guest_demo": 
+        st.error("Persistent configurations disabled within the demonstration environment.")
+        return
+    if not st.session_state.get('firebase_enabled', True): 
+        st.error("Cloud saving disabled due to connection issues.")
+        return
 
     my_age = relativedelta(datetime.date.today(), st.session_state.get('my_dob', datetime.date(1980, 1, 1))).years
     spouse_age = relativedelta(datetime.date.today(), st.session_state.get('spouse_dob', datetime.date(1982, 1,
@@ -363,12 +365,21 @@ def save_profile():
         "lifetime_expenses": clean_df(pd.DataFrame(st.session_state.get('lifetime_expenses', [])), "Description"),
         "assumptions": st.session_state.get('assumptions', {})
     }
-    db.collection('users').document(st.session_state['user_email']).set(user_data)
-    st.session_state['user_data'] = user_data
-    st.session_state['dirty'] = False
-    st.toast("✅ Complete Financial Blueprint Synchronized Successfully!")
-    st.rerun()
-
+    try:
+        # --- FIX: Use merge=True to protect fields not managed by the app UI ---
+        db.collection('users').document(st.session_state['user_email']).set(user_data, merge=True)
+        
+        # Update local cache and clear dirty flag only after a confirmed successful write
+        st.session_state['user_data'] = user_data
+        st.session_state['dirty'] = False
+        st.toast("✅ Complete Financial Blueprint Synchronized Successfully!")
+        time.sleep(0.5)
+        st.rerun()
+        
+    except Exception as e:
+        # --- FIX: Graceful Error Handling for Network/Permission issues ---
+        st.error(f"🚨 Cloud Sync Failed: {str(e)}")
+        st.info("Your changes are still in your browser session. Please check your internet connection and try saving again.")
 
 def call_gemini_json(prompt, retries=3):
     if not GEMINI_API_KEY:
