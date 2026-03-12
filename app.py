@@ -940,8 +940,9 @@ def run_simulation(mkt_sequence, ctx_input):
                 owner_age = my_current_age if owner in ['Me', 'Joint'] else spouse_current_age
                 owner_alive = is_my_alive if owner in ['Me', 'Joint'] else is_spouse_alive
                 owner_rmd_age = ctx['primary_rmd_age'] if owner in ['Me', 'Joint'] else ctx['spouse_rmd_age']
+                # --- FIX: Cap age at 120 to prevent divisor fallback for extreme life expectancies ---
                 if owner_alive and owner_age >= owner_rmd_age:
-                    rmd_amt = a['bal'] / IRS_UNIFORM_TABLE.get(owner_age, 2.0)
+                    rmd_amt = a['bal'] / IRS_UNIFORM_TABLE.get(min(owner_age, 120), 2.0)
                     a['bal'] -= rmd_amt
                     rmd_income += rmd_amt
                     pre_tax_ord += rmd_amt
