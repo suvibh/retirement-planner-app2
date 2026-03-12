@@ -3377,18 +3377,28 @@ with st.sidebar:
         time.sleep(0.5)
         st.rerun()
 
-# --- FIX: Global Unsaved Changes Guardrail ---
-if st.session_state.get('dirty', False):
-    # This renders at the absolute top of the main content area, regardless of which page they are on
+# --- FIX: Global Contextual Banners (Guest vs. Registered) ---
+user_email = st.session_state.get('user_email')
+
+if user_email == "guest_demo":
+    # Prominent Guest CTA - Always visible for guests to prevent data loss frustration
+    guest_col1, guest_col2 = st.columns([4, 1])
+    guest_col1.info("🏃 **Guest Mode:** Your data is only stored in this browser tab. To save your progress and access it from any device, create a free account.")
+    if guest_col2.button("💾 Create Account", type="primary", key="btn_guest_signup", use_container_width=True):
+        # Nuke guest session and send them back to the login/signup screen
+        st.session_state.clear()
+        st.rerun()
+    st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
+
+elif st.session_state.get('dirty', False):
+    # Standard Save reminder for registered users
     warn_col1, warn_col2 = st.columns([5, 1])
     warn_col1.warning("⚠️ **Unsaved Changes Detected:** You have modified your financial blueprint. Don't forget to save your profile to the cloud before closing the app!")
     
-    # Provide an immediate escape hatch to save without having to hunt for the sidebar button
     if warn_col2.button("💾 Save Now", type="primary", key="btn_global_save", use_container_width=True):
         save_profile()
-        
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
 
-# Render the active page below the banner
+# Render the active page below the relevant banner
 if st.session_state.get('current_page') in PAGES:
     PAGES[st.session_state['current_page']]()
