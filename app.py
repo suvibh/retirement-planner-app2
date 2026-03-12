@@ -1446,8 +1446,19 @@ def run_simulation(mkt_sequence, ctx_input):
             # 5. Apply the compounding math (Mid-Year Convention for contributions)
             a['bal'] = (a['bal'] + (add + match) * 0.5) * (1 + actual_growth / 100.0) + (add + match) * 0.5
 
-        base_fed_tax, marginal_rate = calc_federal_tax(tax_base_ord, active_mfj, year_offset, ctx['infl'])
-        state_tax = tax_base_ord * (state_tax_rate / 100.0)
+        # --- FIX: Calculate absolute final taxes BEFORE and AFTER the Roth conversion ---
+        # 1. Baseline tax if the Roth conversion never happened (using tax_base_ord_pre)
+        base_fed_tax, _ = calc_federal_tax(tax_base_ord_pre, active_mfj, year_offset, ctx['infl'])
+        base_state_tax = tax_base_ord_pre * (state_tax_rate / 100.0)
+
+        # 2. Total tax including the Roth conversion and final QBI (using tax_base_ord)
+        total_fed_tax, marginal_rate = calc_federal_tax(tax_base_ord, active_mfj, year_offset, ctx['infl'])
+        total_state_tax = tax_base_ord * (state_tax_rate / 100.0)
+
+        # 3. The true cost of the Roth conversion is strictly the mathematical delta
+        actual_roth_fed = max(0, total_fed_tax - base_fed_tax)
+        actual_roth_state = max(0, total_state_tax - base_state_tax)
+
         fica_tax = 0
         wage_base = SS_WAGE_BASE_2026 * ((1 + ctx['infl'] / 100) ** year_offset)
         
@@ -1466,13 +1477,14 @@ def run_simulation(mkt_sequence, ctx_input):
         if combined_earned_income > addl_med_thresh:
             fica_tax += (combined_earned_income - addl_med_thresh) * 0.009
 
-        total_tax = base_fed_tax + state_tax + fica_tax
+        # Total tax paid out of pocket this year uses the total (post-conversion) numbers
+        total_tax = total_fed_tax + total_state_tax + fica_tax
         yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + total_tax
         
-        # --- FIX: Explicitly separate baseline taxes from Roth Conversion taxes ---
-        yd["Tax Breakdown: Federal"] = yd.get("Tax Breakdown: Federal", 0) + max(0, base_fed_tax - roth_fed_tax_paid)
-        yd["Tax Breakdown: State"] = yd.get("Tax Breakdown: State", 0) + max(0, state_tax - roth_state_tax_paid)
-        yd["Tax Breakdown: Roth Conversion"] = yd.get("Tax Breakdown: Roth Conversion", 0) + (roth_fed_tax_paid + roth_state_tax_paid)
+        # --- FIX: Log the baseline taxes and the Roth delta perfectly without double-counting ---
+        yd["Tax Breakdown: Federal"] = yd.get("Tax Breakdown: Federal", 0) + base_fed_tax
+        yd["Tax Breakdown: State"] = yd.get("Tax Breakdown: State", 0) + base_state_tax
+        yd["Tax Breakdown: Roth Conversion"] = yd.get("Tax Breakdown: Roth Conversion", 0) + (actual_roth_fed + actual_roth_state)
         yd["Tax Breakdown: FICA"] = yd.get("Tax Breakdown: FICA", 0) + fica_tax
 
         num_medicare = (1 if is_my_alive and my_current_age >= 65 else 0) + (
