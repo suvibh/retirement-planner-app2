@@ -253,23 +253,20 @@ def apply_chart_theme(fig, title=""):
         font=dict(family="Inter", color="#64748b", size=12), hovermode="x unified",
         hoverlabel=dict(bgcolor="white", bordercolor="#e2e8f0", font_size=13, font_family="Inter"),
         
-        # --- FIX: Mobile-Responsive Legend Placement ---
         legend=dict(
-            orientation="h", 
-            yanchor="top",     # Anchor to the top of the legend box...
-            y=-0.2,            # ...and push it safely below the X-axis
-            xanchor="center", 
-            x=0.5, 
+            orientation="h",
+            yanchor="top",
+            y=-0.25,             # Push it slightly further down to avoid overlap with X-axis
+            xanchor="center",
+            x=0.5,
             bgcolor="rgba(0,0,0,0)",
-            font=dict(size=11),
-            itemwidth=70       # Forces uniform wrapping on narrow mobile screens
+            font=dict(size=10),   # Slightly smaller font helps prevent truncation on mobile
+            traceorder="normal",
+            itemsizing="constant",
+            valign="top"
         ),
-        
-        xaxis=dict(showgrid=False, zeroline=False, color="#94a3b8", tickfont=dict(size=11)),
-        yaxis=dict(gridcolor="#f1f5f9", zeroline=False, tickformat="$,.0f", color="#94a3b8", tickfont=dict(size=11)),
-        
-        # --- FIX: Adjust margins to give the top breathing room and the bottom room for the legend ---
-        margin=dict(t=60, b=120) 
+        # Increase bottom margin significantly to fit the dual-subplot legend entries
+        margin=dict(t=60, b=160, l=50, r=50)
     )
     return fig
 
