@@ -56,6 +56,32 @@ MEDICARE_GAP_COST, LTC_SHOCK_COST = 15000, 100000
 WIDOW_EXPENSE_MULTIPLIER = 0.60
 MEDICARE_CLIFF_SINGLE_DROP = 0.25
 ROTH_CASH_BUFFER_MARGIN = 0.95
+
+# --- IRS 2025/2026 TAX BRACKET BASELINES ---
+# These serve as Year 0 for the simulation. The engine auto-inflates them for future years.
+STD_DEDUCTION = {"MFJ": 30000, "Single": 15000}
+
+TAX_BRACKETS = {
+    "MFJ": [
+        (23850, 0.10), (96950, 0.12), (206700, 0.22), 
+        (394600, 0.24), (501050, 0.32), (751600, 0.35)
+    ],
+    "Single": [
+        (11925, 0.10), (48475, 0.12), (103350, 0.22), 
+        (197300, 0.24), (250525, 0.32), (626350, 0.35)
+    ]
+}
+
+ROTH_TARGET_LIMITS = {
+    "MFJ": {"12%": 96950, "22%": 206700, "24%": 394600, "32%": 501050},
+    "Single": {"12%": 48475, "22%": 103350, "24%": 197300, "32%": 250525}
+}
+
+LTCG_THRESHOLDS = {
+    "MFJ": (96600, 600050),
+    "Single": (48300, 533400)
+}
+
 BUDGET_CATEGORIES = ["Housing / Rent", "Transportation", "Food", "Utilities", "Insurance", "Healthcare",
                      "Entertainment", "Education", "Personal Care", "Subscriptions", "Travel", "Debt Payments", "Other"]
 
@@ -776,21 +802,18 @@ def get_irmaa_surcharge(magi, is_mfj, year_offset, inflation_rate, num_medicare)
     
     return surcharge * num_medicare
 
-# --- FIX: Memoized Tax Bracket Generators ---
+# --- FIX: Config-Driven Memoized Tax Bracket Generators ---
 @functools.lru_cache(maxsize=1024)
 def get_tax_brackets(is_mfj, year_offset, inflation_rate):
     infl_factor = (1 + inflation_rate / 100.0) ** year_offset
-    std_deduction = (29200 if is_mfj else 14600) * infl_factor
+    std_deduction = (STD_DEDUCTION["MFJ"] if is_mfj else STD_DEDUCTION["Single"]) * infl_factor
 
-    # Base brackets (limit, rate)
-    b_base = [(23200, 0.10), (94300, 0.12), (201050, 0.22), (383900, 0.24), (487450, 0.32), (731200, 0.35)] if is_mfj else [(11600, 0.10), (47150, 0.12), (100525, 0.22), (191950, 0.24), (243725, 0.32), (609350, 0.35)]
+    b_base = TAX_BRACKETS["MFJ"] if is_mfj else TAX_BRACKETS["Single"]
     
-    # Store as an immutable tuple for fast iteration
     adj_brackets = tuple((limit * infl_factor, rate) for limit, rate in b_base)
     return std_deduction, adj_brackets
 
 def calc_federal_tax(ordinary_income, is_mfj, year_offset, inflation_rate):
-    # O(1) Cache hit - retrieves pre-calculated brackets instantly
     std_deduction, adj_brackets = get_tax_brackets(is_mfj, year_offset, inflation_rate)
     taxable = max(0, ordinary_income - std_deduction)
 
@@ -805,7 +828,6 @@ def calc_federal_tax(ordinary_income, is_mfj, year_offset, inflation_rate):
             break
         prev_limit = limit
     else:
-        # If taxable income exceeds the highest defined bracket limit
         if taxable > prev_limit:
             tax += (taxable - prev_limit) * 0.37
         marginal = 0.37
@@ -816,14 +838,14 @@ def calc_federal_tax(ordinary_income, is_mfj, year_offset, inflation_rate):
 @functools.lru_cache(maxsize=1024)
 def get_ltcg_thresholds(is_mfj, year_offset, inflation_rate):
     infl_factor = (1 + inflation_rate / 100.0) ** year_offset
+    base_0, base_15 = LTCG_THRESHOLDS["MFJ"] if is_mfj else LTCG_THRESHOLDS["Single"]
     return (
-        ADDL_MED_TAX_THRESHOLD * infl_factor,          # niit_threshold
-        (94050 if is_mfj else 47025) * infl_factor,    # cg_0
-        (583750 if is_mfj else 518900) * infl_factor   # cg_15
+        ADDL_MED_TAX_THRESHOLD * infl_factor,
+        base_0 * infl_factor,
+        base_15 * infl_factor
     )
 
 def get_ltcg_rate(ordinary_income, is_mfj, year_offset, inflation_rate):
-    # O(1) Cache hit
     niit_threshold, cg_threshold_0, cg_threshold_15 = get_ltcg_thresholds(is_mfj, year_offset, inflation_rate)
 
     if ordinary_income < cg_threshold_0: base_rate = 0.0
@@ -1335,14 +1357,10 @@ def run_simulation(mkt_sequence, ctx):
 
         # --- LOGGING BRACKETS FOR UI ---
         infl_factor_tax = (1 + ctx['infl'] / 100) ** year_offset
-        std_deduction_ui = (29200 if active_mfj else 14600) * infl_factor_tax
+        std_deduction_ui = (STD_DEDUCTION["MFJ"] if active_mfj else STD_DEDUCTION["Single"]) * infl_factor_tax
         yd["Tax: 0% Limit (Std Ded)"] = std_deduction_ui
-        b_lims_ui = {
-            "12%": 94300 if active_mfj else 47150,
-            "22%": 201050 if active_mfj else 100525,
-            "24%": 383900 if active_mfj else 191950,
-            "32%": 487450 if active_mfj else 243725
-        }
+        
+        b_lims_ui = ROTH_TARGET_LIMITS["MFJ"] if active_mfj else ROTH_TARGET_LIMITS["Single"]
         yd["Tax: 12% Limit"] = b_lims_ui["12%"] * infl_factor_tax + std_deduction_ui
         yd["Tax: 22% Limit"] = b_lims_ui["22%"] * infl_factor_tax + std_deduction_ui
         yd["Tax: 24% Limit"] = b_lims_ui["24%"] * infl_factor_tax + std_deduction_ui
@@ -1485,10 +1503,12 @@ def run_simulation(mkt_sequence, ctx):
         total_converted = 0
         if ctx['roth_conversions'] and is_retired:
             infl_factor = (1 + ctx['infl'] / 100) ** year_offset
-            std_deduction = (29200 if active_mfj else 14600) * infl_factor
-            b_limits = {"12%": 94300, "22%": 201050, "24%": 383900, "32%": 487450} if active_mfj else {"12%": 47150, "22%": 100525, "24%": 191950, "32%": 243725}
-            target_limit = b_limits.get(ctx['roth_target'], 383900) * infl_factor + std_deduction
-
+            std_deduction = (STD_DEDUCTION["MFJ"] if active_mfj else STD_DEDUCTION["Single"]) * infl_factor
+            
+            # Pull limits dynamically from config
+            b_limits = ROTH_TARGET_LIMITS["MFJ"] if active_mfj else ROTH_TARGET_LIMITS["Single"]
+            target_limit = b_limits.get(ctx['roth_target'], 394600) * infl_factor + std_deduction
+            
             conversion_room = max(0, target_limit - tax_base_ord_pre)
             available_cash = sum(a['bal'] for a in sim_assets if a.get('Type') in ['Checking/Savings', 'HYSA', 'Brokerage (Taxable)', 'Unallocated Cash'])
             locked_outflows = total_exp + user_out_of_pocket_contribs + base_fed_tax_pre_conversion + base_state_tax_pre_conversion
