@@ -556,7 +556,7 @@ if 'user_email' not in st.session_state:
         tab1, tab2 = st.tabs(["Secure Login", "New Account"])
         with tab1:
             le, lp = st.text_input("Email", key="le"), st.text_input("Password", type="password", key="lp")
-            if st.button("Sign In", type="primary", use_container_width=True):
+            if st.button("Sign In", type="primary", width='stretch'):
                 res = sign_in(le, lp)
                 if "idToken" in res:
                     st.session_state.pop('logged_out_flag', None)
@@ -570,7 +570,7 @@ if 'user_email' not in st.session_state:
                     st.error("Login failed. Please check your email and password.")
         with tab2:
             se, sp = st.text_input("New Email", key="se"), st.text_input("New Password", type="password", key="sp")
-            if st.button("Create Account", type="primary", use_container_width=True):
+            if st.button("Create Account", type="primary", width='stretch'):
                 if len(sp) >= 6:
                     res = sign_up(se, sp)
                     if "idToken" in res:
@@ -584,7 +584,7 @@ if 'user_email' not in st.session_state:
                 else:
                     st.warning("Min 6 characters.")
         st.divider()
-        if st.button("🚀 Try the Demo (Guest Mode)", use_container_width=True):
+        if st.button("🚀 Try the Demo (Guest Mode)", width='stretch'):
             st.session_state.pop('logged_out_flag', None)
             st.session_state['user_email'] = "guest_demo"
             
@@ -1706,6 +1706,7 @@ def execute_sim_engine_v8(mkt_sequence_tuple, ctx_json):
 # =====================================================================
 
 def render_dashboard():
+    st.warning("DEBUG 1: Dashboard function started!") # <-- Add this at the very top
     status = get_completion_status()
     if status['score'] < 100:
         st.markdown(
@@ -1719,44 +1720,44 @@ def render_dashboard():
                 f"<div class='card' style='text-align:center; padding:24px 16px; margin-bottom: 12px; border-color: {'#10b981' if status['profile'] else '#e2e8f0'};'><div style='font-size:2.5rem; margin-bottom:12px;'>👤</div><h4 style='margin:0 0 4px 0; font-size:1.1rem;'>1. Basic Info</h4><p style='font-size:0.85rem; color:#64748b; margin:0;'>Age & timeline.</p></div>",
                 unsafe_allow_html=True)
             if not status['profile']:
-                if st.button("Start Step", key="ob_prof", type="primary", use_container_width=True):
+                if st.button("Start Step", key="ob_prof", type="primary", width='stretch'):
                     st.session_state['current_page'] = "👤 Profile & Family"
                     st.rerun()
             else:
-                st.button("✅ Completed", key="ob_prof_done", disabled=True, use_container_width=True)
+                st.button("✅ Completed", key="ob_prof_done", disabled=True, width='stretch')
 
         with c2:
             st.markdown(
                 f"<div class='card' style='text-align:center; padding:24px 16px; margin-bottom: 12px; border-color: {'#10b981' if status['income'] else '#e2e8f0'};'><div style='font-size:2.5rem; margin-bottom:12px;'>💵</div><h4 style='margin:0 0 4px 0; font-size:1.1rem;'>2. Income</h4><p style='font-size:0.85rem; color:#64748b; margin:0;'>Salaries & SS.</p></div>",
                 unsafe_allow_html=True)
             if not status['income']:
-                if st.button("Add Income", key="ob_inc", type="primary", use_container_width=True):
+                if st.button("Add Income", key="ob_inc", type="primary", width='stretch'):
                     st.session_state['current_page'] = "💵 Income Streams"
                     st.rerun()
             else:
-                st.button("✅ Completed", key="ob_inc_done", disabled=True, use_container_width=True)
+                st.button("✅ Completed", key="ob_inc_done", disabled=True, width='stretch')
 
         with c3:
             st.markdown(
                 f"<div class='card' style='text-align:center; padding:24px 16px; margin-bottom: 12px; border-color: {'#10b981' if status['assets'] else '#e2e8f0'};'><div style='font-size:2.5rem; margin-bottom:12px;'>🏦</div><h4 style='margin:0 0 4px 0; font-size:1.1rem;'>3. Assets</h4><p style='font-size:0.85rem; color:#64748b; margin:0;'>Real estate & 401(k).</p></div>",
                 unsafe_allow_html=True)
             if not status['assets']:
-                if st.button("Add Assets", key="ob_ast", type="primary", use_container_width=True):
+                if st.button("Add Assets", key="ob_ast", type="primary", width='stretch'):
                     st.session_state['current_page'] = "🏦 Assets & Debts"
                     st.rerun()
             else:
-                st.button("✅ Completed", key="ob_ast_done", disabled=True, use_container_width=True)
+                st.button("✅ Completed", key="ob_ast_done", disabled=True, width='stretch')
 
         with c4:
             st.markdown(
                 f"<div class='card' style='text-align:center; padding:24px 16px; margin-bottom: 12px; border-color: {'#10b981' if status['expenses'] else '#e2e8f0'};'><div style='font-size:2.5rem; margin-bottom:12px;'>💸</div><h4 style='margin:0 0 4px 0; font-size:1.1rem;'>4. Cash Flows</h4><p style='font-size:0.85rem; color:#64748b; margin:0;'>Budgets & goals.</p></div>",
                 unsafe_allow_html=True)
             if not status['expenses']:
-                if st.button("Add Expenses", key="ob_exp", type="primary", use_container_width=True):
+                if st.button("Add Expenses", key="ob_exp", type="primary", width='stretch'):
                     st.session_state['current_page'] = "💸 Cash Flows"
                     st.rerun()
             else:
-                st.button("✅ Completed", key="ob_exp_done", disabled=True, use_container_width=True)
+                st.button("✅ Completed", key="ob_exp_done", disabled=True, width='stretch')
         st.divider()
 
     section_header("Executive Summary", "Your complete financial trajectory at a glance.", "🏠")
@@ -1779,6 +1780,8 @@ def render_dashboard():
         clean_ctx = sanitize_for_cache(sim_ctx)
         ctx_json = json.dumps(clean_ctx, sort_keys=True)
         df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v8(mkt_seq, ctx_json)
+
+        st.warning("DEBUG 2: Simulation engine finished!") # <-- Add this after the engine runs
         
         st.session_state['df_sim_nominal'] = df_sim_nominal
         st.session_state['df_det'] = df_det_nominal
@@ -1802,15 +1805,15 @@ def render_dashboard():
         st.write("#### What would you like to add first?")
         cta1, cta2, cta3 = st.columns(3)
         
-        if cta1.button("💵 Add Income Sources", type="primary", use_container_width=True):
+        if cta1.button("💵 Add Income Sources", type="primary", width='stretch'):
             st.session_state['current_page'] = "💵 Income Streams"
             st.rerun()
             
-        if cta2.button("🏦 Add Savings & Assets", type="primary", use_container_width=True):
+        if cta2.button("🏦 Add Savings & Assets", type="primary", width='stretch'):
             st.session_state['current_page'] = "🏦 Assets & Debts"
             st.rerun()
             
-        if cta3.button("💸 Estimate Living Expenses", type="primary", use_container_width=True):
+        if cta3.button("💸 Estimate Living Expenses", type="primary", width='stretch'):
             st.session_state['current_page'] = "💸 Cash Flows"
             st.rerun()
             
@@ -1910,8 +1913,9 @@ def render_dashboard():
                                                link=dict(source=source, target=target, value=value,
                                                          color=link_colors))])
         fig_sankey.update_layout(height=900, margin=dict(l=0, r=0, t=30, b=50), font=dict(size=12))
-        st.plotly_chart(fig_sankey, use_container_width=True)
+        st.plotly_chart(fig_sankey, width='stretch')
 
+        st.warning("DEBUG 3: Charts rendered!") # <-- Add this at the very bottom
 
 def render_profile():
     section_header("Profile & Family Context",
@@ -1998,7 +2002,7 @@ def render_income():
             "End Year": st.column_config.NumberColumn("End Year", min_value=1900, max_value=2100, format="%d"),
             "Stop at Ret.?": st.column_config.CheckboxColumn("Stop at Retirement?", help="If checked, this income permanently stops the year the owner retires."),
             "Override Growth (%)": st.column_config.NumberColumn("Custom Growth (%)", step=0.1, format="%.1f%%", help="Overrides the default income growth rate. Leave blank to use the global assumption.")
-        }, num_rows="dynamic", use_container_width=True, key="inc_editor", on_change=mark_dirty
+        }, num_rows="dynamic", width='stretch', key="inc_editor", on_change=mark_dirty
     )
     
     # --- FIX: Extract records and scrub NaN values to prevent infinite st.rerun() loops ---
@@ -2058,7 +2062,7 @@ def render_income():
     
     col_ai_inc, _ = st.columns([3, 1])
     with col_ai_inc:
-        if st.button("✨ Auto-Estimate My Social Security (AI)", type="primary", use_container_width=True, disabled=is_loading):
+        if st.button("✨ Auto-Estimate My Social Security (AI)", type="primary", width='stretch', disabled=is_loading):
             st.session_state['trigger_ss_ai'] = True
             st.session_state['ai_loading'] = True
             st.rerun()
@@ -2140,7 +2144,7 @@ def render_assets():
                 "Monthly Rent ($)": st.column_config.NumberColumn("Monthly Rent ($)", step=100, format="$%d"),
                 "Override Prop Growth (%)": st.column_config.NumberColumn("Property Growth (%)", step=0.1, format="%.1f%%", help="Custom annual appreciation rate for this property. Leave blank to use the global assumption."),
                 "Override Rent Growth (%)": st.column_config.NumberColumn("Rent Growth (%)", step=0.1, format="%.1f%%", help="Custom annual rent increase rate. Leave blank to use the global assumption.")
-            }, num_rows="dynamic", use_container_width=True, key="re_editor", on_change=mark_dirty
+            }, num_rows="dynamic", width='stretch', key="re_editor", on_change=mark_dirty
         )
         # --- FIX: Scrub and Guard Real Estate Data ---
         scrubbed_re = scrub_records(edited_re.to_dict('records'))
@@ -2171,7 +2175,7 @@ def render_assets():
                 "Your Ownership (%)": st.column_config.NumberColumn("Your Ownership (%)", min_value=0, max_value=100, format="%d%%"),
                 "Override Val. Growth (%)": st.column_config.NumberColumn("Value Growth (%)", step=0.1, format="%.1f%%", help="Custom annual valuation growth. Leave blank to use global market growth."),
                 "Override Dist. Growth (%)": st.column_config.NumberColumn("Income Growth (%)", step=0.1, format="%.1f%%", help="Custom annual income distribution growth. Leave blank to use global income growth.")
-            }, num_rows="dynamic", use_container_width=True, key="biz_editor", on_change=mark_dirty
+            }, num_rows="dynamic", width='stretch', key="biz_editor", on_change=mark_dirty
         )
         # --- FIX: Scrub and Guard Business Data ---
         scrubbed_biz = scrub_records(edited_biz.to_dict('records'))
@@ -2208,7 +2212,7 @@ def render_assets():
                 "Annual Contribution ($/yr)": st.column_config.NumberColumn("Your Contributions ($/yr)", step=1000, format="$%d", help="Your out-of-pocket additions. Exclude employer matches, the AI routes those automatically."),
                 "Est. Annual Growth (%)": st.column_config.NumberColumn("Custom Return (%)", format="%.1f%%", help="Custom annual return for this account. Leave blank to use global market growth."),
                 "Stop Contrib at Ret.?": st.column_config.CheckboxColumn("Stop Adding at Ret.?", help="If checked, contributions cease the year the owner retires.")
-            }, num_rows="dynamic", use_container_width=True, key="assets_editor", on_change=mark_dirty
+            }, num_rows="dynamic", width='stretch', key="assets_editor", on_change=mark_dirty
         )
         # --- FIX: Scrub and Guard Liquid Assets Data ---
         scrubbed_ast = scrub_records(edited_ast.to_dict('records'))
@@ -2234,7 +2238,7 @@ def render_assets():
                 "Current Balance ($)": st.column_config.NumberColumn("Current Balance ($)", step=1000, format="$%d"),
                 "Interest Rate (%)": st.column_config.NumberColumn("Interest Rate (%)", step=0.001, format="%.3f%%"),
                 "Monthly Payment ($)": st.column_config.NumberColumn("Monthly Payment ($)", step=100, format="$%d")
-            }, num_rows="dynamic", use_container_width=True, key="debt_editor", on_change=mark_dirty
+            }, num_rows="dynamic", width='stretch', key="debt_editor", on_change=mark_dirty
         )
         # --- FIX: Scrub and Guard Debt Data ---
         scrubbed_debt = scrub_records(edited_debt.to_dict('records'))
@@ -2305,7 +2309,7 @@ def render_cashflows():
             "End Phase": st.column_config.SelectboxColumn("Ends", options=["End of Life", "At Retirement", "Custom Year"], help="When this expense permanently stops in your timeline."),
             "End Year": st.column_config.NumberColumn("End Year (If Custom)", format="%d", min_value=1900, max_value=2100),
             "AI Estimate?": st.column_config.CheckboxColumn("🤖 AI?", help="Indicates this row was generated by the AI based on your location and profile.")
-        }, num_rows="dynamic", use_container_width=True, key="exp_ed", on_change=mark_dirty
+        }, num_rows="dynamic", width='stretch', key="exp_ed", on_change=mark_dirty
     )
     # --- FIX: Scrub NaN values to protect AI prompt integrity and prevent cache busting ---
     edited_exp_records = scrub_records(edited_exp.to_dict('records'))
@@ -2328,7 +2332,7 @@ def render_cashflows():
     with col_ai_cb:
         if not st.session_state.get('confirm_budget_overwrite', False):
             # Step 1: Initial Trigger
-            if st.button("✨ Auto-Estimate Budget & Milestones (AI)", type="primary", use_container_width=True, disabled=is_loading):
+            if st.button("✨ Auto-Estimate Budget & Milestones (AI)", type="primary", width='stretch', disabled=is_loading):
                 if ai_row_count > 0:
                     st.session_state['confirm_budget_overwrite'] = True
                     st.rerun()
@@ -2341,12 +2345,12 @@ def render_cashflows():
             # Step 2: Confirmation Warning
             st.warning(f"⚠️ This will overwrite {ai_row_count} existing AI-generated rows. Your manually entered rows (where AI? is unchecked) will be safe.")
             c1, c2 = st.columns(2)
-            if c1.button("✅ Confirm Overwrite", type="primary", use_container_width=True):
+            if c1.button("✅ Confirm Overwrite", type="primary", width='stretch'):
                 st.session_state['confirm_budget_overwrite'] = False
                 st.session_state['trigger_budget_ai'] = True
                 st.session_state['ai_loading'] = True
                 st.rerun()
-            if c2.button("❌ Cancel", use_container_width=True):
+            if c2.button("❌ Cancel", width='stretch'):
                 st.session_state['confirm_budget_overwrite'] = False
                 st.rerun()
 
@@ -2440,7 +2444,7 @@ def render_simulation():
             sub_c2.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
             
             # Disable the button if ANY AI call is running
-            if sub_c2.button("✨ AI", key=f"btn_{state_key}", help=f"AI Estimate for {label}", use_container_width=True, type="primary", disabled=is_loading):
+            if sub_c2.button("✨ AI", key=f"btn_{state_key}", help=f"AI Estimate for {label}", width='stretch', type="primary", disabled=is_loading):
                 st.session_state[f'trigger_ai_{state_key}'] = True
                 st.session_state['ai_loading'] = True
                 st.rerun()
@@ -2665,7 +2669,7 @@ def render_simulation():
 
                     fig_nw.update_layout(barmode='relative')
                     fig_nw = apply_chart_theme(fig_nw)
-                    st.plotly_chart(fig_nw, use_container_width=True)
+                    st.plotly_chart(fig_nw, width='stretch')
 
                     st.write("#### Annual Cash Flow & Progressive Taxes")
                     fig_cf = go.Figure()
@@ -2680,7 +2684,7 @@ def render_simulation():
                     if m_x_alert: fig_cf.add_trace(go.Scatter(x=m_x_alert, y=[0] * len(m_x_alert), mode='markers', marker=dict(symbol='star', size=18, color='#ef4444', line=dict(width=2, color='white')), name='Critical Alerts', hoverinfo='text', text=m_text_alert))
 
                     fig_cf = apply_chart_theme(fig_cf)
-                    st.plotly_chart(fig_cf, use_container_width=True)
+                    st.plotly_chart(fig_cf, width='stretch')
                 else:
                     st.info("Please install Plotly to view the charts.")
 
@@ -2694,7 +2698,7 @@ def render_simulation():
                 current_ctx_json = json.dumps(current_clean_ctx, sort_keys=True)
                 current_ctx_hash = hash(current_ctx_json)
                 
-                if st.button("✨ Run Sensitivity Analysis", type="primary", use_container_width=True, key="btn_sens"):
+                if st.button("✨ Run Sensitivity Analysis", type="primary", width='stretch', key="btn_sens"):
                     with st.spinner("Running 10 divergent timelines to map risk..."):
                         base_nw_sens = final_nw
                         base_ctx_json = current_ctx_json # Use the sanitized JSON we just made!
@@ -2817,9 +2821,9 @@ def render_simulation():
                     # --- FIX: Remove invalid kwargs. Warning banner above provides the 'Stale' context ---
                     if st.session_state.get('sens_ctx_hash') != current_ctx_hash:
                         # Banner is already rendered above this block in your current code
-                        st.plotly_chart(fig_tor, use_container_width=True)
+                        st.plotly_chart(fig_tor, width='stretch')
                     else:
-                        st.plotly_chart(fig_tor, use_container_width=True)
+                        st.plotly_chart(fig_tor, width='stretch')
 
             # --- AND SAME FOR THIS ONE ---
             with out_tab_mc:
@@ -2835,7 +2839,7 @@ def render_simulation():
 
                 with col_mc3:
                     st.markdown("<div style='height: 27px;'></div>", unsafe_allow_html=True)
-                    run_mc = st.button("✨ Run Monte Carlo Simulation", type="primary", use_container_width=True)
+                    run_mc = st.button("✨ Run Monte Carlo Simulation", type="primary", width='stretch')
 
                 if run_mc:
                     with st.spinner(f"Rendering {mc_runs} parallel market sequences (NumPy Vectorized & Thread-Safe)..."):
@@ -2917,7 +2921,7 @@ def render_simulation():
                                 fig_mc.add_trace(go.Scatter(x=years_list, y=p10, mode='lines', name='10th Percentile (Severe)', line=dict(color='#f43f5e', dash='dot')))
                                 fig_mc = apply_chart_theme(fig_mc, "Stochastic Net Worth Projections")
                                 
-                                st.plotly_chart(fig_mc, use_container_width=True)
+                                st.plotly_chart(fig_mc, width='stretch')
 
             with out_tab_tax:
                 st.markdown('<div class="info-text" style="margin-bottom: 20px;">💡 <strong>Dual Tax Dashboard:</strong> The top chart visualizes your progressive tax brackets and how Roth Conversions (if enabled) fill those brackets. The bottom chart breaks down exactly what kind of taxes you are paying each year.</div>', unsafe_allow_html=True)
@@ -2984,7 +2988,7 @@ def render_simulation():
                     )
                     
                     fig_tax = apply_chart_theme(fig_tax)
-                    st.plotly_chart(fig_tax, use_container_width=True)
+                    st.plotly_chart(fig_tax, width='stretch')
                 else:
                     st.info("Please install Plotly to view the charts.")
 
@@ -3023,14 +3027,14 @@ def render_simulation():
                 st.download_button(label="📥 Download Full Simulation (.xlsx)", data=output.getvalue(),
                                    file_name='retirement_simulation.xlsx',
                                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                                   type="primary", use_container_width=True)
+                                   type="primary", width='stretch')
 
                 t1, t2 = st.tabs(["Income & Expense Log", "Net Worth Log"])
-                with t1: st.dataframe(df_det[ord_det].set_index("Year").style.format({c: "${:,.0f}" for c in ord_det if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {"Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
+                with t1: st.dataframe(df_det[ord_det].set_index("Year").style.format({c: "${:,.0f}" for c in ord_det if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {"Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), width='stretch')
                 with t2:
                     st.dataframe(df_nw[ord_nw].set_index("Year").style.format(
                         {c: "${:,.0f}" for c in ord_nw if c not in ["Age (Primary)", "Age (Spouse)", "Year"]} | {
-                            "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), use_container_width=True)
+                            "Age (Primary)": "{:.0f}", "Age (Spouse)": "{:.0f}"}), width='stretch')
 
 
 def render_ai():
@@ -3080,7 +3084,7 @@ def render_ai():
     tab_report, tab_whatif = st.tabs(["📊 Comprehensive Health Report", "🔮 What-If Simulator"])
     
     with tab_report:
-        if st.button("✨ Generate Comprehensive AI Report", type="primary", use_container_width=True, key="btn_report", disabled=is_loading):
+        if st.button("✨ Generate Comprehensive AI Report", type="primary", width='stretch', key="btn_report", disabled=is_loading):
             st.session_state['trigger_report_ai'] = True
             st.session_state['ai_loading'] = True
             st.rerun()
@@ -3114,7 +3118,7 @@ def render_ai():
     with tab_whatif:
         what_if_query = st.text_area("Ask the AI to simulate a scenario (e.g., 'What if I sold my rental property in 2030 and put the cash in my brokerage?')", key="what_if_text")
         
-        if st.button("✨ Run What-If Analysis (AI)", type="primary", use_container_width=True, key="btn_whatif", disabled=is_loading):
+        if st.button("✨ Run What-If Analysis (AI)", type="primary", width='stretch', key="btn_whatif", disabled=is_loading):
             st.session_state['trigger_whatif_ai'] = True
             st.session_state['ai_loading'] = True
             st.rerun()
@@ -3461,7 +3465,7 @@ with st.sidebar:
         
         btn_type = "primary" if page_name == current_page else "tertiary"
         
-        if st.button(label, type=btn_type, use_container_width=True, key=f"nav_{page_name}"):
+        if st.button(label, type=btn_type, width='stretch', key=f"nav_{page_name}"):
             st.session_state['current_page'] = page_name
             st.rerun()
 
@@ -3494,10 +3498,10 @@ with st.sidebar:
 
     save_btn_label = "⚠️ Save Changes" if st.session_state.get('dirty', False) else "🚀 Save Profile"
 
-    if st.button(save_btn_label, type="primary", use_container_width=True):
+    if st.button(save_btn_label, type="primary", width='stretch'):
         save_profile()
 
-    if st.button("Logout", type="secondary", use_container_width=True):
+    if st.button("Logout", type="secondary", width='stretch'):
         if cookie_manager.get("user_email"): 
             cookie_manager.delete("user_email")
             
@@ -3519,7 +3523,7 @@ if user_email == "guest_demo":
     # Prominent Guest CTA - Always visible for guests to prevent data loss frustration
     guest_col1, guest_col2 = st.columns([4, 1])
     guest_col1.info("🏃 **Guest Mode:** Your data is only stored in this browser tab. To save your progress and access it from any device, create a free account.")
-    if guest_col2.button("💾 Create Account", type="primary", key="btn_guest_signup", use_container_width=True):
+    if guest_col2.button("💾 Create Account", type="primary", key="btn_guest_signup", width='stretch'):
         # Nuke guest session and send them back to the login/signup screen
         st.session_state.clear()
         st.rerun()
@@ -3530,7 +3534,7 @@ elif st.session_state.get('dirty', False):
     warn_col1, warn_col2 = st.columns([5, 1])
     warn_col1.warning("⚠️ **Unsaved Changes Detected:** You have modified your financial blueprint. Don't forget to save your profile to the cloud before closing the app!")
     
-    if warn_col2.button("💾 Save Now", type="primary", key="btn_global_save", use_container_width=True):
+    if warn_col2.button("💾 Save Now", type="primary", key="btn_global_save", width='stretch'):
         save_profile()
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
 
