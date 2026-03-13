@@ -3391,40 +3391,52 @@ with st.sidebar:
     status = get_completion_status()
     current_page = st.session_state.get('current_page', list(PAGES.keys())[0])
 
-    # --- FIX: Inject CSS to left-align all sidebar buttons ---
+    # --- FIX: Bulletproof CSS for Left-Aligning Streamlit Buttons ---
     st.markdown("""
         <style>
-        [data-testid="stSidebar"] div.stButton button {
+        /* Force the button container to flex left */
+        [data-testid="stSidebar"] div.stButton > button {
             justify-content: flex-start !important;
+            padding-left: 0.5rem !important;
+        }
+        /* Force the actual text inside the button to align left */
+        [data-testid="stSidebar"] div.stButton > button p {
             text-align: left !important;
-            padding-left: 10px !important;
+            margin: 0 !important;
         }
         </style>
     """, unsafe_allow_html=True)
 
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
 
-    # --- FIX: Render the buttons with left-aligned checkmarks ---
+    # --- FIX: Reliable Checkmark Logic (Accounting for Emojis in Keys) ---
+    setup_pages = [
+        "👤 Profile & Family", 
+        "💵 Income Streams", 
+        "🏛️ Assets & Debts", 
+        "💸 Cash Flows"
+    ]
+
     for page_name in PAGES.keys():
         is_complete = status.get(page_name, False)
         
-        # We use a Figure Space (U+2007) string here so the emojis align perfectly 
-        # vertically even when the checkmark is missing.
-        prefix = "✅ " if is_complete else "   "
-        
-        # Some pages like Dashboard don't get completion logic, so we just align them
-        if page_name in ["Dashboard", "Simulation", "AI Advisor", "User Guide & FAQ"]:
-            prefix = "   " 
-            
+        # Only apply the checkmark logic to the 4 core setup pages
+        if page_name in setup_pages:
+            prefix = "✅ " if is_complete else "  " # Unicode Em Space
+        else:
+            # Dashboard, Simulation, AI, etc. just get a blank space so they align perfectly
+            prefix = "  " 
+
         label = f"{prefix}{page_name}"
         
+        # Primary = Active (blue), Tertiary = Inactive (flat/transparent)
         btn_type = "primary" if page_name == current_page else "tertiary"
         
-        if st.button(label, type=btn_type, use_container_width=True, key=f"nav_btn_{page_name}"):
+        if st.button(label, type=btn_type, use_container_width=True, key=f"nav_{page_name}"):
             st.session_state['current_page'] = page_name
             st.rerun()
 
-    # --- FIX: Dynamic Color-Changing Progress Bar ---
+    # --- Dynamic Color-Changing Progress Bar ---
     st.markdown("<hr style='margin-top: 15px; margin-bottom: 20px; border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
     
     score = status.get('score', 0)
@@ -3452,6 +3464,7 @@ with st.sidebar:
     # ------------------------------------------------
 
     save_btn_label = "⚠️ Save Changes" if st.session_state.get('dirty', False) else "🚀 Save Profile"
+    
     if st.button(save_btn_label, type="primary", use_container_width=True):
         save_profile()
 
