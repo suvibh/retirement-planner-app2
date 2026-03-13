@@ -279,6 +279,30 @@ def render_total(label, series):
         f"<div style='text-align: right; font-weight: 700; color: #4f46e5; font-size: 1.1rem; padding-top: 8px;'>{label}: <span style='color: #0f172a;'>${total:,.0f}</span></div>",
         unsafe_allow_html=True)
 
+def bootstrap_session_state():
+    """Ensures all required keys exist to prevent rendering crashes on refresh."""
+    defaults = {
+        'income_data': [],
+        'liquid_assets_data': [],
+        'real_estate_data': [],
+        'business_data': [],
+        'liabilities_data': [],
+        'lifetime_expenses': [],
+        'assumptions': {
+            'infl': 2.5, 
+            'inv_growth': 6.0, 
+            'housing_growth': 3.0, 
+            'tax_rate': 22.0
+        },
+        'ret_age': 65,  # Fallback retirement age
+        'profile_data': {},
+        'dirty': False
+    }
+    
+    for key, default_val in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = default_val
+
 
 # --- DESIGN SYSTEM & CSS ---
 if os.path.exists("style.css"):
@@ -3382,6 +3406,9 @@ PAGES = {
     "🤖 AI Advisor": render_ai,
     "📖 User Guide & FAQ": render_faq
 }
+
+# --- 2. Guarantee core state variables exist ---
+bootstrap_session_state()
 
 with st.sidebar:
     st.markdown("<h2 style='text-align: center; color: white; font-family: Inter;'>🏦 Pro Planner</h2>",
