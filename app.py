@@ -1032,19 +1032,14 @@ def run_simulation(mkt_sequence, ctx):
 
                 if cat_name == "Social Security":
                     if owner == "Me":
-                        if is_my_alive:
-                            offset = max(0, year - int(primary_ss_start_year))
-                            primary_ss_entitlement = (base_amt * primary_ss_multi) * ((1 + ctx['infl'] / 100) ** offset)
-                            primary_ss_frozen_val = primary_ss_entitlement
-                        else:
-                            primary_ss_entitlement = primary_ss_frozen_val
+                        # --- FIX: Calculate SS continuously so survivor inherits an inflation-adjusted benefit, even if primary dies early ---
+                        offset = max(0, year - int(primary_ss_start_year))
+                        primary_ss_entitlement = (base_amt * primary_ss_multi) * ((1 + ctx['infl'] / 100) ** offset)
+                        primary_ss_frozen_val = primary_ss_entitlement
                     elif owner == "Spouse":
-                        if is_spouse_alive:
-                            offset = max(0, year - int(spouse_ss_start_year))
-                            spouse_ss_entitlement = (base_amt * spouse_ss_multi) * ((1 + ctx['infl'] / 100) ** offset)
-                            spouse_ss_frozen_val = spouse_ss_entitlement
-                        else:
-                            spouse_ss_entitlement = spouse_ss_frozen_val
+                        offset = max(0, year - int(spouse_ss_start_year))
+                        spouse_ss_entitlement = (base_amt * spouse_ss_multi) * ((1 + ctx['infl'] / 100) ** offset)
+                        spouse_ss_frozen_val = spouse_ss_entitlement
                     continue
 
                 if not is_active:
@@ -1091,10 +1086,11 @@ def run_simulation(mkt_sequence, ctx):
                         ss_started_spouse = True
             elif ctx['has_spouse'] and not is_spouse_alive:
                 if year >= primary_ss_start_year:
-                    benefit = max(primary_ss_entitlement, spouse_ss_entitlement)
+                    # --- FIX: Compare against frozen/persisted values for deceased spouse ---
+                    benefit = max(primary_ss_entitlement, spouse_ss_frozen_val)
                     active_ss += benefit
                     if not ss_started_me:
-                        desc = "📈 Survivor SS Begins" if spouse_ss_entitlement > primary_ss_entitlement else "📈 Social Security Begins (You)"
+                        desc = "📈 Survivor SS Begins" if spouse_ss_frozen_val > primary_ss_entitlement else "📈 Social Security Begins (You)"
                         if year not in milestones_by_year: milestones_by_year[year] = []
                         milestones_by_year[year].append({"desc": desc, "amt": benefit, "type": "system"})
                         ss_started_me = True
@@ -1107,10 +1103,11 @@ def run_simulation(mkt_sequence, ctx):
                         ss_started_me = True
         elif is_spouse_alive and not is_my_alive:
             if year >= spouse_ss_start_year:
-                benefit = max(primary_ss_entitlement, spouse_ss_entitlement)
+                # --- FIX: Compare against frozen/persisted values for deceased primary ---
+                benefit = max(primary_ss_frozen_val, spouse_ss_entitlement)
                 active_ss += benefit
                 if not ss_started_spouse:
-                    desc = "📈 Survivor SS Begins" if primary_ss_entitlement > spouse_ss_entitlement else "📈 Social Security Begins (Spouse)"
+                    desc = "📈 Survivor SS Begins" if primary_ss_frozen_val > spouse_ss_entitlement else "📈 Social Security Begins (Spouse)"
                     if year not in milestones_by_year: milestones_by_year[year] = []
                     milestones_by_year[year].append({"desc": desc, "amt": benefit, "type": "system"})
                     ss_started_spouse = True
