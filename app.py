@@ -3331,14 +3331,40 @@ def render_ai():
                             safe_timeline = json.dumps(sanitize_for_ai(timeline_summary))
                             safe_ss = json.dumps(sanitize_for_ai(ss_context))
                             
-                            prompt = f"""Act as an expert fiduciary financial planner. Review this user's summary: {safe_summary}, their core economic assumptions: {safe_assumptions}, their current Social Security plan: {safe_ss}, and their chronological 5-year cash flow progression: {safe_timeline}. 
-                            Provide a highly detailed, year-by-year or phase-by-phase tactical analysis based strictly on these parameters. 
-                            
-                            CRITICAL INSTRUCTION 1: You MUST include a distinct, bolded section titled "Roth Conversion Strategy Blueprint". In this section, provide actionable, mathematical advice on EXACTLY when they should execute Roth conversions. For example: "Between ages X and Y, convert $Z per year to fill the 24% bracket before RMDs begin at age 75." Be as specific as possible using their exact numbers and tax data.
-                            
-                            CRITICAL INSTRUCTION 2: You MUST include a distinct, bolded section titled "Social Security Optimization". Analyze their currently planned claiming ages. Mathematically recommend whether they should stick to this plan, claim earlier to preserve portfolio capital, or delay to age 70 for maximum delayed retirement credits and survivor benefits. Heavily weigh their specified life expectancy and available liquid cash.
-                            
-                            Format your response in clean Markdown."""
+                            prompt = f"""
+                            You are an elite, fiduciary Certified Financial Planner (CFP) and CPA. Your job is to provide a ruthless, highly tactical, and mathematically sound evaluation of the user's financial blueprint. Do not provide generic advice (e.g., "save more money"). Use their exact numbers, ages, and timelines to provide actionable directives.
+
+                            Here is the user's profile and simulation data:
+                            - Baseline Summary: {safe_summary}
+                            - Economic Assumptions: {safe_assumptions}
+                            - Social Security Plan: {safe_ss}
+                            - 5-Year Cash Flow Progression: {safe_timeline}
+
+                            Format your response in clean, professional Markdown using the following exact structure:
+
+                            ### 1. Executive Fiduciary Assessment
+                            Provide a 2-3 sentence blunt assessment of their trajectory. Are they facing a liquidity crisis? Are they over-indexed in real estate? Are they going to die with too much money? 
+
+                            ### 2. Tactical Social Security Optimization
+                            Analyze their current Social Security claiming plan ({safe_ss}). 
+                            - Calculate the trade-off based on their life expectancy. 
+                            - Should the primary earner delay to 70? Should the spouse claim early at 62? 
+                            - Explicitly tell them if their current plan is optimal or if it is costing them money.
+
+                            ### 3. Roth Conversion Strategy Blueprint
+                            Based on their progressive tax brackets and '5-Year Cash Flow Progression':
+                            - Identify the "low income" gap years (usually between retirement and RMD age at 73/75).
+                            - Give exact mathematical instructions on Roth conversions. Example: "You have a $40k gap before hitting the 24% bracket in year X. Convert $40k from your Traditional 401(k) to a Roth IRA to fill this bucket."
+                            - Warn them if forced RMDs will push them into a massive tax bracket later in life.
+
+                            ### 4. Healthcare & IRMAA Warning
+                            Cross-reference their retirement age with Medicare eligibility (age 65).
+                            - If they retire before 65, warn them about the "Pre-Medicare Gap" costs.
+                            - Check their later years for IRMAA (Medicare high-income surcharges) triggered by RMDs or high living expenses.
+
+                            ### 5. Sequence of Returns Risk & Liquidity
+                            Look at their liquid cash versus their investment accounts in the first 5 years of retirement. Do they have enough cash to survive a 25% market crash without selling stocks at the bottom? Recommend an exact cash buffer size based on their annual expenses.
+                            """
 
                             res = call_gemini_text(prompt)
                             if res:
