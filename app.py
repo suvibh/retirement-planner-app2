@@ -17,7 +17,6 @@ import warnings
 import firebase_admin
 from firebase_admin import credentials, firestore
 from concurrent.futures import ThreadPoolExecutor
-from streamlit_option_menu import option_menu
 from dateutil.relativedelta import relativedelta
 
 try:
@@ -3392,26 +3391,43 @@ with st.sidebar:
     status = get_completion_status()
     current_page = st.session_state.get('current_page', list(PAGES.keys())[0])
 
-    # --- FIX: 100% Native Streamlit SaaS Menu ---
+    # --- FIX: Inject CSS to left-align all sidebar buttons ---
+    st.markdown("""
+        <style>
+        [data-testid="stSidebar"] div.stButton button {
+            justify-content: flex-start !important;
+            text-align: left !important;
+            padding-left: 10px !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
 
+    # --- FIX: Render the buttons with left-aligned checkmarks ---
     for page_name in PAGES.keys():
         is_complete = status.get(page_name, False)
         
-        # Add a nice visual spacer for the checkmark
-        label = f"{page_name}   ✅" if is_complete else f"{page_name}"
+        # We use a Figure Space (U+2007) string here so the emojis align perfectly 
+        # vertically even when the checkmark is missing.
+        prefix = "✅ " if is_complete else "   "
         
-        # Active page gets the solid blue block, others get the clean flat text
+        # Some pages like Dashboard don't get completion logic, so we just align them
+        if page_name in ["Dashboard", "Simulation", "AI Advisor", "User Guide & FAQ"]:
+            prefix = "   " 
+            
+        label = f"{prefix}{page_name}"
+        
         btn_type = "primary" if page_name == current_page else "tertiary"
         
-        if st.button(label, type=btn_type, use_container_width=True, key=f"nav_{page_name}"):
+        if st.button(label, type=btn_type, use_container_width=True, key=f"nav_btn_{page_name}"):
             st.session_state['current_page'] = page_name
             st.rerun()
 
     # --- FIX: Dynamic Color-Changing Progress Bar ---
     st.markdown("<hr style='margin-top: 15px; margin-bottom: 20px; border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
     
-    score = status['score']
+    score = status.get('score', 0)
     
     if score == 100:
         bar_color = "#10b981" # Green
