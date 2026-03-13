@@ -1269,23 +1269,40 @@ def run_simulation(mkt_sequence, ctx):
 
         for a in sim_assets:
             o_acct = a.get('Owner', 'Me')
-            o_birth = ctx['my_birth_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_birth_year']
-            o_ret = ctx['primary_retire_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_retire_year']
-            o_alive = is_my_alive if o_acct in ['Me', 'Joint'] else is_spouse_alive
+            
+            # --- FIX: Symmetric Joint Account Handling ---
+            if o_acct == 'Joint':
+                o_alive = is_my_alive or is_spouse_alive
+                # If only one is alive, base retirement/catch-up rules on the survivor
+                o_birth = ctx['my_birth_year'] if is_my_alive else ctx['spouse_birth_year']
+                o_ret = ctx['primary_retire_year'] if is_my_alive else ctx['spouse_retire_year']
+            elif o_acct == 'Spouse':
+                o_alive = is_spouse_alive
+                o_birth = ctx['spouse_birth_year']
+                o_ret = ctx['spouse_retire_year']
+            else:
+                o_alive = is_my_alive
+                o_birth = ctx['my_birth_year']
+                o_ret = ctx['primary_retire_year']
+
             added_this_year = 0
 
             if o_alive and not (a.get('stop_at_ret', True) and year >= o_ret):
                 added_this_year = a['contrib']
-                if a.get('Type') in ['Traditional 401(k)', 'Traditional 401k/IRA', 'Roth 401(k)', 'Roth 401k/IRA']:
-                    limit = plan_401k_limit + (catchup_401k if (year - o_birth) >= 50 else 0)
-                    added_this_year = min(added_this_year, max(0, limit - person_401k_contribs[o_acct]))
-                    person_401k_contribs[o_acct] += added_this_year
-                elif a.get('Type') in ['Traditional IRA', 'Roth IRA']:
-                    limit = ira_limit + (catchup_ira if (year - o_birth) >= 50 else 0)
-                    added_this_year = min(added_this_year, limit)
-                user_out_of_pocket_contribs += added_this_year
+                
+                # --- FIX: Realistic Widowhood Adjustments ---
+                # Cut joint out-of-pocket savings in half to reflect single-income household
+                if o_acct == 'Joint' and ctx['has_spouse']:
+                    if (is_my_alive and not is_spouse_alive) or (is_spouse_alive and not is_my_alive):
+                        added_this_year *= 0.5
+                        
+                        # Log it once to the timeline so the user isn't confused
+                        if not a.get('widow_reduced_logged'):
+                            if year not in milestones_by_year: milestones_by_year[year] = []
+                            milestones_by_year[year].append({"desc": f"📉 Joint Savings Halved (Widowhood): {a.get('Account Name', 'Account')}", "amt": 0, "type": "system"})
+                            a['widow_reduced_logged'] = True
 
-                if a.get('Type') in ['Traditional 401(k)', 'Traditional 401k/IRA', 'Traditional IRA', 'HSA']:
+                if a.get('Type') in ['Traditional 401(k)', 'Traditional 401k/IRA', 'Roth 401(k)', 'Roth 401k/IRA']:
                     pre_tax_deductions += added_this_year
 
             a['approved_oop_contrib'] = added_this_year
