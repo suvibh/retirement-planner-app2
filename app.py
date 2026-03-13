@@ -755,7 +755,26 @@ IRS_UNIFORM_TABLE = {73: 26.5, 74: 25.5, 75: 24.6, 76: 23.7, 77: 22.9, 78: 22.0,
                      110: 3.5, 111: 3.4, 112: 3.3, 113: 3.1, 114: 3.0, 115: 2.9, 116: 2.8, 117: 2.7, 118: 2.5,
                      119: 2.3, 120: 2.0}
 
-import functools
+@functools.lru_cache(maxsize=1024)
+def get_irmaa_surcharge(magi, is_mfj, year_offset, inflation_rate, num_medicare):
+    if num_medicare <= 0: return 0
+    infl_f = (1 + inflation_rate / 100.0) ** year_offset
+    
+    # IRS IRMAA MAGI Brackets (MFJ limits are roughly 2x Single, except the top tier)
+    t1 = 103000 * infl_f * (2 if is_mfj else 1)
+    t2 = 129000 * infl_f * (2 if is_mfj else 1)
+    t3 = 161000 * infl_f * (2 if is_mfj else 1)
+    t4 = 193000 * infl_f * (2 if is_mfj else 1)
+    t5 = 500000 * infl_f * (1.5 if is_mfj else 1)
+    
+    surcharge = 0
+    if magi > t5: surcharge = 6500 * infl_f
+    elif magi > t4: surcharge = 5500 * infl_f
+    elif magi > t3: surcharge = 4000 * infl_f
+    elif magi > t2: surcharge = 2500 * infl_f
+    elif magi > t1: surcharge = 1000 * infl_f
+    
+    return surcharge * num_medicare
 
 # --- FIX: Memoized Tax Bracket Generators ---
 @functools.lru_cache(maxsize=1024)
@@ -1624,35 +1643,37 @@ def run_simulation(mkt_sequence, ctx):
         yd["Tax Breakdown: Roth Conversion"] = yd.get("Tax Breakdown: Roth Conversion", 0) + (actual_roth_fed + actual_roth_state)
         yd["Tax Breakdown: FICA"] = yd.get("Tax Breakdown: FICA", 0) + fica_tax
 
-        num_medicare = (1 if is_my_alive and my_current_age >= 65 else 0) + (
-            1 if is_spouse_alive and spouse_current_age >= 65 else 0)
-        if num_medicare > 0:
-            magi_for_irmaa = pre_tax_ord
-            infl_f = (1 + ctx['infl'] / 100) ** year_offset
-            t1, t2, t3, t4, t5 = 103000 * infl_f * (2 if active_mfj else 1), 129000 * infl_f * (2 if active_mfj else 1), 161000 * infl_f * (2 if active_mfj else 1), 193000 * infl_f * (2 if active_mfj else 1), 500000 * infl_f * (1.5 if active_mfj else 1)
-            surcharge = 0
-            if magi_for_irmaa > t5:
-                surcharge = 6500 * infl_f
-            elif magi_for_irmaa > t4:
-                surcharge = 5500 * infl_f
-            elif magi_for_irmaa > t3:
-                surcharge = 4000 * infl_f
-            elif magi_for_irmaa > t2:
-                surcharge = 2500 * infl_f
-            elif magi_for_irmaa > t1:
-                surcharge = 1000 * infl_f
-            if surcharge > 0:
-                total_irmaa = surcharge * num_medicare
-                total_exp += total_irmaa
-                yd["Expense: Medicare IRMAA Surcharge"] = total_irmaa
-                if not irmaa_triggered:
-                    if year not in milestones_by_year: milestones_by_year[year] = []
-                    milestones_by_year[year].append({"desc": "📉 Medicare IRMAA Surcharge Triggered", "amt": total_irmaa, "type": "system"})
-                    irmaa_triggered = True
-                if total_irmaa > last_irmaa_tier + 500:
-                    if year not in milestones_by_year: milestones_by_year[year] = []
-                    milestones_by_year[year].append({"desc": "📉 Medicare IRMAA Surcharge Tier Jumped", "amt": total_irmaa, "type": "system"})
-                    last_irmaa_tier = total_irmaa
+        # --- FIX: Baseline IRMAA Cost Lock-In ---
+        # Calculate Medicare surcharges before Roth optimization so the engine 
+        # doesn't accidentally spend required living capital on voluntary taxes.
+        num_medicare = (1 if is_my_alive and my_current_age >= 65 else 0) + (1 if is_spouse_alive and spouse_current_age >= 65 else 0)
+        baseline_irmaa = get_irmaa_surcharge(tax_base_ord_pre, active_mfj, year_offset, ctx['infl'], num_medicare)
+        
+        if baseline_irmaa > 0:
+            total_exp += baseline_irmaa
+            yd["Expense: Medicare IRMAA Surcharge"] = baseline_irmaa
+        # --- FIX: Post-Roth IRMAA Penalty Trap & Milestone Tracking ---
+        final_irmaa = get_irmaa_surcharge(pre_tax_ord, active_mfj, year_offset, ctx['infl'], num_medicare)
+        
+        # If the Roth conversion actively pushed us into a higher penalty tier, log the delta
+        irmaa_penalty_jump = final_irmaa - baseline_irmaa
+        if irmaa_penalty_jump > 0:
+            total_exp += irmaa_penalty_jump
+            yd["Expense: Medicare IRMAA Surcharge"] = yd.get("Expense: Medicare IRMAA Surcharge", 0) + irmaa_penalty_jump
+            
+            if year not in milestones_by_year: milestones_by_year[year] = []
+            milestones_by_year[year].append({"desc": "📉 Roth Conversion Triggered IRMAA Penalty", "amt": irmaa_penalty_jump, "type": "system"})
+
+        # Milestone tracking for UI
+        if final_irmaa > 0:
+            if not irmaa_triggered:
+                if year not in milestones_by_year: milestones_by_year[year] = []
+                milestones_by_year[year].append({"desc": "📉 Medicare IRMAA Surcharge Triggered", "amt": final_irmaa, "type": "system"})
+                irmaa_triggered = True
+            if final_irmaa > last_irmaa_tier + 500:
+                if year not in milestones_by_year: milestones_by_year[year] = []
+                milestones_by_year[year].append({"desc": "📉 Medicare IRMAA Tier Jumped", "amt": final_irmaa, "type": "system"})
+                last_irmaa_tier = final_irmaa
 
         if user_out_of_pocket_contribs > 0:
             yd["Expense: Portfolio Contributions"] = user_out_of_pocket_contribs
