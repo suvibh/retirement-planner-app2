@@ -15,6 +15,7 @@ import numpy as np
 import concurrent.futures
 import warnings
 import firebase_admin
+import hashlib
 from firebase_admin import credentials, firestore
 from concurrent.futures import ThreadPoolExecutor
 from dateutil.relativedelta import relativedelta
@@ -1728,9 +1729,9 @@ def run_simulation(mkt_sequence, ctx):
     return sim_res, det_res, nw_det_res, milestones_by_year
 
 @st.cache_data(show_spinner=False)
-def execute_sim_engine_v8(mkt_sequence_tuple, ctx_json):
+def execute_sim_engine_v8(mkt_sequence_tuple, ctx_hash, _ctx_json):
     # Deserialize the string back into a dict for the engine
-    ctx = json.loads(ctx_json)
+    ctx = json.loads(_ctx_json)
     s_res, d_res, nw_res, milestones = run_simulation(list(mkt_sequence_tuple), ctx)
     return pd.DataFrame(s_res), pd.DataFrame(d_res).fillna(0), pd.DataFrame(nw_res).fillna(0), milestones
 
@@ -1808,10 +1809,12 @@ def render_dashboard():
     with st.spinner("Running core simulation..."):
         mkt_seq = tuple([sim_ctx['mkt']] * (sim_ctx['max_years'] + 1))
         
-        # --- FIX: Sanitize floats to prevent Streamlit cache busting ---
+        # --- FIX: Fast MD5 Caching ---
         clean_ctx = sanitize_for_cache(sim_ctx)
         ctx_json = json.dumps(clean_ctx, sort_keys=True)
-        df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v8(mkt_seq, ctx_json)
+        ctx_hash = hashlib.md5(ctx_json.encode('utf-8')).hexdigest()
+        
+        df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v8(mkt_seq, ctx_hash, ctx_json)
         
         st.session_state['df_sim_nominal'] = df_sim_nominal
         st.session_state['df_det'] = df_det_nominal
@@ -2597,10 +2600,12 @@ def render_simulation():
     else:
         mkt_seq = tuple([sim_ctx['mkt']] * (sim_ctx['max_years'] + 1))
 
-         # --- FIX: Sanitize floats to prevent Streamlit cache busting ---
+        # --- FIX: Fast MD5 Caching ---
         clean_ctx = sanitize_for_cache(sim_ctx)
         ctx_json = json.dumps(clean_ctx, sort_keys=True)
-        df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v8(mkt_seq, ctx_json)
+        ctx_hash = hashlib.md5(ctx_json.encode('utf-8')).hexdigest()
+        
+        df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v8(mkt_seq, ctx_hash, ctx_json)
 
         if not df_sim_nominal.empty:
             df_sim, df_det, df_nw = df_sim_nominal.copy(), df_det_nominal.copy(), df_nw_nominal.copy()
@@ -2750,8 +2755,12 @@ def render_simulation():
                                     
                                 m_seq = tuple([c['mkt']] * (c['max_years'] + 1))
                                 
+                                # --- FIX: Fast MD5 Caching ---
                                 clean_scenario_ctx = sanitize_for_cache(c)
-                                df_s, _, _, _ = execute_sim_engine_v8(m_seq, json.dumps(clean_scenario_ctx, sort_keys=True))
+                                scen_json = json.dumps(clean_scenario_ctx, sort_keys=True)
+                                scen_hash = hashlib.md5(scen_json.encode('utf-8')).hexdigest()
+                                
+                                df_s, _, _, _ = execute_sim_engine_v8(m_seq, scen_hash, scen_json)
                                 val = df_s.iloc[-1]['Net Worth'] if not df_s.empty else 0
                                 
                                 if view_todays_dollars:
