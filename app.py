@@ -3537,5 +3537,9 @@ elif st.session_state.get('dirty', False):
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
 
 # --- Render the Active Page ---
-if st.session_state.get('current_page') in PAGES:
+# FIX: Officially lock the default page into memory on a fresh reload
+if 'current_page' not in st.session_state:
+    st.session_state['current_page'] = "🏠 Dashboard"
+
+if st.session_state['current_page'] in PAGES:
     PAGES[st.session_state['current_page']]()
