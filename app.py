@@ -2235,7 +2235,7 @@ def render_cashflows():
     # --- FIX: Reset the AI confirmation gate whenever this page is freshly loaded ---
     # This prevents the warning from appearing automatically if the user navigated away mid-confirmation.
     st.session_state.pop('confirm_budget_overwrite', None)
-    
+
     section_header("Lifetime Cash Flows", "Map out budgets and milestones. Do not double-count housing or debt.", "💸")
     info_banner(
         "Healthcare Note: Assume you are covered by employer-sponsored healthcare while working. The engine automatically builds in Pre-Medicare gaps, Medicare premium cliffs at age 65, and IRMAA surcharges.")
@@ -2680,8 +2680,16 @@ def render_simulation():
                         
                         results = []
                         for name, key, down_val, up_val, unit in sens_scenarios:
-                            def run_scenario(shift):
-                                c = json.loads(base_ctx_json)
+                            # Now calling the pure function with explicit loop state
+                            nw_down = run_scenario(down_val, key, current_ctx_json)
+                            nw_up = run_scenario(up_val, key, current_ctx_json)
+                            
+                            d_down = nw_down - base_nw_sens
+                            d_up = nw_up - base_nw_sens
+                            # --- FIX: Move closure outside of loop and use explicit parameters ---
+                        def run_scenario(shift, key, ctx_json_str):
+                            # Ensure we have a fresh context from the sanitized base
+                            c = json.loads(ctx_json_str)
                                 
                                 if key == 'ret_age':
                                     # NOTE: We shift the retirement milestone year, but intentionally leave
