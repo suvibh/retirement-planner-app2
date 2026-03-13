@@ -2427,6 +2427,9 @@ def render_cashflows():
                                           default_val=st.session_state.get('retire_city_flow', ''))
         st.session_state['retire_city_flow'] = ret_city_flow
 
+    # --- FIX: Set clear user expectations regarding the physics engine vs AI ---
+    st.caption("*(Note: City locations are used by the Fiduciary AI to estimate localized budgets. To apply actual tax rate changes, visit **Simulation → Macro Assumptions**).*")
+
     st.divider()
     df_exp = pd.DataFrame(st.session_state.get('lifetime_expenses', []))
 
