@@ -102,7 +102,7 @@ def update_state(key, val):
     st.session_state['dirty'] = True
 
 
-def mark_dirty():
+def mark_dirty(clear_ai=True):
     st.session_state['dirty'] = True
     
     # Purge stale Monte Carlo results
@@ -110,17 +110,16 @@ def mark_dirty():
     if 'mc_raw_results' in st.session_state:
         st.session_state['mc_raw_results'] = None
 
-    # --- FIX: Invalidate Stale AI Reports ---
-    # We clear these so the user doesn't see advice based on old data
-    if 'ai_analysis_report' in st.session_state:
-        del st.session_state['ai_analysis_report']
-    if 'what_if_analysis_report' in st.session_state:
-        del st.session_state['what_if_analysis_report']
+    # --- FIX: Only kill the report if it's a manual data change ---
+    if clear_ai:
+        if 'ai_analysis_report' in st.session_state:
+            del st.session_state['ai_analysis_report']
+        if 'what_if_analysis_report' in st.session_state:
+            del st.session_state['what_if_analysis_report']
         
     # Invalidate the cached simulation context
     if '_sim_ctx' in st.session_state:
         del st.session_state['_sim_ctx']
-
 
 def get_completion_status():
     has_profile = bool(st.session_state.get('my_name') and str(st.session_state.get('my_name')).strip() != "")
@@ -3391,7 +3390,9 @@ def render_ai():
                             res = call_gemini_text(prompt)
                             if res:
                                 st.session_state['ai_analysis_report'] = res
-                                mark_dirty()
+                                # Tell the engine the data is "dirty" for saving, 
+                                # but DON'T kill the report we just generated!
+                                mark_dirty(clear_ai=False)
                             else:
                                 st.error("⚠️ AI Analysis failed to generate.")
                     else:
