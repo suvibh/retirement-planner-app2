@@ -3681,10 +3681,15 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     # ------------------------------------------------
 
-    save_btn_label = "⚠️ Save Changes" if st.session_state.get('dirty', False) else "🚀 Save Profile"
-
-    if st.button(save_btn_label, type="primary", width='stretch'):
-        save_profile()
+    # --- FIX: Guest Mode UX - Replace Save Button with Account Creation CTA ---
+    if st.session_state.get('user_email') == "guest_demo":
+        if st.button("🔐 Create Account to Save", type="primary", width='stretch', help="Guest profiles cannot be saved. Create a free account to persist your data."):
+            st.session_state.clear()
+            st.rerun()
+    else:
+        save_btn_label = "⚠️ Save Changes" if st.session_state.get('dirty', False) else "🚀 Save Profile"
+        if st.button(save_btn_label, type="primary", width='stretch'):
+            save_profile()
 
     if st.button("Logout", type="secondary", width='stretch'):
         if cookie_manager.get("user_email"): 
