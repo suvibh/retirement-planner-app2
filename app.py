@@ -79,12 +79,14 @@ def update_state(key, val):
 def mark_dirty():
     st.session_state['dirty'] = True
     
-    # --- FIX: Purge stale Monte Carlo results when any input changes ---
+    # Purge stale Monte Carlo results
     st.session_state['mc_success_rate'] = None
-    
-    # If you are also storing the raw MC simulation data in state (like for charts), clear it too:
     if 'mc_raw_results' in st.session_state:
         st.session_state['mc_raw_results'] = None
+        
+    # --- FIX: Invalidate the cached simulation context ---
+    if '_sim_ctx' in st.session_state:
+        del st.session_state['_sim_ctx']
 
 
 def get_completion_status():
@@ -674,6 +676,10 @@ initialize_session_state()
 
 # --- MODULE LEVEL SIMULATION CORE (CACHED) ---
 def build_sim_context():
+    # --- FIX: Return cached context instantly if it exists ---
+    if '_sim_ctx' in st.session_state:
+        return st.session_state['_sim_ctx']
+
     current_year = datetime.date.today().year
     my_age = relativedelta(datetime.date.today(), st.session_state.get('my_dob', datetime.date(1980, 1, 1))).years
     spouse_age = relativedelta(datetime.date.today(), st.session_state.get('spouse_dob', datetime.date(1982, 1,
@@ -735,8 +741,11 @@ def build_sim_context():
         'my_age': my_age, 'spouse_age': spouse_age
     }
     
-    # --- FIX: Return the fully sanitized dictionary! ---
-    return sanitize_for_cache(raw_ctx)
+    # --- FIX: Save the sanitized dictionary into session state before returning ---
+    clean_ctx = sanitize_for_cache(raw_ctx)
+    st.session_state['_sim_ctx'] = clean_ctx
+    
+    return clean_ctx
 
 # --- MODULE LEVEL STATIC RESOURCES & HELPERS ---
 IRS_UNIFORM_TABLE = {73: 26.5, 74: 25.5, 75: 24.6, 76: 23.7, 77: 22.9, 78: 22.0, 79: 21.1, 80: 20.2, 81: 19.4,
