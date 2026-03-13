@@ -413,14 +413,16 @@ def sign_up(email, password): return requests.post(
     json={"email": email, "password": password, "returnSecureToken": True}).json()
 
 
-def load_user_data(email):
-    if email == "guest_demo" or not st.session_state.get('firebase_enabled', False): return {}
-    doc = db.collection('users').document(email).get()
+def load_user_data(uid):
+    if uid == "guest_demo" or not st.session_state.get('firebase_enabled', False): return {}
+    # --- FIX: Query by secure UID instead of email ---
+    doc = db.collection('users').document(uid).get()
     return doc.to_dict() if doc.exists else {}
 
 
 def save_profile():
-    if st.session_state.get('user_email') == "guest_demo": 
+    # --- FIX: Check Guest status via UID ---
+    if st.session_state.get('user_uid') == "guest_demo": 
         st.error("Persistent configurations disabled within the demonstration environment.")
         return
     if not st.session_state.get('firebase_enabled', True): 
@@ -428,11 +430,11 @@ def save_profile():
         return
 
     my_age = relativedelta(datetime.date.today(), st.session_state.get('my_dob', datetime.date(1980, 1, 1))).years
-    spouse_age = relativedelta(datetime.date.today(), st.session_state.get('spouse_dob', datetime.date(1982, 1,
-                                                                                                       1))).years if st.session_state.get(
-        'has_spouse') else 0
+    spouse_age = relativedelta(datetime.date.today(), st.session_state.get('spouse_dob', datetime.date(1982, 1, 1))).years if st.session_state.get('has_spouse') else 0
 
     user_data = {
+        # --- FIX: Store the email inside the document safely for backend admin lookups ---
+        "account_email": st.session_state.get('user_email', ''), 
         "personal_info": {
             "name": st.session_state.get('my_name', ''),
             "dob": st.session_state.get('my_dob', datetime.date(1980, 1, 1)).strftime("%Y-%m-%d"),
@@ -457,9 +459,9 @@ def save_profile():
         "assumptions": st.session_state.get('assumptions', {})
     }
     try:
-        # --- FIX: Use merge=True to protect fields not managed by the app UI ---
-        db.collection('users').document(st.session_state['user_email']).set(user_data, merge=True)
-        
+        # --- FIX: Save to the secure UID path ---
+        db.collection('users').document(st.session_state['user_uid']).set(user_data, merge=True)
+                
         # Update local cache and clear dirty flag only after a confirmed successful write
         st.session_state['user_data'] = user_data
         st.session_state['dirty'] = False
@@ -610,12 +612,15 @@ def initialize_session_state():
         # --- FIX: Automate the "second click" to lock data into memory ---
         st.rerun()
 
-if 'user_email' not in st.session_state:
-    saved_email = cookie_manager.get(cookie="user_email")
-    if saved_email and not st.session_state.get('logged_out_flag'):
-        st.session_state['user_email'] = saved_email
-        st.session_state['user_data'] = load_user_data(saved_email)
-        st.session_state['initialized'] = False # <--- ADD THIS HERE
+if 'user_uid' not in st.session_state:
+    # --- FIX: Read the secure UID from the cookie ---
+    saved_uid = cookie_manager.get(cookie="user_uid")
+    if saved_uid and not st.session_state.get('logged_out_flag'):
+        # Note: We also clear out legacy email cookies if they exist to force a clean transition
+        st.session_state['user_uid'] = saved_uid
+        st.session_state['user_data'] = load_user_data(saved_uid)
+        st.session_state['user_email'] = st.session_state['user_data'].get('account_email', '')
+        st.session_state['initialized'] = False 
         st.rerun()
 
     st.markdown(
@@ -630,13 +635,16 @@ if 'user_email' not in st.session_state:
                 res = sign_in(le, lp)
                 if "idToken" in res:
                     st.session_state.pop('logged_out_flag', None)
-                    st.session_state['user_email'] = res['email'];
-                    st.session_state['user_data'] = load_user_data(res['email'])
-                    st.session_state['initialized'] = False # <--- ADD THIS HERE
-                    # --- FIX: Slash cookie TTL to 24h to mitigate XSS risk ---
-                    cookie_manager.set("user_email", res['email'],
+                    st.session_state['user_email'] = res['email']
+                    # --- FIX: Extract and cache the secure UID ---
+                    st.session_state['user_uid'] = res['localId']
+                    st.session_state['user_data'] = load_user_data(res['localId'])
+                    st.session_state['initialized'] = False 
+                    
+                    # --- FIX: Save UID to the cookie, not the email ---
+                    cookie_manager.set("user_uid", res['localId'],
                                        expires_at=datetime.datetime.now() + datetime.timedelta(days=1))
-                    time.sleep(0.2);
+                    time.sleep(0.2)
                     st.rerun()
                 else:
                     st.error("Login failed. Please check your email and password.")
@@ -647,19 +655,24 @@ if 'user_email' not in st.session_state:
                     res = sign_up(se, sp)
                     if "idToken" in res:
                         st.session_state.pop('logged_out_flag', None)
-                        st.session_state['user_email'] = res['email'];
+                        st.session_state['user_email'] = res['email']
+                        # --- FIX: Extract and cache the secure UID ---
+                        st.session_state['user_uid'] = res['localId']
                         st.session_state['user_data'] = {}
-                        # --- FIX: Slash cookie TTL to 24h to mitigate XSS risk ---
-                        cookie_manager.set("user_email", res['email'],
+                        
+                        # --- FIX: Save UID to the cookie, not the email ---
+                        cookie_manager.set("user_uid", res['localId'],
                                            expires_at=datetime.datetime.now() + datetime.timedelta(days=1))
-                        time.sleep(0.2);
+                        time.sleep(0.2)
                         st.rerun()
                 else:
                     st.warning("Min 6 characters.")
         st.divider()
         if st.button("🚀 Try the Demo (Guest Mode)", width='stretch'):
             st.session_state.pop('logged_out_flag', None)
-            st.session_state['user_email'] = "guest_demo"
+            st.session_state['user_email'] = "guest_email@demo.com"
+            # --- FIX: Assign a mock UID for guest mode ---
+            st.session_state['user_uid'] = "guest_demo"
             
             # --- FIX: Pre-load the "Johnson Family" to demonstrate the engine's capabilities immediately ---
             st.session_state['user_data'] = {
@@ -709,9 +722,10 @@ if 'user_email' not in st.session_state:
                 }
             }
             
-            st.session_state['initialized'] = False # <--- ADD THIS RIGHT AFTER THE DICTIONARY
+            st.session_state['initialized'] = False
 
-            cookie_manager.set("user_email", "guest_demo", expires_at=datetime.datetime.now() + datetime.timedelta(days=1))
+            # --- FIX: Save mock UID to cookie ---
+            cookie_manager.set("user_uid", "guest_demo", expires_at=datetime.datetime.now() + datetime.timedelta(days=1))
             st.toast("Guest mode active: Demo profile loaded successfully!", icon="🚀")
             st.rerun()
     st.stop()
@@ -3671,10 +3685,12 @@ with st.sidebar:
             save_profile()
 
     if st.button("Logout", type="secondary", width='stretch'):
-        if cookie_manager.get("user_email"): 
+        # --- FIX: Delete the secure UID cookie ---
+        if cookie_manager.get("user_uid"): 
+            cookie_manager.delete("user_uid")
+        if cookie_manager.get("user_email"): # Clean up legacy cookies from previous versions
             cookie_manager.delete("user_email")
             
-        # --- FIX: Preserve app-level state, safely nuke user data & triggers ---
         system_keys = {'firebase_enabled', 'logged_out_flag'}
         for key in list(st.session_state.keys()):
             # Preserve system flags and the invisible cookie manager component state
@@ -3687,9 +3703,10 @@ with st.sidebar:
 
 # --- Global Contextual Banners (Guest vs. Registered) ---
 
-user_email = st.session_state.get('user_email') # <--- JUST ADD THIS LINE BACK IN
+# --- FIX: Drive logic off UID, not Email ---
+user_uid = st.session_state.get('user_uid') 
 
-if user_email == "guest_demo":
+if user_uid == "guest_demo":
     guest_col1, guest_col2 = st.columns([4, 1])
     guest_col1.info("🏃 **Guest Mode:** Your data is only stored in this browser tab. To save your progress and access it from any device, create a free account.")
     if guest_col2.button("💾 Create Account", type="primary", key="btn_guest_signup", width='stretch'):
