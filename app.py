@@ -3389,20 +3389,22 @@ with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
 
     status = get_completion_status()
+    st.sidebar.write("DEBUG STATUS:", status) # <-- ADD THIS LINE
     current_page = st.session_state.get('current_page', list(PAGES.keys())[0])
 
-    # --- FIX: Aggressive CSS for Left-Aligning Streamlit Buttons ---
+    # --- FIX: "Nuclear" CSS Specificity for Left-Alignment ---
     st.markdown("""
         <style>
-        /* Target the button itself using stable data-testids */
-        [data-testid="stSidebar"] [data-testid="stButton"] button {
+        /* Using #root to mathematically overpower external style.css rules */
+        #root [data-testid="stSidebar"] [data-testid="stButton"] > button {
             justify-content: flex-start !important;
-            padding-left: 10px !important;
+            padding-left: 1rem !important;
+            background-color: transparent; /* Allows tertiary style to work */
         }
-        /* Target the text container inside the button */
-        [data-testid="stSidebar"] [data-testid="stButton"] button p {
+        #root [data-testid="stSidebar"] [data-testid="stButton"] > button p {
             text-align: left !important;
             margin: 0 !important;
+            flex-grow: 1 !important;
         }
         </style>
     """, unsafe_allow_html=True)
