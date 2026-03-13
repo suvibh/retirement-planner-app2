@@ -1097,7 +1097,12 @@ def run_simulation(mkt_sequence, ctx):
                     continue
 
                 g = safe_num(inc.get('Override Growth (%)'), ctx['inc_g'])
-                offset_for_growth = max(0, year - max(int(start_year), ctx['current_year']))
+                
+                # --- FIX: Unlock Historical & Future Compounding ---
+                # Removes the current_year clamp so past start dates correctly inflate 
+                # to their present-day value, and future start dates compound normally.
+                offset_for_growth = max(0, year - int(start_year))
+                
                 amt = base_amt * ((1 + g / 100) ** offset_for_growth)
 
                 if cat_name == "Employer Match (401k/HSA)":
