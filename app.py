@@ -303,6 +303,22 @@ def bootstrap_session_state():
         if key not in st.session_state:
             st.session_state[key] = default_val
 
+def sync_editor_state(state_key, new_records):
+    """
+    Safely compares new data editor records against session state to prevent infinite rerun loops.
+    Forces key sorting and float sanitization before comparing JSON hashes.
+    """
+    old_records = scrub_records(st.session_state.get(state_key, []))
+    
+    # 1. Sanitize floats to 4 decimals to kill precision noise
+    # 2. sort_keys=True guarantees dictionary order doesn't trigger false positives
+    new_safe = json.dumps(sanitize_for_cache(new_records), sort_keys=True)
+    old_safe = json.dumps(sanitize_for_cache(old_records), sort_keys=True)
+    
+    if new_safe != old_safe:
+        st.session_state[state_key] = new_records
+        return True
+    return False
 
 # --- DESIGN SYSTEM & CSS ---
 if os.path.exists("style.css"):
@@ -2022,10 +2038,8 @@ def render_income():
                 elif safe_num(s_yr) > b_yr + 70:
                     st.error(f"🚨 Social Security '{html.escape(str(inc.get('Description', 'Unknown')))}': Delayed retirement credits max out at age 70 (Year {b_yr + 70}). The simulation engine will cap this.")
 
-    # --- FIX: Immediate State Commit ---
-    # We compare the JSON strings to ignore Python dict object identity mismatches
-    if json.dumps(edited_inc_records) != json.dumps(scrub_records(st.session_state.get('income_data', []))):
-        st.session_state['income_data'] = edited_inc_records
+    # --- FIX: Bulletproof State Commit ---
+    if sync_editor_state('income_data', edited_inc_records):
         st.rerun()
 
     # --- FIX: Premium Income Summary Metrics ---
@@ -2147,10 +2161,9 @@ def render_assets():
                 "Override Rent Growth (%)": st.column_config.NumberColumn("Rent Growth (%)", step=0.1, format="%.1f%%", help="Custom annual rent increase rate. Leave blank to use the global assumption.")
             }, num_rows="dynamic", width='stretch', key="re_editor", on_change=mark_dirty
         )
-        # --- FIX: Scrub and Guard Real Estate Data ---
+        # --- FIX: Bulletproof State Commit ---
         scrubbed_re = scrub_records(edited_re.to_dict('records'))
-        if json.dumps(scrubbed_re) != json.dumps(scrub_records(st.session_state.get('real_estate_data', []))):
-            st.session_state['real_estate_data'] = scrubbed_re
+        if sync_editor_state('real_estate_data', scrubbed_re):
             st.rerun()
 
     with tab_biz:
@@ -2178,10 +2191,9 @@ def render_assets():
                 "Override Dist. Growth (%)": st.column_config.NumberColumn("Income Growth (%)", step=0.1, format="%.1f%%", help="Custom annual income distribution growth. Leave blank to use global income growth.")
             }, num_rows="dynamic", width='stretch', key="biz_editor", on_change=mark_dirty
         )
-        # --- FIX: Scrub and Guard Business Data ---
+        # --- FIX: Bulletproof State Commit ---
         scrubbed_biz = scrub_records(edited_biz.to_dict('records'))
-        if json.dumps(scrubbed_biz) != json.dumps(scrub_records(st.session_state.get('business_data', []))):
-            st.session_state['business_data'] = scrubbed_biz
+        if sync_editor_state('business_data', scrubbed_biz):
             st.rerun()
 
     with tab_ast:
@@ -2215,10 +2227,9 @@ def render_assets():
                 "Stop Contrib at Ret.?": st.column_config.CheckboxColumn("Stop Adding at Ret.?", help="If checked, contributions cease the year the owner retires.")
             }, num_rows="dynamic", width='stretch', key="assets_editor", on_change=mark_dirty
         )
-        # --- FIX: Scrub and Guard Liquid Assets Data ---
+        # --- FIX: Bulletproof State Commit ---
         scrubbed_ast = scrub_records(edited_ast.to_dict('records'))
-        if json.dumps(scrubbed_ast) != json.dumps(scrub_records(st.session_state.get('liquid_assets_data', []))):
-            st.session_state['liquid_assets_data'] = scrubbed_ast
+        if sync_editor_state('liquid_assets_data', scrubbed_ast):
             st.rerun()
 
     with tab_debt:
@@ -2241,10 +2252,9 @@ def render_assets():
                 "Monthly Payment ($)": st.column_config.NumberColumn("Monthly Payment ($)", step=100, format="$%d")
             }, num_rows="dynamic", width='stretch', key="debt_editor", on_change=mark_dirty
         )
-        # --- FIX: Scrub and Guard Debt Data ---
+        # --- FIX: Bulletproof State Commit ---
         scrubbed_debt = scrub_records(edited_debt.to_dict('records'))
-        if json.dumps(scrubbed_debt) != json.dumps(scrub_records(st.session_state.get('liabilities_data', []))):
-            st.session_state['liabilities_data'] = scrubbed_debt
+        if sync_editor_state('liabilities_data', scrubbed_debt):
             st.rerun()
 
     re_eq = pd.to_numeric(edited_re['Market Value ($)'], errors='coerce').fillna(0).sum() - pd.to_numeric(
@@ -2315,9 +2325,9 @@ def render_cashflows():
     # --- FIX: Scrub NaN values to protect AI prompt integrity and prevent cache busting ---
     edited_exp_records = scrub_records(edited_exp.to_dict('records'))
     
-    # Only update and rerun if the data has actually changed to prevent infinite loops
-    if json.dumps(edited_exp_records) != json.dumps(scrub_records(st.session_state.get('lifetime_expenses', []))):
-        st.session_state['lifetime_expenses'] = edited_exp_records
+    # --- FIX: Bulletproof State Commit ---
+    edited_exp_records = scrub_records(edited_exp.to_dict('records'))
+    if sync_editor_state('lifetime_expenses', edited_exp_records):
         st.rerun()
 
     # --- FIX: AI Loading State Machine ---
