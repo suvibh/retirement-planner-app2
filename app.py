@@ -601,11 +601,18 @@ def initialize_session_state():
             life_exp = migrated if migrated else []
         st.session_state['lifetime_expenses'] = life_exp
 
+        # Fetch baseline assumptions
+        base_asm = ud.get('assumptions', {})
+        
+        # Determine a logical default for retirement tax
+        # If a retirement rate exists in the DB, use it. Otherwise, use the current rate.
+        default_retire_tax = base_asm.get('retire_tax_rate', base_asm.get('current_tax_rate', 5.0)
+
         st.session_state['assumptions'] = ud.get('assumptions', {"inflation": 3.0, "inflation_healthcare": 5.5,
                                                                  "inflation_education": 4.5, "market_growth": 7.0,
                                                                  "income_growth": 3.0, "property_growth": 3.0,
                                                                  "rent_growth": 3.0, "current_tax_rate": 5.0,
-                                                                 "retire_tax_rate": 0.0, "roth_conversions": False,
+                                                                 "retire_tax_rate": default_retire_tax, "roth_conversions": False,
                                                                  "roth_target": "24%",
                                                                  "withdrawal_strategy": "Standard",
                                                                  "stress_test": False, "glidepath": True,
@@ -2725,7 +2732,18 @@ def render_simulation():
         rent_g = ai_number_input("Rent Growth (%)", 'rent_growth', f"Projected average annual rent increase rate for {curr_city_flow_clean}? Return JSON: {{'rent_growth': float}}", ac7, help_text="Expected annual increase in rental income you receive.")
         cur_t = ai_number_input("Current State Tax (%)", 'current_tax_rate', f"User lives in {curr_city_flow_clean} with ${curr_inc_total:,.0f} income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'current_tax_rate': float}}", ac8, help_text="Your estimated effective state and local tax rate while working.")
         with ac8: st.caption("*(Note: Applied to Fed AGI. If your state does not allow 401k deductions, adjust slightly higher.)*")
-        ret_t = ai_number_input("Retire State Tax (%)", 'retire_tax_rate', f"User plans to retire in {ret_city_flow_clean} with estimated retirement income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'retire_tax_rate': float}}", ac9, help_text="Your estimated effective state and local tax rate during retirement.")
+        
+        ret_city_flow = st.session_state.get('retire_city_flow', '')
+        # Fallback to current city if retirement city is blank
+        target_city = ret_city_flow if ret_city_flow.strip() != "" else curr_city_flow_clean
+        
+        ret_t = ai_number_input(
+            "Retire State Tax (%)", 
+            'retire_tax_rate', 
+            f"User plans to retire in {target_city}. Current working income state tax is {cur_t}%. Suggest effective STATE/LOCAL income tax rate ONLY for retirement income. Return JSON: {{'retire_tax_rate': float}}", 
+            ac9, 
+            help_text="Your estimated effective state and local tax rate during retirement."
+        )
 
         ac10, _, _ = st.columns(3)
         shortfall_rate = ai_number_input("Shortfall Penalty/Borrowing Rate (%)", 'shortfall_rate', f"What is a realistic personal loan or credit card interest rate for someone forced to borrow during retirement shortfalls? Return JSON: {{'shortfall_rate': float}}", ac10, help_text="The interest rate charged on 'Unfunded Debt' if you run out of money and are forced to borrow to cover living expenses.")
