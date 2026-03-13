@@ -2722,24 +2722,20 @@ def render_simulation():
                             ("Real Estate Growth", "prop_g", -1.5, 1.5, "%")
                         ]
                         
-                        def run_scenario(shift):
+                        # --- FIX: Explicitly require scenario_key to prevent closure leaks ---
+                        def run_scenario(shift, scenario_key):
                                 c = json.loads(base_ctx_json)
                                 
-                                if key == 'ret_age':
-                                    # NOTE: We shift the retirement milestone year, but intentionally leave
-                                    # primary_end_year/max_years untouched. This ensures we compare all 
-                                    # scenarios at the same 'End of Life' timestamp for a valid delta.
+                                if scenario_key == 'ret_age':
                                     c['primary_retire_year'] += int(shift)
                                     if c['has_spouse']: c['spouse_retire_year'] += int(shift)
-                                elif key == 'expenses':
+                                elif scenario_key == 'expenses':
                                     for e in c['exp_records']: 
-                                        # --- FIX: Only shift records that actually have an amount ---
-                                        # This prevents zeroing out uninitialized rows which would skew the sensitivity delta.
                                         raw_amt = e.get('Amount ($)')
                                         if raw_amt is not None and str(raw_amt).strip() != "":
                                             e['Amount ($)'] = safe_num(raw_amt) * (1 + shift/100.0)
                                 else:
-                                    c[key] += shift
+                                    c[scenario_key] += shift
                                     
                                 m_seq = tuple([c['mkt']] * (c['max_years'] + 1))
                                 
@@ -2753,10 +2749,10 @@ def render_simulation():
                         
                         results = []
                         for name, key, down_val, up_val, unit in sens_scenarios:
-
-
-                            nw_down = run_scenario(down_val)
-                            nw_up = run_scenario(up_val)
+                            
+                            # --- FIX: Pass the loop variable directly into the function ---
+                            nw_down = run_scenario(down_val, key)
+                            nw_up = run_scenario(up_val, key)
                             
                             d_down = nw_down - base_nw_sens
                             d_up = nw_up - base_nw_sens
