@@ -368,6 +368,7 @@ def sync_editor_state(state_key, new_records):
     
     if new_safe != old_safe:
         st.session_state[state_key] = new_records
+        mark_dirty()  # <--- FIX: THE MISSING LINK!
         return True
     return False
 
