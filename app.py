@@ -2232,6 +2232,10 @@ def render_assets():
 
 
 def render_cashflows():
+    # --- FIX: Reset the AI confirmation gate whenever this page is freshly loaded ---
+    # This prevents the warning from appearing automatically if the user navigated away mid-confirmation.
+    st.session_state.pop('confirm_budget_overwrite', None)
+    
     section_header("Lifetime Cash Flows", "Map out budgets and milestones. Do not double-count housing or debt.", "💸")
     info_banner(
         "Healthcare Note: Assume you are covered by employer-sponsored healthcare while working. The engine automatically builds in Pre-Medicare gaps, Medicare premium cliffs at age 65, and IRMAA surcharges.")
@@ -2680,6 +2684,9 @@ def render_simulation():
                                 c = json.loads(base_ctx_json)
                                 
                                 if key == 'ret_age':
+                                    # NOTE: We shift the retirement milestone year, but intentionally leave
+                                    # primary_end_year/max_years untouched. This ensures we compare all 
+                                    # scenarios at the same 'End of Life' timestamp for a valid delta.
                                     c['primary_retire_year'] += int(shift)
                                     if c['has_spouse']: c['spouse_retire_year'] += int(shift)
                                 elif key == 'expenses':
