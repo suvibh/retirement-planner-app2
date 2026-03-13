@@ -2196,12 +2196,13 @@ def render_income():
     
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- FIX: AI Loading State Machine ---
-    is_loading = st.session_state.get('ai_loading', False)
-    
+    # --- FIX: AI State & API Key Guard ---
+    ai_disabled = st.session_state.get('ai_loading', False) or not GEMINI_API_KEY
+    tooltip = "⚠️ Gemini API Key missing in secrets.toml" if not GEMINI_API_KEY else "Use AI to estimate your benefit based on age and income"
+
     col_ai_inc, _ = st.columns([3, 1])
     with col_ai_inc:
-        if st.button("✨ Auto-Estimate My Social Security (AI)", type="primary", width='stretch', disabled=is_loading):
+        if st.button("✨ Auto-Estimate My Social Security (AI)", type="primary", width='stretch', disabled=ai_disabled, help=tooltip):
             st.session_state['trigger_ss_ai'] = True
             st.session_state['ai_loading'] = True
             st.rerun()
@@ -2454,20 +2455,19 @@ def render_cashflows():
     if sync_editor_state('lifetime_expenses', edited_exp_records):
         st.rerun()
 
-    # --- FIX: AI Loading State Machine ---
-    is_loading = st.session_state.get('ai_loading', False)
-    
-    # --- FIX: AI Safety Confirmation Gate ---
+    # --- FIX: AI State & API Key Guard ---
+    ai_disabled = st.session_state.get('ai_loading', False) or not GEMINI_API_KEY
+    tooltip = "⚠️ Gemini API Key missing in secrets.toml" if not GEMINI_API_KEY else "Auto-generate realistic expenses based on your city and family size"
+
     col_ai_cb, _ = st.columns([3, 1])
     
     # Count how many rows are currently marked as AI-generated
     ai_row_count = len([x for x in st.session_state.get('lifetime_expenses', []) if x.get('AI Estimate?')])
-    is_loading = st.session_state.get('ai_loading', False)
 
     with col_ai_cb:
         if not st.session_state.get('confirm_budget_overwrite', False):
             # Step 1: Initial Trigger
-            if st.button("✨ Auto-Estimate Budget & Milestones (AI)", type="primary", width='stretch', disabled=is_loading):
+            if st.button("✨ Auto-Estimate Budget & Milestones (AI)", type="primary", width='stretch', disabled=ai_disabled, help=tooltip):
                 if ai_row_count > 0:
                     st.session_state['confirm_budget_overwrite'] = True
                     st.rerun()
@@ -2562,7 +2562,10 @@ def render_simulation():
     section_header("Simulation", "Fine-tune your timeline and run Monte Carlo scenarios.", "📈")
 
     def ai_number_input(label, state_key, prompt, col, help_text=""):
-        is_loading = st.session_state.get('ai_loading', False)
+        # --- FIX: AI State & API Key Guard ---
+        ai_disabled = st.session_state.get('ai_loading', False) or not GEMINI_API_KEY
+        tooltip = "⚠️ Gemini API Key missing in secrets.toml" if not GEMINI_API_KEY else f"AI Estimate for {label}"
+        
         with col:
             sub_c1, sub_c2 = st.columns([5, 2])
             widget_key = f"in_{state_key}"
@@ -2578,8 +2581,8 @@ def render_simulation():
 
             sub_c2.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
             
-            # Disable the button if ANY AI call is running
-            if sub_c2.button("✨ AI", key=f"btn_{state_key}", help=f"AI Estimate for {label}", width='stretch', type="primary", disabled=is_loading):
+            # Disable the button if ANY AI call is running OR the key is missing
+            if sub_c2.button("✨ AI", key=f"btn_{state_key}", help=tooltip, width='stretch', type="primary", disabled=ai_disabled):
                 st.session_state[f'trigger_ai_{state_key}'] = True
                 st.session_state['ai_loading'] = True
                 st.rerun()
@@ -3246,12 +3249,14 @@ def render_ai():
     else:
         sim_summary, ai_assumptions, timeline_summary = {}, {}, []
 
-    is_loading = st.session_state.get('ai_loading', False)
+    # --- FIX: AI State & API Key Guard ---
+    ai_disabled = st.session_state.get('ai_loading', False) or not GEMINI_API_KEY
+    tooltip = "⚠️ Gemini API Key missing in secrets.toml" if not GEMINI_API_KEY else "Run AI Analysis"
     
     tab_report, tab_whatif = st.tabs(["📊 Comprehensive Health Report", "🔮 What-If Simulator"])
     
     with tab_report:
-        if st.button("✨ Generate Comprehensive AI Report", type="primary", width='stretch', key="btn_report", disabled=is_loading):
+        if st.button("✨ Generate Comprehensive AI Report", type="primary", width='stretch', key="btn_report", disabled=ai_disabled, help=tooltip):
             st.session_state['trigger_report_ai'] = True
             st.session_state['ai_loading'] = True
             st.rerun()
@@ -3285,7 +3290,7 @@ def render_ai():
     with tab_whatif:
         what_if_query = st.text_area("Ask the AI to simulate a scenario (e.g., 'What if I sold my rental property in 2030 and put the cash in my brokerage?')", key="what_if_text")
         
-        if st.button("✨ Run What-If Analysis (AI)", type="primary", width='stretch', key="btn_whatif", disabled=is_loading):
+        if st.button("✨ Run What-If Analysis (AI)", type="primary", width='stretch', key="btn_whatif", disabled=ai_disabled, help=tooltip):
             st.session_state['trigger_whatif_ai'] = True
             st.session_state['ai_loading'] = True
             st.rerun()
