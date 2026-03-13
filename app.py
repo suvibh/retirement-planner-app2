@@ -1725,25 +1725,42 @@ def run_simulation(mkt_sequence, ctx):
         # --- FIX: Post-Roth IRMAA Penalty Trap & Milestone Tracking ---
         final_irmaa = get_irmaa_surcharge(pre_tax_ord, active_mfj, year_offset, ctx['infl'], num_medicare)
         
-        # If the Roth conversion actively pushed us into a higher penalty tier, log the delta
+        # --- FIX: State Tracking for IRMAA Milestones ---
+        if final_irmaa > 0:
+            # 1. Only show "Triggered" milestone the VERY FIRST time it happens
+            if not irmaa_triggered:
+                if year not in milestones_by_year: milestones_by_year[year] = []
+                milestones_by_year[year].append({
+                    "desc": "📉 Medicare IRMAA Surcharge Triggered", 
+                    "amt": final_irmaa, 
+                    "type": "system"
+                })
+                irmaa_triggered = True # This locks it so it never triggers again
+            
+            # 2. Only show "Tier Jumped" if the new penalty is significantly higher than the last peak
+            # (Using a $500 buffer to ignore small inflationary adjustments)
+            if final_irmaa > last_irmaa_tier + 500:
+                if year not in milestones_by_year: milestones_by_year[year] = []
+                milestones_by_year[year].append({
+                    "desc": "📉 Medicare IRMAA Tier Jumped", 
+                    "amt": final_irmaa, 
+                    "type": "system"
+                })
+                last_irmaa_tier = final_irmaa # Update the high-water mark
+
+        # 3. Roth Conversion Penalty Logic - Ensure this also only fires once
         irmaa_penalty_jump = final_irmaa - baseline_irmaa
-        if irmaa_penalty_jump > 0:
+        if irmaa_penalty_jump > 0 and not a.get('roth_irmaa_logged'):
             total_exp += irmaa_penalty_jump
             yd["Expense: Medicare IRMAA Surcharge"] = yd.get("Expense: Medicare IRMAA Surcharge", 0) + irmaa_penalty_jump
             
             if year not in milestones_by_year: milestones_by_year[year] = []
-            milestones_by_year[year].append({"desc": "📉 Roth Conversion Triggered IRMAA Penalty", "amt": irmaa_penalty_jump, "type": "system"})
-
-        # Milestone tracking for UI
-        if final_irmaa > 0:
-            if not irmaa_triggered:
-                if year not in milestones_by_year: milestones_by_year[year] = []
-                milestones_by_year[year].append({"desc": "📉 Medicare IRMAA Surcharge Triggered", "amt": final_irmaa, "type": "system"})
-                irmaa_triggered = True
-            if final_irmaa > last_irmaa_tier + 500:
-                if year not in milestones_by_year: milestones_by_year[year] = []
-                milestones_by_year[year].append({"desc": "📉 Medicare IRMAA Tier Jumped", "amt": final_irmaa, "type": "system"})
-                last_irmaa_tier = final_irmaa
+            milestones_by_year[year].append({
+                "desc": "📉 Roth Conversion Triggered IRMAA Penalty", 
+                "amt": irmaa_penalty_jump, 
+                "type": "system"
+            })
+            a['roth_irmaa_logged'] = True # Lock this specific warning
 
         if user_out_of_pocket_contribs > 0:
             yd["Expense: Portfolio Contributions"] = user_out_of_pocket_contribs
