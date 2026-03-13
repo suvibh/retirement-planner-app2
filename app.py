@@ -974,8 +974,9 @@ def run_simulation(mkt_sequence, ctx):
         # --- NEW: Track Roth Taxes separately for the year ---
         roth_fed_tax_paid = 0.0
         roth_state_tax_paid = 0.0
-
+        total_withdrawals = 0
         annual_inc, annual_ss, pre_tax_ord, total_tax = 0, 0, 0, 0
+
         earned_income_me, earned_income_spouse = 0, 0
         match_income_by_owner = {"Me": 0, "Spouse": 0, "Joint": 0}
 
@@ -1364,8 +1365,9 @@ def run_simulation(mkt_sequence, ctx):
                                 if amount_to_cover <= 0: break
 
                     if covered_by_529 > 0:
-                        annual_inc += covered_by_529
-                        yd[f"Income: Tax-Free 529 Withdrawal ({desc})"] = covered_by_529
+                        # --- FIX 2: Categorize as Asset Drawdown, not Organic Salary ---
+                        total_withdrawals += covered_by_529
+                        yd[f"Income: Withdrawal (529 Plan for {desc})"] = covered_by_529
 
         if ctx['medicare_gap'] and is_retired and my_current_age < 65:
             income_factor = min(1.0, max(0.0, pre_tax_ord / 100000.0))
@@ -1592,33 +1594,38 @@ def run_simulation(mkt_sequence, ctx):
         if user_out_of_pocket_contribs > 0:
             yd["Expense: Portfolio Contributions"] = user_out_of_pocket_contribs
 
-        organic_cash_outflows = total_exp + user_out_of_pocket_contribs + yd["Expense: Taxes"]
+        # --- FIX 3: Clean Cash Flow Accounting ---
+        organic_cash_outflows = total_exp + user_out_of_pocket_contribs + yd.get("Expense: Taxes", 0)
+        
+        # Organic Net is strictly Income minus Outflows (Will correctly dip negative during college)
         organic_net_cash_flow = annual_inc - organic_cash_outflows
         yd["Organic Net Savings"] = organic_net_cash_flow
 
-        total_withdrawals = 0
+        # Effective cash flow is the actual remainder AFTER 529 assets were withdrawn to help
+        effective_net_cash_flow = organic_net_cash_flow + total_withdrawals
 
-        if organic_net_cash_flow > 0:
-            yd["Expense: Surplus Reinvested"] = organic_net_cash_flow
+        if effective_net_cash_flow > 0:
+            yd["Expense: Surplus Reinvested"] = effective_net_cash_flow
             if unfunded_debt_bal > 0:
-                payoff = min(organic_net_cash_flow, unfunded_debt_bal)
+                payoff = min(effective_net_cash_flow, unfunded_debt_bal)
                 unfunded_debt_bal -= payoff
-                organic_net_cash_flow -= payoff
-            if organic_net_cash_flow > 0 and sim_assets:
+                effective_net_cash_flow -= payoff
+            
+            if effective_net_cash_flow > 0 and sim_assets:
                 taxable_acct = next((a for a in sim_assets if a.get('Type') == 'Brokerage (Taxable)'), None)
                 if not taxable_acct:
                     taxable_acct = next((a for a in sim_assets if a.get('Type') in ['Checking/Savings', 'HYSA', 'Unallocated Cash']), None)
 
                 if taxable_acct:
-                    taxable_acct['bal'] += organic_net_cash_flow
+                    taxable_acct['bal'] += effective_net_cash_flow
                 else:
                     new_cash_acct = {"Account Name": "Unallocated Cash", "Type": "Checking/Savings", "Owner": "Me",
-                                     "bal": organic_net_cash_flow, "contrib": 0.0, "growth": 0.0, "stop_at_ret": False}
+                                     "bal": effective_net_cash_flow, "contrib": 0.0, "growth": 0.0, "stop_at_ret": False}
                     sim_assets.append(new_cash_acct)
 
-        elif organic_net_cash_flow < 0:
-            shortfall = abs(organic_net_cash_flow)
-
+        elif effective_net_cash_flow < 0:
+            shortfall = abs(effective_net_cash_flow)
+            
             # --- FIX: Insulate Shortfall Withdrawals from Roth Tax Spikes ---
             # Pass tax_base_ord_pre and marginal_rate_pre_conversion to all _withdraw calls
             # so necessary emergency withdrawals aren't penalized by voluntary conversions.
