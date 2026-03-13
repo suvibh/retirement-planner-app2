@@ -3391,16 +3391,16 @@ with st.sidebar:
     status = get_completion_status()
     current_page = st.session_state.get('current_page', list(PAGES.keys())[0])
 
-    # --- FIX: Bulletproof CSS for Left-Aligning Streamlit Buttons ---
+    # --- FIX: Aggressive CSS for Left-Aligning Streamlit Buttons ---
     st.markdown("""
         <style>
-        /* Force the button container to flex left */
-        [data-testid="stSidebar"] div.stButton > button {
+        /* Target the button itself using stable data-testids */
+        [data-testid="stSidebar"] [data-testid="stButton"] button {
             justify-content: flex-start !important;
-            padding-left: 0.5rem !important;
+            padding-left: 10px !important;
         }
-        /* Force the actual text inside the button to align left */
-        [data-testid="stSidebar"] div.stButton > button p {
+        /* Target the text container inside the button */
+        [data-testid="stSidebar"] [data-testid="stButton"] button p {
             text-align: left !important;
             margin: 0 !important;
         }
@@ -3417,14 +3417,29 @@ with st.sidebar:
         "💸 Cash Flows"
     ]
 
+    # --- FIX: Reliable Checkmark Logic (Substring Matching) ---
     for page_name in PAGES.keys():
-        is_complete = status.get(page_name, False)
+        is_complete = False
+        is_setup_page = False
         
-        # Only apply the checkmark logic to the 4 core setup pages
-        if page_name in setup_pages:
+        # Substring matching bypasses the "Emoji vs No Emoji" dictionary key mismatch
+        if "Profile" in page_name:
+            is_setup_page = True
+            is_complete = status.get(page_name, status.get("Profile & Family", False))
+        elif "Income" in page_name:
+            is_setup_page = True
+            is_complete = status.get(page_name, status.get("Income Streams", False))
+        elif "Assets" in page_name:
+            is_setup_page = True
+            is_complete = status.get(page_name, status.get("Assets & Debts", False))
+        elif "Cash" in page_name:
+            is_setup_page = True
+            is_complete = status.get(page_name, status.get("Cash Flows", False))
+
+        # Assign the checkmark or the invisible spacing block
+        if is_setup_page:
             prefix = "✅ " if is_complete else "  " # Unicode Em Space
         else:
-            # Dashboard, Simulation, AI, etc. just get a blank space so they align perfectly
             prefix = "  " 
 
         label = f"{prefix}{page_name}"
@@ -3464,7 +3479,7 @@ with st.sidebar:
     # ------------------------------------------------
 
     save_btn_label = "⚠️ Save Changes" if st.session_state.get('dirty', False) else "🚀 Save Profile"
-    
+
     if st.button(save_btn_label, type="primary", use_container_width=True):
         save_profile()
 
