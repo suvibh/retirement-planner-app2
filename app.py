@@ -2049,13 +2049,21 @@ def render_dashboard():
                                                               'Surplus Reinvested'] else 'rgba(244, 63, 94, 0.4)')
 
     if total_inflow > 0 and HAS_PLOTLY:
+        # --- FIX: Dynamic UI Scaling for Sankey Heights ---
+        # Calculate exactly how many items are currently active on the screen
+        num_nodes = len(inflows) + len(outflows) + 1
+        
+        # Give each node 60px of breathing room, capped between 400px and 1200px
+        dynamic_height = max(400, min(1200, num_nodes * 60))
+
         fig_sankey = go.Figure(data=[go.Sankey(arrangement="snap",
                                                node=dict(pad=35, thickness=30, line=dict(color="black", width=0.5),
                                                          label=labels, color=node_colors),
                                                textfont=dict(color="black", size=12),
                                                link=dict(source=source, target=target, value=value,
                                                          color=link_colors))])
-        fig_sankey.update_layout(height=900, margin=dict(l=0, r=0, t=30, b=50), font=dict(size=12))
+                                                         
+        fig_sankey.update_layout(height=dynamic_height, margin=dict(l=0, r=0, t=30, b=50), font=dict(size=12))
         st.plotly_chart(fig_sankey, width='stretch')
 
 def render_profile():
