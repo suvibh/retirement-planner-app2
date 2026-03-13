@@ -2678,9 +2678,7 @@ def render_simulation():
                             ("Real Estate Growth", "prop_g", -1.5, 1.5, "%")
                         ]
                         
-                        results = []
-                        for name, key, down_val, up_val, unit in sens_scenarios:
-                            def run_scenario(shift):
+                        def run_scenario(shift):
                                 c = json.loads(base_ctx_json)
                                 
                                 if key == 'ret_age':
@@ -2708,6 +2706,10 @@ def render_simulation():
                                 if view_todays_dollars:
                                     val /= ((1 + c['infl'] / 100) ** c['max_years'])
                                 return val
+                        
+                        results = []
+                        for name, key, down_val, up_val, unit in sens_scenarios:
+
 
                             nw_down = run_scenario(down_val)
                             nw_up = run_scenario(up_val)
