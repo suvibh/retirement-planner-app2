@@ -3302,7 +3302,6 @@ def render_ai():
             st.rerun()
             
         if st.session_state.get('trigger_report_ai'):
-            if st.session_state.get('trigger_report_ai'):
             try:
                 if check_ai_rate_limit():
                     if sim_summary:
