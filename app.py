@@ -540,6 +540,8 @@ def initialize_session_state():
         st.session_state['dirty'] = False
         st.session_state['initialized'] = True
 
+        # --- FIX: Automate the "second click" to lock data into memory ---
+        st.rerun()
 
 if 'user_email' not in st.session_state:
     saved_email = cookie_manager.get(cookie="user_email")
