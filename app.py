@@ -615,8 +615,9 @@ if 'user_email' not in st.session_state:
                     st.session_state['user_email'] = res['email'];
                     st.session_state['user_data'] = load_user_data(res['email'])
                     st.session_state['initialized'] = False # <--- ADD THIS HERE
+                    # --- FIX: Slash cookie TTL to 24h to mitigate XSS risk ---
                     cookie_manager.set("user_email", res['email'],
-                                       expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
+                                       expires_at=datetime.datetime.now() + datetime.timedelta(days=1))
                     time.sleep(0.2);
                     st.rerun()
                 else:
@@ -630,8 +631,9 @@ if 'user_email' not in st.session_state:
                         st.session_state.pop('logged_out_flag', None)
                         st.session_state['user_email'] = res['email'];
                         st.session_state['user_data'] = {}
+                        # --- FIX: Slash cookie TTL to 24h to mitigate XSS risk ---
                         cookie_manager.set("user_email", res['email'],
-                                           expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
+                                           expires_at=datetime.datetime.now() + datetime.timedelta(days=1))
                         time.sleep(0.2);
                         st.rerun()
                 else:
