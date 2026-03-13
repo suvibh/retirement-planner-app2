@@ -3302,17 +3302,29 @@ def render_ai():
             st.rerun()
             
         if st.session_state.get('trigger_report_ai'):
+            if st.session_state.get('trigger_report_ai'):
             try:
                 if check_ai_rate_limit():
                     if sim_summary:
-                        with st.spinner("AI processing alternative timelines and computing what-if scenario..."):
-                            # --- FIX: Armor the payload and user text against injection ---
+                        with st.spinner("AI extracting timeseries data and acting as fiduciary advisor..."):
+                            
+                            # --- FIX: Extract their current SS plan to give the AI context ---
+                            ss_context = [r for r in sim_ctx['inc_records'] if r.get('Category') == 'Social Security']
+                            
+                            # Armor the payload against injection
                             safe_summary = json.dumps(sanitize_for_ai(sim_summary))
                             safe_assumptions = json.dumps(sanitize_for_ai(ai_assumptions))
                             safe_timeline = json.dumps(sanitize_for_ai(timeline_summary))
-                            safe_query = sanitize_for_ai(what_if_query)
+                            safe_ss = json.dumps(sanitize_for_ai(ss_context))
                             
-                            prompt = f"Act as an expert fiduciary financial planner. Review this user's baseline simulation summary: {safe_summary}, their baseline economic assumptions: {safe_assumptions}, and their chronological 5-year cash flow progression: {safe_timeline}. The user wants to run the following 'what-if' scenario: '{safe_query}'. Analyze how this change would mathematically and strategically impact their net worth, cash flow, and tax strategy compared to their baseline assumptions. Provide a highly detailed, reasonable estimate and tactical breakdown of this scenario. Format your response in clean Markdown."
+                            prompt = f"""Act as an expert fiduciary financial planner. Review this user's summary: {safe_summary}, their core economic assumptions: {safe_assumptions}, their current Social Security plan: {safe_ss}, and their chronological 5-year cash flow progression: {safe_timeline}. 
+                            Provide a highly detailed, year-by-year or phase-by-phase tactical analysis based strictly on these parameters. 
+                            
+                            CRITICAL INSTRUCTION 1: You MUST include a distinct, bolded section titled "Roth Conversion Strategy Blueprint". In this section, provide actionable, mathematical advice on EXACTLY when they should execute Roth conversions. For example: "Between ages X and Y, convert $Z per year to fill the 24% bracket before RMDs begin at age 75." Be as specific as possible using their exact numbers and tax data.
+                            
+                            CRITICAL INSTRUCTION 2: You MUST include a distinct, bolded section titled "Social Security Optimization". Analyze their currently planned claiming ages. Mathematically recommend whether they should stick to this plan, claim earlier to preserve portfolio capital, or delay to age 70 for maximum delayed retirement credits and survivor benefits. Heavily weigh their specified life expectancy and available liquid cash.
+                            
+                            Format your response in clean Markdown."""
 
                             res = call_gemini_text(prompt)
                             if res:
