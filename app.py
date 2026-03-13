@@ -3728,30 +3728,36 @@ with st.sidebar:
         time.sleep(0.5)
         st.rerun()
 
-# --- Global Contextual Banners (Guest vs. Registered) ---
+# =====================================================================
+# --- FINAL PAGE ROUTING & ISOLATED BANNERS ---
+# =====================================================================
 
-# --- FIX: Drive logic off UID, not Email ---
-user_uid = st.session_state.get('user_uid') 
+# 1. Reserve an empty, isolated container at the top of the screen.
+# This prevents the warning banner from shifting the DOM and resetting your tabs!
+banner_placeholder = st.empty()
 
-if user_uid == "guest_demo":
-    guest_col1, guest_col2 = st.columns([4, 1])
-    guest_col1.info("🏃 **Guest Mode:** Your data is only stored in this browser tab. To save your progress and access it from any device, create a free account.")
-    if guest_col2.button("💾 Create Account", type="primary", key="btn_guest_signup", width='stretch'):
-        st.session_state.clear()
-        st.rerun()
-    st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
-
-elif st.session_state.get('dirty', False):
-    warn_col1, warn_col2 = st.columns([5, 1])
-    warn_col1.warning("⚠️ **Unsaved Changes Detected:** You have modified your financial blueprint. Don't forget to save your profile to the cloud before closing the app!")
-    if warn_col2.button("💾 Save Now", type="primary", key="btn_global_save", width='stretch'):
-        save_profile()
-    st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
-
-# --- Render the Active Page ---
-# FIX: Officially lock the default page into memory on a fresh reload
+# 2. Render the Active Page safely below the placeholder
 if 'current_page' not in st.session_state:
     st.session_state['current_page'] = "🏠 Dashboard"
 
 if st.session_state['current_page'] in PAGES:
     PAGES[st.session_state['current_page']]()
+
+# 3. Inject the Global Contextual Banners INTO the reserved placeholder
+with banner_placeholder.container():
+    user_uid = st.session_state.get('user_uid') 
+
+    if user_uid == "guest_demo":
+        guest_col1, guest_col2 = st.columns([4, 1])
+        guest_col1.info("🏃 **Guest Mode:** Your data is only stored in this browser tab. To save your progress and access it from any device, create a free account.")
+        if guest_col2.button("💾 Create Account", type="primary", key="btn_guest_signup", width='stretch'):
+            st.session_state.clear()
+            st.rerun()
+        st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
+
+    elif st.session_state.get('dirty', False):
+        warn_col1, warn_col2 = st.columns([5, 1])
+        warn_col1.warning("⚠️ **Unsaved Changes Detected:** You have modified your financial blueprint. Don't forget to save your profile to the cloud before closing the app!")
+        if warn_col2.button("💾 Save Now", type="primary", key="btn_global_save", width='stretch'):
+            save_profile()
+        st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
