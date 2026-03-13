@@ -3389,59 +3389,43 @@ with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
 
     status = get_completion_status()
-    st.sidebar.write("DEBUG STATUS:", status) # <-- ADD THIS LINE
     current_page = st.session_state.get('current_page', list(PAGES.keys())[0])
 
-    # --- FIX: "Nuclear" CSS Specificity for Left-Alignment ---
+    # --- FIX: High-Specificity CSS for Left Alignment ---
     st.markdown("""
         <style>
-        /* Using #root to mathematically overpower external style.css rules */
-        #root [data-testid="stSidebar"] [data-testid="stButton"] > button {
+        /* Force the button container itself to left-align */
+        section[data-testid="stSidebar"] .stButton button {
             justify-content: flex-start !important;
-            padding-left: 1rem !important;
-            background-color: transparent; /* Allows tertiary style to work */
+            padding-left: 15px !important;
+            width: 100% !important;
         }
-        #root [data-testid="stSidebar"] [data-testid="stButton"] > button p {
+        /* Force the inner text paragraph to left-align */
+        section[data-testid="stSidebar"] .stButton button p {
             text-align: left !important;
             margin: 0 !important;
-            flex-grow: 1 !important;
         }
         </style>
     """, unsafe_allow_html=True)
 
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
 
-    # --- FIX: Reliable Checkmark Logic (Accounting for Emojis in Keys) ---
-    setup_pages = [
-        "👤 Profile & Family", 
-        "💵 Income Streams", 
-        "🏛️ Assets & Debts", 
-        "💸 Cash Flows"
-    ]
+    # --- FIX: Map UI Page Names to Exact Backend Keys ---
+    status_key_map = {
+        "👤 Profile & Family": "profile",
+        "💵 Income Streams": "income",
+        "🏛️ Assets & Debts": "assets",
+        "💸 Cash Flows": "expenses"
+    }
 
-    # --- FIX: Reliable Checkmark Logic (Substring Matching) ---
     for page_name in PAGES.keys():
-        is_complete = False
-        is_setup_page = False
-        
-        # Substring matching bypasses the "Emoji vs No Emoji" dictionary key mismatch
-        if "Profile" in page_name:
-            is_setup_page = True
-            is_complete = status.get(page_name, status.get("Profile & Family", False))
-        elif "Income" in page_name:
-            is_setup_page = True
-            is_complete = status.get(page_name, status.get("Income Streams", False))
-        elif "Assets" in page_name:
-            is_setup_page = True
-            is_complete = status.get(page_name, status.get("Assets & Debts", False))
-        elif "Cash" in page_name:
-            is_setup_page = True
-            is_complete = status.get(page_name, status.get("Cash Flows", False))
-
-        # Assign the checkmark or the invisible spacing block
-        if is_setup_page:
+        # Check if this page is one of the 4 setup pages
+        if page_name in status_key_map:
+            dict_key = status_key_map[page_name]
+            is_complete = status.get(dict_key, False)
             prefix = "✅ " if is_complete else "  " # Unicode Em Space
         else:
+            # Dashboard, Simulation, AI, etc. get blank space for perfect alignment
             prefix = "  " 
 
         label = f"{prefix}{page_name}"
