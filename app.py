@@ -2879,17 +2879,20 @@ def render_simulation():
                         # Vectorized sequence generation
                         mc_matrix = np.random.normal(loc=sim_ctx['mkt'], scale=mc_vol, size=(mc_runs, years_count))
                         mc_matrix = np.maximum(-99.0, mc_matrix)
-                        random_sequences = [tuple(row) for row in mc_matrix]
+                        
+                        # --- FIX: C-Optimized instantly generated list of lists ---
+                        random_sequences = mc_matrix.tolist()
 
                         # 1. Create the immutable JSON string in the main thread FIRST
-                        # (Use clean_ctx if you already implemented the float scrubber here, otherwise sim_ctx)
                         ctx_json_mc = json.dumps(sim_ctx)
                         
                         # 2. Define a worker function that deserializes INSIDE the isolated thread
-                        def thread_worker(seq_tuple, ctx_str):
+                        def thread_worker(seq_list, ctx_str):
                             # json.loads guarantees 100% pure Python dicts with zero shared memory references
                             isolated_ctx = json.loads(ctx_str)
-                            return run_simulation(list(seq_tuple), isolated_ctx)
+                            
+                            # --- FIX: Pass the native list directly, no redundant tuple casting ---
+                            return run_simulation(seq_list, isolated_ctx)
 
                         try:
                             with ThreadPoolExecutor(max_workers=min(mc_runs, 8)) as executor:
