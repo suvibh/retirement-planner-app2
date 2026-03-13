@@ -2773,7 +2773,7 @@ def render_simulation():
                             ("Real Estate Growth", "prop_g", -1.5, 1.5, "%")
                         ]
                         
-                        # --- FIX: Explicitly require scenario_key to prevent closure leaks ---
+                        # --- FIX: Direct Engine Call (Bypasses Cache Lock & Pandas Overhead) ---
                         def run_scenario(shift, scenario_key):
                                 c = json.loads(base_ctx_json)
                                 
@@ -2788,47 +2788,53 @@ def render_simulation():
                                 else:
                                     c[scenario_key] += shift
                                     
-                                m_seq = tuple([c['mkt']] * (c['max_years'] + 1))
+                                m_seq = list([c['mkt']] * (c['max_years'] + 1))
                                 
-                                # --- FIX: Fast MD5 Caching ---
-                                clean_scenario_ctx = sanitize_for_cache(c)
-                                scen_json = json.dumps(clean_scenario_ctx, sort_keys=True)
-                                scen_hash = hashlib.md5(scen_json.encode('utf-8')).hexdigest()
-                                
-                                df_s, _, _, _ = execute_sim_engine_v8(m_seq, scen_hash, scen_json)
-                                val = df_s.iloc[-1]['Net Worth'] if not df_s.empty else 0
+                                # Call bare-metal engine directly (returns lists of dicts, not DataFrames)
+                                s_res, _, _, _ = run_simulation(m_seq, c)
+                                val = s_res[-1]['Net Worth'] if s_res else 0
                                 
                                 if view_todays_dollars:
-                                    val /= ((1 + c['infl'] / 100) ** c['max_years'])
+                                    val /= ((1 + c['infl'] / 100.0) ** c['max_years'])
                                 return val
                         
                         results = []
-                        for name, key, down_val, up_val, unit in sens_scenarios:
+                        
+                        # --- FIX: Execute all 10 alternate timelines simultaneously ---
+                        with ThreadPoolExecutor(max_workers=10) as executor:
+                            future_map = {}
                             
-                            # --- FIX: Pass the loop variable directly into the function ---
-                            nw_down = run_scenario(down_val, key)
-                            nw_up = run_scenario(up_val, key)
-                            
-                            d_down = nw_down - base_nw_sens
-                            d_up = nw_up - base_nw_sens
-                            
-                            if d_up > d_down:
-                                p_d, n_d = d_up, d_down
-                                p_l = f"+{up_val}{unit}" if up_val > 0 else f"{up_val}{unit}"
-                                n_l = f"{down_val}{unit}" if down_val < 0 else f"+{down_val}{unit}"
-                            else:
-                                p_d, n_d = d_down, d_up
-                                p_l = f"{down_val}{unit}" if down_val < 0 else f"+{down_val}{unit}"
-                                n_l = f"+{up_val}{unit}" if up_val > 0 else f"{up_val}{unit}"
+                            # 1. Dispatch all tasks to the thread pool instantly
+                            for name, key, down_val, up_val, unit in sens_scenarios:
+                                f_down = executor.submit(run_scenario, down_val, key)
+                                f_up = executor.submit(run_scenario, up_val, key)
+                                future_map[name] = (f_down, f_up, down_val, up_val, unit)
                                 
-                            results.append({
-                                "Parameter": name,
-                                "Spread": abs(p_d - n_d),
-                                "Pos_Delta": p_d,
-                                "Neg_Delta": n_d,
-                                "Pos_Label": p_l,
-                                "Neg_Label": n_l
-                            })
+                            # 2. Collect and map results as they finish
+                            for name, (f_down, f_up, down_val, up_val, unit) in future_map.items():
+                                nw_down = f_down.result()
+                                nw_up = f_up.result()
+                                
+                                d_down = nw_down - base_nw_sens
+                                d_up = nw_up - base_nw_sens
+                                
+                                if d_up > d_down:
+                                    p_d, n_d = d_up, d_down
+                                    p_l = f"+{up_val}{unit}" if up_val > 0 else f"{up_val}{unit}"
+                                    n_l = f"{down_val}{unit}" if down_val < 0 else f"+{down_val}{unit}"
+                                else:
+                                    p_d, n_d = d_down, d_up
+                                    p_l = f"{down_val}{unit}" if down_val < 0 else f"+{down_val}{unit}"
+                                    n_l = f"+{up_val}{unit}" if up_val > 0 else f"{up_val}{unit}"
+                                    
+                                results.append({
+                                    "Parameter": name,
+                                    "Spread": abs(p_d - n_d),
+                                    "Pos_Delta": p_d,
+                                    "Neg_Delta": n_d,
+                                    "Pos_Label": p_l,
+                                    "Neg_Label": n_l
+                                })
                             
                         results = sorted(results, key=lambda x: x['Spread'], reverse=False)
                         st.session_state['sens_results'] = results
