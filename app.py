@@ -3412,31 +3412,25 @@ with st.sidebar:
 
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
 
-    # --- FIX: Foolproof Substring Mapping for Checkmarks ---
+    # --- FIX: Right-Aligned Checkmarks ---
     for page_name in PAGES.keys():
+        is_complete = False
         
-        # Substring logic ignores emoji/spacing mismatches completely
+        # Substring mapping to backend keys
         if "Profile" in page_name:
             is_complete = status.get("profile", False)
-            prefix = "✅ " if is_complete else "  "
-            
         elif "Income" in page_name:
             is_complete = status.get("income", False)
-            prefix = "✅ " if is_complete else "  "
-            
         elif "Assets" in page_name:
             is_complete = status.get("assets", False)
-            prefix = "✅ " if is_complete else "  "
-            
         elif "Cash" in page_name:
             is_complete = status.get("expenses", False)
-            prefix = "✅ " if is_complete else "  "
-            
-        else:
-            # Dashboard, Simulation, AI, etc. get blank space
-            prefix = "  " 
 
-        label = f"{prefix}{page_name}"
+        # Append the checkmark to the END of the string with an Em Space for breathing room
+        suffix = " ✅" if is_complete else ""
+
+        # Construct the final label: "[Emoji] [Text]    [Checkmark]"
+        label = f"{page_name}{suffix}"
         
         btn_type = "primary" if page_name == current_page else "tertiary"
         
