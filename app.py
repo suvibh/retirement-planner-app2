@@ -546,6 +546,7 @@ if 'user_email' not in st.session_state:
     if saved_email and not st.session_state.get('logged_out_flag'):
         st.session_state['user_email'] = saved_email
         st.session_state['user_data'] = load_user_data(saved_email)
+        st.session_state['initialized'] = False # <--- ADD THIS HERE
         st.rerun()
 
     st.markdown(
@@ -562,6 +563,7 @@ if 'user_email' not in st.session_state:
                     st.session_state.pop('logged_out_flag', None)
                     st.session_state['user_email'] = res['email'];
                     st.session_state['user_data'] = load_user_data(res['email'])
+                    st.session_state['initialized'] = False # <--- ADD THIS HERE
                     cookie_manager.set("user_email", res['email'],
                                        expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
                     time.sleep(0.2);
@@ -636,6 +638,8 @@ if 'user_email' not in st.session_state:
                 }
             }
             
+            st.session_state['initialized'] = False # <--- ADD THIS RIGHT AFTER THE DICTIONARY
+
             cookie_manager.set("user_email", "guest_demo", expires_at=datetime.datetime.now() + datetime.timedelta(days=1))
             st.toast("Guest mode active: Demo profile loaded successfully!", icon="🚀")
             st.rerun()
@@ -3511,33 +3515,6 @@ with st.sidebar:
         time.sleep(0.5)
         st.rerun()
 
-user_email = st.session_state.get('user_email') # <--- ADD THIS LINE
-
-# --- FIX: The Global Data Loader (Cures the Phantom Page) ---
-# If a user is logged in but their data hasn't been loaded into memory yet (e.g., after a refresh)
-if user_email and not st.session_state.get('data_loaded_flag'):
-    
-    # 1. Fetch the data from your Firestore function
-    db_data = load_user_data(user_email)
-    
-    # 2. Map the database arrays into session state (with empty fallbacks)
-    st.session_state['profile_data'] = db_data.get('profile_data', {})
-    st.session_state['income_data'] = db_data.get('income_data', [])
-    st.session_state['liquid_assets_data'] = db_data.get('liquid_assets_data', [])
-    st.session_state['real_estate_data'] = db_data.get('real_estate_data', [])
-    st.session_state['business_data'] = db_data.get('business_data', [])
-    st.session_state['liabilities_data'] = db_data.get('liabilities_data', [])
-    st.session_state['lifetime_expenses'] = db_data.get('lifetime_expenses', [])
-    
-    # 3. Map settings with your default fallbacks
-    default_assumptions = {'infl': 2.5, 'inv_growth': 6.0, 'housing_growth': 3.0, 'tax_rate': 22.0}
-    st.session_state['assumptions'] = db_data.get('assumptions', default_assumptions)
-    st.session_state['ret_age'] = db_data.get('ret_age', 65)
-    
-    # 4. Lock it in so we don't spam Firestore on every button click
-    st.session_state['data_loaded_flag'] = True
-
-
 # --- Global Contextual Banners (Guest vs. Registered) ---
 if user_email == "guest_demo":
     guest_col1, guest_col2 = st.columns([4, 1])
@@ -3553,7 +3530,6 @@ elif st.session_state.get('dirty', False):
     if warn_col2.button("💾 Save Now", type="primary", key="btn_global_save", width='stretch'):
         save_profile()
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
-
 
 # --- Render the Active Page ---
 if st.session_state.get('current_page') in PAGES:
