@@ -606,7 +606,7 @@ def initialize_session_state():
         
         # Determine a logical default for retirement tax
         # If a retirement rate exists in the DB, use it. Otherwise, use the current rate.
-        default_retire_tax = base_asm.get('retire_tax_rate', base_asm.get('current_tax_rate', 5.0)
+        default_retire_tax = base_asm.get('retire_tax_rate', base_asm.get('current_tax_rate', 5.0))
 
         st.session_state['assumptions'] = ud.get('assumptions', {"inflation": 3.0, "inflation_healthcare": 5.5,
                                                                  "inflation_education": 4.5, "market_growth": 7.0,
@@ -2736,7 +2736,7 @@ def render_simulation():
         ret_city_flow = st.session_state.get('retire_city_flow', '')
         # Fallback to current city if retirement city is blank
         target_city = ret_city_flow if ret_city_flow.strip() != "" else curr_city_flow_clean
-        
+
         ret_t = ai_number_input(
             "Retire State Tax (%)", 
             'retire_tax_rate', 
