@@ -1549,10 +1549,18 @@ def run_simulation(mkt_sequence, ctx):
                 mc_sequence_year = mkt_sequence[year_offset]
                 actual_growth = mc_sequence_year + (asset_baseline_g - ctx.get('mkt', 7.0))
                 
-                # Apply Glidepath (if enabled) to de-risk investments in retirement
-                if ctx.get('glidepath', True) and is_retired:
+                # --- FIX: Smart Glidepath (Insulates Bonds & Fixed Income) ---
+                # Only de-risk equity-heavy accounts (defined as having a baseline expected growth > 4.0%)
+                if ctx.get('glidepath', True) and is_retired and asset_baseline_g > 4.0:
                     years_in_ret = year - ctx['primary_retire_year']
-                    glide_reduction = min(3.0, years_in_ret * 0.2)
+                    
+                    # Target a maximum 3% reduction over 15 years
+                    target_reduction = min(3.0, years_in_ret * 0.2)
+                    
+                    # Safety Floor: Never reduce an asset's expected baseline yield below 3.0% (Bond Proxy)
+                    max_safe_reduction = asset_baseline_g - 3.0
+                    glide_reduction = min(target_reduction, max_safe_reduction)
+                    
                     actual_growth -= glide_reduction
 
             # 5. Apply the compounding math (Mid-Year Convention for contributions)
