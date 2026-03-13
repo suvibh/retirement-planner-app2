@@ -3390,61 +3390,35 @@ with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
 
     status = get_completion_status()
+    current_page = st.session_state.get('current_page', list(PAGES.keys())[0])
 
-    # --- FIX: Modern SaaS Navigation Menu ---
-    nav_options = []
-    for name in PAGES.keys():
-        # Put the checkmark at the END of the string so the emojis stay perfectly aligned on the left
-        if name in status and status[name]:
-            nav_options.append(f"{name}  ✅")
-        else:
-            nav_options.append(name)
+    # --- FIX: 100% Native Streamlit SaaS Menu ---
+    st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
 
-    # Determine which index should be active based on session state
-    current_raw = st.session_state.get('current_page', list(PAGES.keys())[0])
-    try:
-        default_idx = list(PAGES.keys()).index(current_raw)
-    except ValueError:
-        default_idx = 0
-
-    # Render the Option Menu
-    selected_nav = option_menu(
-        menu_title=None,
-        options=nav_options,
-        default_index=default_idx,
-        styles={
-            "container": {"padding": "0!important", "background-color": "transparent"},
-            "nav-link": {
-                "font-size": "15px", 
-                "text-align": "left", 
-                "margin": "0px", 
-                "padding": "10px 15px",
-                "--hover-color": "rgba(255,255,255,0.05)"
-            },
-            "nav-link-selected": {"background-color": "#3b82f6"},
-        }
-    )
-
-    # --- FIX: Guard against NoneType during the initial iframe mount ---
-    if selected_nav is not None:
-        clean_page_name = selected_nav.replace("  ✅", "")
-
-        if clean_page_name != current_raw:
-            st.session_state['current_page'] = clean_page_name
+    for page_name in PAGES.keys():
+        is_complete = status.get(page_name, False)
+        
+        # Add a nice visual spacer for the checkmark
+        label = f"{page_name}   ✅" if is_complete else f"{page_name}"
+        
+        # Active page gets the solid blue block, others get the clean flat text
+        btn_type = "primary" if page_name == current_page else "tertiary"
+        
+        if st.button(label, type=btn_type, use_container_width=True, key=f"nav_{page_name}"):
+            st.session_state['current_page'] = page_name
             st.rerun()
 
     # --- FIX: Dynamic Color-Changing Progress Bar ---
-    st.markdown("<hr style='margin-top: 10px; margin-bottom: 20px; border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
+    st.markdown("<hr style='margin-top: 15px; margin-bottom: 20px; border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
     
     score = status['score']
     
-    # Determine the color based on completion
     if score == 100:
         bar_color = "#10b981" # Green
         text_color = "#10b981"
     elif score >= 75:
         bar_color = "#eab308" # Yellow
-        text_color = "#64748b" # Keep text gray until 100%
+        text_color = "#64748b"
     elif score >= 50:
         bar_color = "#f97316" # Orange
         text_color = "#64748b"
@@ -3454,7 +3428,6 @@ with st.sidebar:
 
     st.markdown(f"<div style='font-size: 0.85rem; color: {text_color}; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;'>Blueprint Completion: {score}%</div>", unsafe_allow_html=True)
     
-    # Custom HTML progress bar bypassing Streamlit's theme constraints
     st.markdown(f"""
         <div style="width: 100%; background-color: rgba(255,255,255,0.1); border-radius: 4px; margin-bottom: 24px; height: 8px;">
             <div style="width: {score}%; height: 100%; background-color: {bar_color}; border-radius: 4px; transition: width 0.4s ease, background-color 0.4s ease;"></div>
