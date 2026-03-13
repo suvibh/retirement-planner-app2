@@ -2742,7 +2742,7 @@ def render_simulation():
                         st.session_state['sens_ctx_hash'] = current_ctx_hash
                         
                 if 'sens_results' in st.session_state and HAS_PLOTLY:
-                    # --- FIX: Compare current hash to the stored hash. If mismatch, render the warning! ---
+                    # Render the warning banner if stale
                     if st.session_state.get('sens_ctx_hash') != current_ctx_hash:
                         info_banner("⚠️ Inputs have changed. These results are based on a previous configuration. Please re-run the sensitivity analysis for updated metrics.", type="warning")
                         
@@ -2785,9 +2785,10 @@ def render_simulation():
                     )
                     fig_tor = apply_chart_theme(fig_tor, "Sensitivity Tornado Chart")
                     
-                    # Optional: Dim the chart slightly if it's stale to emphasize the warning
+                    # --- FIX: Remove invalid kwargs. Warning banner above provides the 'Stale' context ---
                     if st.session_state.get('sens_ctx_hash') != current_ctx_hash:
-                        st.plotly_chart(fig_tor, use_container_width=True, config={'staticPlot': False}, kwargs={"style": "opacity: 0.6;"})
+                        # Banner is already rendered above this block in your current code
+                        st.plotly_chart(fig_tor, use_container_width=True)
                     else:
                         st.plotly_chart(fig_tor, use_container_width=True)
 
