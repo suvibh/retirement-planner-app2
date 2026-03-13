@@ -2040,6 +2040,7 @@ def render_income():
             st.rerun()
 
     if st.session_state.get('trigger_ss_ai'):
+        rate_limit_hit = False # Track if we actually hit the wall
         try:
             # FIX: Rate limit check moved INSIDE the try/finally so it clears properly if it fails
             if check_ai_rate_limit():
@@ -2065,20 +2066,24 @@ def render_income():
         finally:
             st.session_state['trigger_ss_ai'] = False
             st.session_state['ai_loading'] = False
-            st.rerun()
+            # --- FIX: Only force an immediate rerun if we actually did work ---
+            # If rate_limit_hit is True, we skip the rerun. 
+            # This allows the st.warning() from check_ai_rate_limit to actually stay on the screen.
+            if not rate_limit_hit:
+                st.rerun()
 
 
 def render_assets():
     section_header("Assets, Debts & Net Worth",
                    "Construct your balance sheet. The AI draws down these buckets dynamically.", "🏦")
 
+    tab_re, tab_biz, tab_ast, tab_debt = st.tabs(
+        ["🏢 Real Estate", "💼 Business Interests", "🏦 Liquid Assets", "💳 Debts & Loans"])
+    
     edited_re = pd.DataFrame()
     edited_biz = pd.DataFrame()
     edited_ast = pd.DataFrame()
     edited_debt = pd.DataFrame()
-
-    tab_re, tab_biz, tab_ast, tab_debt = st.tabs(
-        ["🏢 Real Estate", "💼 Business Interests", "🏦 Liquid Assets", "💳 Debts & Loans"])
 
     with tab_re:
         info_banner(
