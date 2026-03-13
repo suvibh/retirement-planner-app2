@@ -2612,25 +2612,43 @@ def render_simulation():
         'has_spouse') else 0
 
     with tab_ages:
-        cc1, cc2, cc3, cc4 = st.columns(4)
-        ret_age = cc1.slider("Retirement Age", max(int(my_age), 1), 100,
-                             max(int(my_age), int(st.session_state.get('ret_age', 65))), key="sld_ret_age")
-        s_ret_age = cc2.slider("Spouse Retire Age", max(int(spouse_age), 1), 100,
-                               max(int(spouse_age), int(st.session_state.get('s_ret_age', 65))),
-                               key="sld_s_ret_age") if st.session_state.get('has_spouse') else 65
-        my_life_exp = cc3.slider("Your Life Expectancy", max(70, ret_age), 115,
-                                 max(ret_age, int(st.session_state.get('my_life_exp', 95))), key="sld_life_exp")
-        spouse_life_exp = cc4.slider("Spouse Life Expectancy", max(70, s_ret_age), 115,
-                                     max(s_ret_age, int(st.session_state.get('spouse_life_exp', 95))),
-                                     key="sld_s_life_exp") if st.session_state.get('has_spouse') else 0
+        st.markdown("<div class='card' style='margin-bottom: 16px;'><h3 style='margin-top:0;'>Life Timeline Controls</h3><p style='color:#64748b; font-size:0.95rem; margin:0;'>Adjust your milestones here and click Apply to recalculate the blueprint.</p></div>", unsafe_allow_html=True)
+        
+        # --- FIX: Form Buffer prevents "stuttering" simulations while dragging sliders ---
+        with st.form("form_timeline", border=False):
+            cc1, cc2, cc3, cc4 = st.columns(4)
+            
+            new_ret_age = cc1.slider("Retirement Age", min_value=max(int(my_age), 1), max_value=100,
+                                     value=max(int(my_age), int(st.session_state.get('ret_age', 65))))
+            
+            new_s_ret_age = cc2.slider("Spouse Retire Age", min_value=max(int(spouse_age), 1), max_value=100,
+                                       value=max(int(spouse_age), int(st.session_state.get('s_ret_age', 65)))) if st.session_state.get('has_spouse') else 65
+                                       
+            # Removed the dynamic min_value binding here so it doesn't break inside the static form
+            new_my_life_exp = cc3.slider("Your Life Expectancy", min_value=70, max_value=120,
+                                         value=int(st.session_state.get('my_life_exp', 95)))
+                                         
+            new_spouse_life_exp = cc4.slider("Spouse Life Expectancy", min_value=70, max_value=120,
+                                             value=int(st.session_state.get('spouse_life_exp', 95))) if st.session_state.get('has_spouse') else 0
 
-        if ret_age < my_age: info_banner("Retirement age cannot be lower than current age.", "warning")
-        if my_life_exp < ret_age: info_banner("Life expectancy cannot be lower than retirement age.", "warning")
+            submit_ages = st.form_submit_button("⚙️ Apply Timeline Changes", type="primary", use_container_width=True)
 
-        if st.session_state.get('ret_age') != ret_age: update_state('ret_age', ret_age)
-        if st.session_state.get('s_ret_age') != s_ret_age: update_state('s_ret_age', s_ret_age)
-        if st.session_state.get('my_life_exp') != my_life_exp: update_state('my_life_exp', my_life_exp)
-        if st.session_state.get('spouse_life_exp') != spouse_life_exp: update_state('spouse_life_exp', spouse_life_exp)
+            if submit_ages:
+                valid = True
+                if new_ret_age < my_age: 
+                    st.error(f"Retirement age ({new_ret_age}) cannot be lower than current age ({my_age}).")
+                    valid = False
+                if new_my_life_exp < new_ret_age: 
+                    st.error("Life expectancy cannot be lower than retirement age.")
+                    valid = False
+                    
+                if valid:
+                    st.session_state['ret_age'] = new_ret_age
+                    st.session_state['s_ret_age'] = new_s_ret_age
+                    st.session_state['my_life_exp'] = new_my_life_exp
+                    st.session_state['spouse_life_exp'] = new_spouse_life_exp
+                    mark_dirty()
+                    st.rerun()
 
     with tab_assumptions:
         st.markdown("<div class='card' style='margin-bottom: 24px;'><h3 style='margin-top:0;'>Macroeconomic Assumptions</h3></div>", unsafe_allow_html=True)
