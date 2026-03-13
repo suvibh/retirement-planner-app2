@@ -3409,7 +3409,7 @@ with st.sidebar:
 
     # Render the Option Menu
     selected_nav = option_menu(
-        menu_title=None,  # Hides the required title
+        menu_title=None,
         options=nav_options,
         default_index=default_idx,
         styles={
@@ -3421,16 +3421,17 @@ with st.sidebar:
                 "padding": "10px 15px",
                 "--hover-color": "rgba(255,255,255,0.05)"
             },
-            "nav-link-selected": {"background-color": "#3b82f6"}, # Matches your blue buttons
+            "nav-link-selected": {"background-color": "#3b82f6"},
         }
     )
 
-    # Clean the selected string to match the PAGES dictionary keys
-    clean_page_name = selected_nav.replace("  ✅", "")
+    # --- FIX: Guard against NoneType during the initial iframe mount ---
+    if selected_nav is not None:
+        clean_page_name = selected_nav.replace("  ✅", "")
 
-    if clean_page_name != current_raw:
-        st.session_state['current_page'] = clean_page_name
-        st.rerun()
+        if clean_page_name != current_raw:
+            st.session_state['current_page'] = clean_page_name
+            st.rerun()
 
     # --- FIX: Dynamic Color-Changing Progress Bar ---
     st.markdown("<hr style='margin-top: 10px; margin-bottom: 20px; border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
