@@ -13,11 +13,12 @@ import io
 import os
 import numpy as np
 import concurrent.futures
-from dateutil.relativedelta import relativedelta
 import warnings
 import firebase_admin
 from firebase_admin import credentials, firestore
 from concurrent.futures import ThreadPoolExecutor
+from streamlit_option_menu import option_menu
+from dateutil.relativedelta import relativedelta
 
 try:
     import plotly.graph_objects as go
@@ -3389,51 +3390,76 @@ with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
 
     status = get_completion_status()
+
+    # --- FIX: Modern SaaS Navigation Menu ---
     nav_options = []
-    for page_name in list(PAGES.keys()):
-        if "Profile" in page_name:
-            nav_options.append(f"{'✅ ' if status['profile'] else ''}{page_name}")
-        elif "Income" in page_name:
-            nav_options.append(f"{'✅ ' if status['income'] else ''}{page_name}")
-        elif "Assets" in page_name:
-            nav_options.append(f"{'✅ ' if status['assets'] else ''}{page_name}")
-        elif "Cash Flows" in page_name:
-            nav_options.append(f"{'✅ ' if status['expenses'] else ''}{page_name}")
+    for name in PAGES.keys():
+        # Put the checkmark at the END of the string so the emojis stay perfectly aligned on the left
+        if name in status and status[name]:
+            nav_options.append(f"{name}  ✅")
         else:
-            nav_options.append(page_name)
+            nav_options.append(name)
 
-    current_active_idx = 0
-    curr_page = st.session_state.get('current_page', '🏠 Dashboard')
-    
-    for i, opt in enumerate(nav_options):
-        clean_opt = opt.replace("✅ ", "")
-        if curr_page == clean_opt:
-            current_active_idx = i
-            break
+    # Determine which index should be active based on session state
+    current_raw = st.session_state.get('current_page', list(PAGES.keys())[0])
+    try:
+        default_idx = list(PAGES.keys()).index(current_raw)
+    except ValueError:
+        default_idx = 0
 
-    selected_nav_item = st.radio("Navigation", nav_options, index=current_active_idx, label_visibility="collapsed")
-    clean_page_name = selected_nav_item.replace("✅ ", "")
-    
-    # --- FIX: Only update state and force a rerun if the USER clicked the radio button ---
-    # This prevents the radio widget's old internal state from overriding dashboard button clicks!
-    if clean_page_name != curr_page:
+    # Render the Option Menu
+    selected_nav = option_menu(
+        menu_title=None,  # Hides the required title
+        options=nav_options,
+        default_index=default_idx,
+        styles={
+            "container": {"padding": "0!important", "background-color": "transparent"},
+            "nav-link": {
+                "font-size": "15px", 
+                "text-align": "left", 
+                "margin": "0px", 
+                "padding": "10px 15px",
+                "--hover-color": "rgba(255,255,255,0.05)"
+            },
+            "nav-link-selected": {"background-color": "#3b82f6"}, # Matches your blue buttons
+        }
+    )
+
+    # Clean the selected string to match the PAGES dictionary keys
+    clean_page_name = selected_nav.replace("  ✅", "")
+
+    if clean_page_name != current_raw:
         st.session_state['current_page'] = clean_page_name
         st.rerun()
 
-    # --- FIX: Visual Setup Progress Indicator ---
+    # --- FIX: Dynamic Color-Changing Progress Bar ---
     st.markdown("<hr style='margin-top: 10px; margin-bottom: 20px; border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
     
     score = status['score']
-    # If they hit 100%, turn the text green to celebrate. Otherwise, keep it a subtle gray.
-    score_color = "#10b981" if score == 100 else "#64748b"
     
-    st.markdown(f"<div style='font-size: 0.85rem; color: {score_color}; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;'>Blueprint Completion: {score}%</div>", unsafe_allow_html=True)
+    # Determine the color based on completion
+    if score == 100:
+        bar_color = "#10b981" # Green
+        text_color = "#10b981"
+    elif score >= 75:
+        bar_color = "#eab308" # Yellow
+        text_color = "#64748b" # Keep text gray until 100%
+    elif score >= 50:
+        bar_color = "#f97316" # Orange
+        text_color = "#64748b"
+    else:
+        bar_color = "#ef4444" # Red
+        text_color = "#64748b"
+
+    st.markdown(f"<div style='font-size: 0.85rem; color: {text_color}; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;'>Blueprint Completion: {score}%</div>", unsafe_allow_html=True)
     
-    # st.progress requires a float between 0.0 and 1.0
-    st.progress(score / 100.0)
-    
-    st.markdown("<div style='margin-bottom: 24px;'></div>", unsafe_allow_html=True)
-    # --------------------------------------------
+    # Custom HTML progress bar bypassing Streamlit's theme constraints
+    st.markdown(f"""
+        <div style="width: 100%; background-color: rgba(255,255,255,0.1); border-radius: 4px; margin-bottom: 24px; height: 8px;">
+            <div style="width: {score}%; height: 100%; background-color: {bar_color}; border-radius: 4px; transition: width 0.4s ease, background-color 0.4s ease;"></div>
+        </div>
+    """, unsafe_allow_html=True)
+    # ------------------------------------------------
 
     save_btn_label = "⚠️ Save Changes" if st.session_state.get('dirty', False) else "🚀 Save Profile"
     if st.button(save_btn_label, type="primary", use_container_width=True):
