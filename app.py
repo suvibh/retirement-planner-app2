@@ -3391,22 +3391,21 @@ with st.sidebar:
     status = get_completion_status()
     current_page = st.session_state.get('current_page', list(PAGES.keys())[0])
 
-    # --- FIX: Deep CSS Override for Left Alignment ---
+    # --- FIX: Nuclear Wildcard CSS for Left Alignment ---
     st.markdown("""
         <style>
-        /* Force the main button to flex left */
-        body [data-testid="stSidebar"] div.stButton > button {
+        /* Force the button itself to start from the left */
+        section[data-testid="stSidebar"] button {
             justify-content: flex-start !important;
-            padding-left: 15% !important; /* Pushes the text nicely off the edge */
+            padding-left: 20px !important; 
         }
         
-        /* Pierce through Streamlit's inner wrappers to force text alignment */
-        body [data-testid="stSidebar"] div.stButton > button div[data-testid="stMarkdownContainer"], 
-        body [data-testid="stSidebar"] div.stButton > button div[data-testid="stMarkdownContainer"] > p {
-            text-align: left !important;
-            justify-content: flex-start !important;
+        /* The Wildcard (*): Forces EVERY hidden Streamlit div, paragraph, and span inside the button to left-align */
+        section[data-testid="stSidebar"] button * {
             display: flex !important;
-            margin: 0 !important;
+            justify-content: flex-start !important;
+            text-align: left !important;
+            width: 100% !important;
         }
         </style>
     """, unsafe_allow_html=True)
