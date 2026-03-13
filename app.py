@@ -2199,23 +2199,27 @@ def render_income():
         }, num_rows="dynamic", width='stretch', key="inc_editor"
     )
     
-    # --- FIX: Extract records and scrub NaN values to prevent infinite st.rerun() loops ---
+    # --- FIX: Logical Defaults for Start Year ---
+    current_year = datetime.date.today().year
     edited_inc_records = scrub_records(edited_inc.to_dict('records'))
     
-    # --- FIX: UI Validation Pass ---
     for inc in edited_inc_records:
+        # 1. If Start Year is missing, default to Current Year
+        if inc.get("Start Year") is None or str(inc.get("Start Year")).strip() == "":
+            inc["Start Year"] = current_year
+            
+        # 2. UI Validation Pass for Social Security (Keep your existing check here)
         if inc.get("Category") == "Social Security":
             s_yr = inc.get("Start Year")
-            if s_yr is not None and str(s_yr).strip() != "":
-                owner = inc.get("Owner", "Me")
-                b_yr = st.session_state.get('my_dob', datetime.date(1980, 1, 1)).year if owner in ["Me", "Joint"] else st.session_state.get('spouse_dob', datetime.date(1982, 1, 1)).year
-                
-                if safe_num(s_yr) < b_yr + 62:
-                    st.error(f"🚨 Social Security '{html.escape(str(inc.get('Description', 'Unknown')))}': Earliest claiming age is 62 (Year {b_yr + 62}). The simulation engine will cap this.")
-                elif safe_num(s_yr) > b_yr + 70:
-                    st.error(f"🚨 Social Security '{html.escape(str(inc.get('Description', 'Unknown')))}': Delayed retirement credits max out at age 70 (Year {b_yr + 70}). The simulation engine will cap this.")
+            owner = inc.get("Owner", "Me")
+            b_yr = st.session_state.get('my_dob', datetime.date(1980, 1, 1)).year if owner in ["Me", "Joint"] else st.session_state.get('spouse_dob', datetime.date(1982, 1, 1)).year
+            
+            if safe_num(s_yr) < b_yr + 62:
+                st.error(f"🚨 Social Security '{inc.get('Description')}': Earliest claiming age is 62.")
+            elif safe_num(s_yr) > b_yr + 70:
+                st.error(f"🚨 Social Security '{inc.get('Description')}': Delayed credits max out at 70.")
 
-    # --- FIX: Bulletproof State Commit ---
+    # --- Secure State Commit ---
     if sync_editor_state('income_data', edited_inc_records):
         st.rerun()
 
