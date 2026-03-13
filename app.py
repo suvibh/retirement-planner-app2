@@ -109,8 +109,15 @@ def mark_dirty():
     st.session_state['mc_success_rate'] = None
     if 'mc_raw_results' in st.session_state:
         st.session_state['mc_raw_results'] = None
+
+    # --- FIX: Invalidate Stale AI Reports ---
+    # We clear these so the user doesn't see advice based on old data
+    if 'ai_analysis_report' in st.session_state:
+        del st.session_state['ai_analysis_report']
+    if 'what_if_analysis_report' in st.session_state:
+        del st.session_state['what_if_analysis_report']
         
-    # --- FIX: Invalidate the cached simulation context ---
+    # Invalidate the cached simulation context
     if '_sim_ctx' in st.session_state:
         del st.session_state['_sim_ctx']
 
