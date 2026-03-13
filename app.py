@@ -1914,10 +1914,12 @@ def render_dashboard():
         st.warning("Your Life Expectancy must be greater than your Current Age to run the simulation.")
         return
 
-    with st.spinner("Running core simulation..."):
+    # --- FIX: The Frontend Render Flush ---
+    with st.spinner("⚙️ Compiling Financial Blueprint..."):
+        time.sleep(0.05) # Forces the server to draw the spinner before locking the CPU
+        
         mkt_seq = tuple([sim_ctx['mkt']] * (sim_ctx['max_years'] + 1))
         
-        # --- FIX: Fast MD5 Caching ---
         clean_ctx = sanitize_for_cache(sim_ctx)
         ctx_json = json.dumps(clean_ctx, sort_keys=True)
         ctx_hash = hashlib.md5(ctx_json.encode('utf-8')).hexdigest()
@@ -2706,14 +2708,17 @@ def render_simulation():
     elif sim_ctx['max_years'] <= 0:
         st.warning("Your Life Expectancy must be greater than your Current Age to run the simulation.")
     else:
-        mkt_seq = tuple([sim_ctx['mkt']] * (sim_ctx['max_years'] + 1))
+        # --- FIX: The Frontend Render Flush ---
+        with st.spinner("⚙️ Recalculating Matrix..."):
+            time.sleep(0.05) # Forces the server to draw the spinner before locking the CPU
+            
+            mkt_seq = tuple([sim_ctx['mkt']] * (sim_ctx['max_years'] + 1))
 
-        # --- FIX: Fast MD5 Caching ---
-        clean_ctx = sanitize_for_cache(sim_ctx)
-        ctx_json = json.dumps(clean_ctx, sort_keys=True)
-        ctx_hash = hashlib.md5(ctx_json.encode('utf-8')).hexdigest()
-        
-        df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v8(mkt_seq, ctx_hash, ctx_json)
+            clean_ctx = sanitize_for_cache(sim_ctx)
+            ctx_json = json.dumps(clean_ctx, sort_keys=True)
+            ctx_hash = hashlib.md5(ctx_json.encode('utf-8')).hexdigest()
+            
+            df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v8(mkt_seq, ctx_hash, ctx_json)
 
         if not df_sim_nominal.empty:
             df_sim, df_det, df_nw = df_sim_nominal.copy(), df_det_nominal.copy(), df_nw_nominal.copy()
