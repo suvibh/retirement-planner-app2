@@ -1619,11 +1619,15 @@ def run_simulation(mkt_sequence, ctx):
         elif organic_net_cash_flow < 0:
             shortfall = abs(organic_net_cash_flow)
 
+            # --- FIX: Insulate Shortfall Withdrawals from Roth Tax Spikes ---
+            # Pass tax_base_ord_pre and marginal_rate_pre_conversion to all _withdraw calls
+            # so necessary emergency withdrawals aren't penalized by voluntary conversions.
+
             for a in sim_assets:
                 if shortfall <= 0: break
                 if a.get('Type') in ['Checking/Savings', 'HYSA', 'Unallocated Cash']:
                     shortfall, t_inc, wd = _withdraw(a, shortfall, 'free', ctx, my_current_age, spouse_current_age,
-                                                     active_mfj, year_offset, tax_base_ord, marginal_rate, state_tax_rate, year, yd)
+                                                     active_mfj, year_offset, tax_base_ord_pre, marginal_rate_pre_conversion, state_tax_rate, year, yd)
                     total_withdrawals += wd
 
             if shortfall > 0 and not cash_depleted and not any(a['bal'] > 0 for a in sim_assets if a.get('Type') in ['Checking/Savings', 'HYSA', 'Unallocated Cash']):
@@ -1635,7 +1639,7 @@ def run_simulation(mkt_sequence, ctx):
                 if shortfall <= 0: break
                 if a.get('Type') == 'Brokerage (Taxable)':
                     shortfall, t_inc, wd = _withdraw(a, shortfall, 'cg', ctx, my_current_age, spouse_current_age,
-                                                     active_mfj, year_offset, tax_base_ord, marginal_rate, state_tax_rate, year, yd)
+                                                     active_mfj, year_offset, tax_base_ord_pre, marginal_rate_pre_conversion, state_tax_rate, year, yd)
                     yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
                     yd["Tax Breakdown: Withdrawals"] = yd.get("Tax Breakdown: Withdrawals", 0) + t_inc
                     total_withdrawals += wd
@@ -1662,7 +1666,7 @@ def run_simulation(mkt_sequence, ctx):
 
                         shortfall, t_inc, wd = _withdraw(a, shortfall, 'ordinary' if is_trad else 'free', ctx,
                                                          my_current_age, spouse_current_age, active_mfj, year_offset,
-                                                         tax_base_ord, marginal_rate, state_tax_rate, year, yd)
+                                                         tax_base_ord_pre, marginal_rate_pre_conversion, state_tax_rate, year, yd)
                         yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
                         yd["Tax Breakdown: Withdrawals"] = yd.get("Tax Breakdown: Withdrawals", 0) + t_inc
                         total_withdrawals += wd
@@ -1672,8 +1676,8 @@ def run_simulation(mkt_sequence, ctx):
                     if shortfall <= 0: break
                     if a['bal'] > 0 and a.get('Type') not in ['Checking/Savings', 'HYSA', 'Unallocated Cash', 'Brokerage (Taxable)'] + trad_types + tax_free_types:
                         shortfall, t_inc, wd = _withdraw(a, shortfall, 'ordinary', ctx, my_current_age,
-                                                         spouse_current_age, active_mfj, year_offset, tax_base_ord,
-                                                         marginal_rate, state_tax_rate, year, yd)
+                                                         spouse_current_age, active_mfj, year_offset, tax_base_ord_pre,
+                                                         marginal_rate_pre_conversion, state_tax_rate, year, yd)
                         yd["Expense: Taxes"] = yd.get("Expense: Taxes", 0) + t_inc
                         yd["Tax Breakdown: Withdrawals"] = yd.get("Tax Breakdown: Withdrawals", 0) + t_inc
                         total_withdrawals += wd
