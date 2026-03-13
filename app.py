@@ -3339,252 +3339,193 @@ def render_ai():
 def render_faq():
     section_header("Complete Beginner's Guide & FAQ", "Everything you need to know about the engine.", "📖")
 
-    st.subheader("🌟 GETTING STARTED")
+    # --- FIX: Live Search Filter ---
+    search_q = st.text_input("🔍 Search the Guide...", "", help="Type a keyword like 'taxes', 'Roth', or 'Medicare'").lower()
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # --- FIX: Smart Rendering Helper ---
+    def show_faq(question, answer, default_expanded=False):
+        # Only render if there's no search, OR if the search matches the question/answer
+        if not search_q or search_q in question.lower() or search_q in answer.lower():
+            # Force expand if they are actively searching for something, otherwise use the default
+            is_expanded = True if search_q else default_expanded
+            with st.expander(question, expanded=is_expanded):
+                st.markdown(answer)
+
+    # Only show section headers if the user isn't actively filtering
+    if not search_q: st.subheader("🌟 GETTING STARTED")
     
-    with st.expander("What exactly does this app do, and how is it different from a basic retirement calculator?"):
-        st.markdown("""
-        Most retirement calculators ask you two questions — "how much do you have saved?" and "when do you want to retire?" — then spit out a single number. This app is fundamentally different. It builds a living, breathing financial model of your entire life — from today until the end of your life expectancy — and simulates every dollar coming in and going out, year by year. 
-        
-        It accounts for things a basic calculator completely ignores: your mortgage paying itself off over time, your kids going to college, your taxes changing when you retire, Social Security kicking in, Medicare starting at 65, your investment accounts being drawn down in the smartest possible tax order, and hundreds of other real-life events. The result isn't just a number — it's a full financial roadmap with warnings, milestones, and actionable advice.
-        """)
-
-    with st.expander("Is this app a replacement for a financial advisor?"):
-        st.markdown("""
-        No, and it's important to be honest about that. This app is an incredibly powerful planning and education tool — it helps you understand your own numbers, test scenarios, and have much smarter conversations with professionals. 
-        
-        But it is not a licensed fiduciary advisor and cannot account for every personal circumstance, recent law change, or market condition. Think of it the way you'd think of WebMD: extremely useful for understanding what's happening with your health, but you still want a doctor making the final call on major decisions. Use this app to get clarity, then bring your printouts to a CPA or Certified Financial Planner (CFP) for personalized guidance.
-        """)
-
-    with st.expander("How accurate are these projections?"):
-        st.markdown("""
-        The projections are as accurate as the information you put in, combined with the assumptions you choose. The simulation engine uses real IRS tax brackets, real Social Security claiming rules, and real Medicare cost structures. 
-        
-        However, it cannot predict the future — no tool can. What it can do is show you the most mathematically likely outcomes based on historical data and your personal numbers. The Monte Carlo feature is specifically designed to stress-test your plan against hundreds of unpredictable futures so you understand your real risk, not just the rosy average-case scenario.
-        """)
-
-    st.subheader("👨‍👩‍👧‍👦 YOUR PROFILE & FAMILY")
+    show_faq("What exactly does this app do, and how is it different from a basic retirement calculator?",
+    """Most retirement calculators ask you two questions — "how much do you have saved?" and "when do you want to retire?" — then spit out a single number. This app is fundamentally different. It builds a living, breathing financial model of your entire life — from today until the end of your life expectancy — and simulates every dollar coming in and going out, year by year. 
     
-    with st.expander("Why does the app need my exact date of birth instead of just my age?"):
-        st.markdown("""
-        Because a few months can actually matter quite a bit in retirement planning. Your exact birth year determines three important things:
+    It accounts for things a basic calculator completely ignores: your mortgage paying itself off over time, your kids going to college, your taxes changing when you retire, Social Security kicking in, Medicare starting at 65, your investment accounts being drawn down in the smartest possible tax order, and hundreds of other real-life events. The result isn't just a number — it's a full financial roadmap with warnings, milestones, and actionable advice.""", 
+    default_expanded=True) # <-- EXPANDED BY DEFAULT
 
-        * **Your Social Security Full Retirement Age (FRA):** If you were born in 1960 or later, your FRA is 67. Born between 1955-1959, it's somewhere between 66 and 67. This is the age at which you receive your full Social Security benefit — claim earlier and you get permanently less, claim later and you get permanently more.
-        * **When your RMDs begin:** RMD stands for Required Minimum Distribution. The IRS forces you to start withdrawing money from your traditional retirement accounts at a certain age — either 73 or 75, depending on your birth year. Getting this wrong by even one year can create a surprise tax bill.
-        * **Your IRS Catch-Up Contribution eligibility:** Once you turn 50, you're allowed to contribute extra money to your 401(k) and IRA above the normal limits. The app needs your age to know when to apply this bonus.
-        """)
-
-    with st.expander("What changes when I add a spouse?"):
-        st.markdown("""
-        Quite a lot, actually. Adding a spouse unlocks a completely different set of tax rules that are generally more favorable:
-
-        * **Married Filing Jointly (MFJ)** tax brackets are roughly double the single brackets, meaning you pay a lower tax rate on the same income.
-        * **Standard Deduction** doubles from approximately $14,600 to $29,200.
-        * **Social Security survivor benefits** activate — if one spouse passes away, the surviving spouse automatically inherits the higher of the two Social Security benefit amounts.
-        * **Retirement account strategies** change — the app can now optimize withdrawals across two people's accounts.
-        * **Lifestyle cost reduction** — the simulation realistically models that a surviving spouse spends less (roughly 60% of the couple's former expenses) after the other passes.
-        """)
-
-    with st.expander("What are 'dependents' used for in the simulation?"):
-        st.markdown("""
-        The app uses your children's ages to automatically time several important financial events. It models when child-related expenses (extracurricular activities, higher grocery bills, larger utility costs) naturally phase out as each child grows up and leaves home. 
-        
-        It also uses their ages to calculate exactly when college tuition expenses should start and end in your cash flow. If you have a 529 college savings plan, the app connects it directly to your specific child's tuition costs, drawing down that account automatically when the bills arrive.
-        """)
-
-    st.subheader("💵 INCOME & SOCIAL SECURITY")
+    show_faq("Is this app a replacement for a financial advisor?",
+    """No, and it's important to be honest about that. This app is an incredibly powerful planning and education tool — it helps you understand your own numbers, test scenarios, and have much smarter conversations with professionals. 
     
-    with st.expander("What is an 'employer 401(k) match' and why is it listed under income instead of savings?"):
-        st.markdown("""
-        An employer match is essentially free money your company adds to your retirement account when you contribute your own money. For example, your employer might match 50 cents for every dollar you put in, up to 6% of your salary. 
-        
-        It's listed under "Income" purely so the app can track it separately from your own contributions. This is important because employer match money goes directly into your 401(k) and is never spendable take-home cash. The app is careful to never count it as money you can spend on bills, but it does add it to your growing 401(k) balance behind the scenes so your retirement account grows accurately.
-        """)
+    But it is not a licensed fiduciary advisor and cannot account for every personal circumstance, recent law change, or market condition. Think of it the way you'd think of WebMD: extremely useful for understanding what's happening with your health, but you still want a doctor making the final call on major decisions. Use this app to get clarity, then bring your printouts to a CPA or Certified Financial Planner (CFP) for personalized guidance.""", 
+    default_expanded=True) # <-- EXPANDED BY DEFAULT
 
-    with st.expander("What is Social Security, and how does the app calculate my benefit?"):
-        st.markdown("""
-        Social Security is a federal retirement program you've been paying into your entire working life through payroll taxes. When you retire, you receive a monthly payment for life based on your 35 highest-earning years of work history. 
-        
-        The critical decision the app helps you model is when to claim:
-        * **Claim at 62 (earliest possible):** Your benefit is permanently reduced by up to 30%.
-        * **Claim at your Full Retirement Age (66-67):** You receive 100% of your earned benefit.
-        * **Claim at 70 (latest recommended):** Your benefit is permanently increased by up to 24%.
-
-        There is no single "right" answer — it depends on your health, other income sources, and whether you're married. The app lets you test different claiming ages to see the lifetime impact.
-        """)
-
-    with st.expander("What does 'taxable Social Security' mean? I thought Social Security wasn't taxed?"):
-        st.markdown("""
-        This is one of the most surprising things people discover about retirement. Social Security can be taxed — up to 85% of your benefit can be added to your taxable income depending on how much other income you have. 
-        
-        The IRS uses something called "Provisional Income" (basically your other income plus half your Social Security) to determine how much of your benefit is taxable. If your Provisional Income is low enough, your Social Security is completely tax-free. As your other income (from RMDs, investments, rent, etc.) rises, more of your Social Security becomes taxable. The app calculates this automatically every single year using the exact IRS formula.
-        """)
-
-    st.subheader("🏦 ASSETS, ACCOUNTS & INVESTING")
+    show_faq("How accurate are these projections?",
+    """The projections are as accurate as the information you put in, combined with the assumptions you choose. The simulation engine uses real IRS tax brackets, real Social Security claiming rules, and real Medicare cost structures. 
     
-    with st.expander("What is the difference between all these account types? (401k, IRA, Roth, Brokerage...)"):
-        st.markdown("""
-        This is one of the most important concepts to understand. All of these are just containers that hold your investments — the difference is purely about when the IRS taxes the money inside them. 
-        
-        * **Traditional 401(k) and Traditional IRA ("Pay taxes later"):** You put money in before paying taxes. Your money grows tax-free. When you withdraw it in retirement, you pay income taxes on every dollar you take out. The IRS forces you to start withdrawing at age 73 or 75 (RMDs).
-        * **Roth 401(k) and Roth IRA ("Pay taxes now, never again"):** You put money in after already paying taxes on it. Your money grows tax-free and you can withdraw it in retirement completely tax-free, with no RMDs ever required.
-        * **Brokerage (Taxable) Account ("Pay taxes as you go"):** A regular investment account with no special tax protection. You pay taxes on dividends and capital gains. However, there are no contribution limits and no restrictions on withdrawals. 
-        * **HSA (Health Savings Account) ("Triple tax advantage"):** You contribute pre-tax, it grows tax-free, and withdrawals for medical expenses are tax-free. After age 65, you can withdraw for any reason (paying normal income tax).
-        * **529 Plan ("Tax-free college savings"):** Money grows tax-free and can be withdrawn completely tax-free when used for qualified education expenses.
-        """)
+    However, it cannot predict the future — no tool can. What it can do is show you the most mathematically likely outcomes based on historical data and your personal numbers. The Monte Carlo feature is specifically designed to stress-test your plan against hundreds of unpredictable futures so you understand your real risk, not just the rosy average-case scenario.""")
 
-    with st.expander("How does the app decide which account to withdraw from first? (Withdrawal Strategy)"):
-        st.markdown("""
-        When your expenses exceed your income, you have a "shortfall" and must sell investments. The order in which you sell them has massive tax implications. The engine allows you to choose between two strategies in the "Stress Tests & Taxes" tab:
-        
-        * **Standard Strategy (Default):** The engine drains liquid cash first, then Taxable Brokerage accounts (paying Capital Gains), then Traditional 401(k)s/IRAs (paying Income Tax), and finally leaves your tax-free Roth accounts to grow for as long as possible.
-        * **Roth Preferred:** The engine drains liquid cash, then Taxable Brokerages, but then flips the script: it drains Roth accounts completely *before* touching Traditional 401(k)s. This is sometimes preferred by early retirees trying to keep their taxable income artificially low to qualify for healthcare subsidies.
-        """)
-
-    with st.expander("What happens if my plan runs out of money? (Shortfall Borrowing Rate)"):
-        st.markdown("""
-        If your expenses completely drain all of your liquid assets, brokerage accounts, and retirement accounts, the app does not simply break or stop calculating. 
-        
-        Instead, it enters **"Liquidity Crisis"** mode. It tracks the missing money as "Unfunded Debt." Because you still need to pay your bills, the engine assumes you must borrow this money via personal loans or credit cards. The Unfunded Debt will compound aggressively year over year based on the **Shortfall Borrowing Rate** you set in your Macro Assumptions (defaulting to 12%). This provides a realistic, mathematically punishing look at what happens when a retiree outlives their money.
-        """)
-
-    with st.expander("What are 'RMDs' and why do they matter so much?"):
-        st.markdown("""
-        RMD stands for Required Minimum Distribution. The IRS has a simple rule: you cannot keep money in a Traditional 401(k) or IRA forever. Starting at age 73 (or 75 if you were born in 1960 or later), you must withdraw a minimum amount every single year, whether you need the money or not. 
-        
-        Why do they matter? Because every dollar you're forced to withdraw is added to your taxable income that year — which can push you into a higher tax bracket, cause more of your Social Security to become taxable, and trigger Medicare surcharges (IRMAA). 
-        """)
-
-    st.subheader("🏡 REAL ESTATE & MORTGAGES")
+    if not search_q: st.subheader("👨‍👩‍👧‍👦 YOUR PROFILE & FAMILY")
     
-    with st.expander("How does the app handle my mortgage?"):
-        st.markdown("""
-        You simply enter three things: your current loan balance, your interest rate, and your monthly payment. The app then does something most calculators don't — it mathematically pays down your mortgage month by month, exactly as your bank would, separating out the interest and principal portions correctly. 
-        
-        When the balance finally hits zero, the mortgage expense automatically disappears from your cash flow for every future year. **You should NOT separately list your mortgage payment in the budget section** — the app handles it entirely through your real estate entry.
-        """)
+    show_faq("Why does the app need my exact date of birth instead of just my age?",
+    """Because a few months can actually matter quite a bit in retirement planning. Your exact birth year determines three important things:
 
-    with st.expander("What's the difference between a 'primary residence' and an 'investment property' in the app?"):
-        st.markdown("""
-        The app treats these completely differently:
-        * **Your primary residence** is where you live. Its mortgage payment and monthly expenses (property taxes, insurance, HOA) flow out as living costs. 
-        * **An investment property** is treated as a business. The app calculates the net cash flow — rent collected minus mortgage payment minus expenses — and only the net profit or loss affects your overall cash flow. This prevents investment properties from artificially inflating your apparent lifestyle income.
-        """)
+    * **Your Social Security Full Retirement Age (FRA):** If you were born in 1960 or later, your FRA is 67. Born between 1955-1959, it's somewhere between 66 and 67. This is the age at which you receive your full Social Security benefit.
+    * **When your RMDs begin:** RMD stands for Required Minimum Distribution. The IRS forces you to start withdrawing money from your traditional retirement accounts at a certain age — either 73 or 75, depending on your birth year. 
+    * **Your IRS Catch-Up Contribution eligibility:** Once you turn 50, you're allowed to contribute extra money to your 401(k) and IRA above the normal limits. The app needs your age to know when to apply this bonus.""")
 
-    st.subheader("💸 BUDGETS & EXPENSES")
+    show_faq("What changes when I add a spouse?",
+    """Quite a lot, actually. Adding a spouse unlocks a completely different set of tax rules that are generally more favorable:
+
+    * **Married Filing Jointly (MFJ)** tax brackets are roughly double the single brackets.
+    * **Standard Deduction** doubles from approximately $14,600 to $29,200.
+    * **Social Security survivor benefits** activate — if one spouse passes away, the surviving spouse automatically inherits the higher of the two Social Security benefit amounts.
+    * **Retirement account strategies** change — the app can now optimize withdrawals across two people's accounts.
+    * **Lifestyle cost reduction** — the simulation realistically models that a surviving spouse spends less (roughly 60% of the couple's former expenses) after the other passes.""")
+
+    show_faq("What are 'dependents' used for in the simulation?",
+    """The app uses your children's ages to automatically time several important financial events. It models when child-related expenses (extracurricular activities, higher grocery bills, larger utility costs) naturally phase out as each child grows up and leaves home. 
     
-    with st.expander("The expense table has 'Start Phase' and 'End Phase' — what do these mean?"):
-        st.markdown("""
-        These control exactly when each expense is active in your lifetime simulation:
+    It also uses their ages to calculate exactly when college tuition expenses should start and end in your cash flow. If you have a 529 college savings plan, the app connects it directly to your specific child's tuition costs, drawing down that account automatically when the bills arrive.""")
 
-        * **"Now"** means the expense starts today and continues until whatever end phase you choose.
-        * **"At Retirement"** means the expense either starts when you retire (like a new travel budget) or ends when you retire (like your work commute costs).
-        * **"End of Life"** means the expense continues until the very last year of your simulation.
-        * **"Custom Year"** lets you enter a specific year — useful for things like college tuition or a car payment that ends in 2027.
-
-        *A critical rule:* If an expense changes at retirement (like your grocery bill going down slightly), you should create TWO rows — one that goes from "Now" to "At Retirement," and a separate one that goes from "At Retirement" to "End of Life" with the new amount.
-        """)
-
-    with st.expander("How does healthcare inflation work, and why is it different from regular inflation?"):
-        st.markdown("""
-        Regular consumer inflation (food, clothing, electronics, etc.) has historically averaged around 2-3% per year. Healthcare costs, however, have consistently risen at 5-7% per year for decades — nearly double the overall inflation rate. 
-        
-        This means a healthcare expense that costs $500/month today might cost over $1,300/month in 20 years. The app applies a separate, higher inflation rate specifically to anything categorized as "Healthcare" or "Insurance" to capture this reality. 
-        """)
-
-    st.subheader("🏥 HEALTHCARE & MEDICARE")
+    if not search_q: st.subheader("💵 INCOME & SOCIAL SECURITY")
     
-    with st.expander("What is the 'Pre-Medicare Gap' and why is it so expensive?"):
-        st.markdown("""
-        If you retire before age 65, you face a potentially brutal financial gap. Most working Americans get health insurance through their employer. The moment you retire, that coverage ends. You're now on your own for health insurance until Medicare kicks in at age 65.
-        
-        Buying private health insurance for a 60-year-old can easily cost $1,000-$2,000+ per month just in premiums. This is called the "Pre-Medicare Gap" and it catches many early retirees completely off guard. The app automatically adds this cost to your simulation if you retire before 65, scaled to your income level.
-        """)
-
-    with st.expander("What is 'IRMAA' and why might I have to pay extra for Medicare?"):
-        st.markdown("""
-        IRMAA stands for Income-Related Monthly Adjustment Amount. It's essentially a Medicare "high earner surcharge." If your income in retirement exceeds certain thresholds (starting around $103,000/year for singles or $206,000/year for couples in 2026 dollars), the government charges you extra for your Medicare premiums. 
-        
-        The sneaky part: the income the government uses to calculate IRMAA includes your RMDs, Social Security, investment income, and Roth conversions. The app calculates and applies IRMAA automatically every year based on your projected income — which you can see isolated as a red bar on the Tax Breakdown chart.
-        """)
-
-    with st.expander("What is 'Long-Term Care' and why is it in the stress tests?"):
-        st.markdown("""
-        Long-Term Care (LTC) refers to extended help with daily activities — bathing, dressing, eating — typically needed in the final years of life due to illness or cognitive decline. This care is extremely expensive: a private nursing home room in the US costs $90,000-$120,000+ per year on average, and this is almost entirely NOT covered by regular Medicare.
-        
-        The "LTC Shock" stress test injects a massive medical expense into the final 2-3 years of your simulation to show what happens to your plan if you or a spouse needs this level of care. 
-        """)
-
-    st.subheader("📊 TAXES & ROTH CONVERSIONS")
+    show_faq("What is an 'employer 401(k) match' and why is it listed under income instead of savings?",
+    """An employer match is essentially free money your company adds to your retirement account when you contribute your own money. For example, your employer might match 50 cents for every dollar you put in, up to 6% of your salary. 
     
-    with st.expander("What is a 'progressive' tax system? Why don't I just multiply my income by my tax rate?"):
-        st.markdown("""
-        The US uses a system where higher income is taxed at progressively higher rates — but crucially, only the portion of your income that falls within each "bracket" is taxed at that bracket's rate. 
-        
-        Think of it like filling buckets. The first $23,200 of a married couple's income fills the 10% bucket. The next chunk fills the 12% bucket, and so on. Only income above the highest bracket threshold gets taxed at the top rate. This is why your actual tax bill is almost always less than your bracket rate would suggest.
-        """)
-        
-    with st.expander("How do I read the 'Tax Obligations Breakdown' chart?"):
-        st.markdown("""
-        Because taxes are often the single largest expense in retirement, the app separates them out so you can see exactly where your money is going:
-        
-        * **Baseline Federal & State Tax:** Your normal income taxes.
-        * **FICA (SS & Medicare):** Payroll taxes. You'll notice these completely disappear the year you retire.
-        * **Roth Conversion Taxes:** The extra income tax you volunteered to pay to move money from a Traditional to a Roth account.
-        * **Cap Gains & Penalties:** Taxes paid when you are forced to sell Brokerage assets, or the 10% IRS penalty if you withdraw from a 401(k) before age 59.5.
-        * **Medicare IRMAA Surcharge:** The hidden high-income Medicare penalty. 
-        """)
+    It's listed under "Income" purely so the app can track it separately from your own contributions. This is important because employer match money goes directly into your 401(k) and is never spendable take-home cash. The app is careful to never count it as money you can spend on bills, but it does add it to your growing 401(k) balance behind the scenes.""")
 
-    with st.expander("What is a Roth conversion and how does the Optimizer work?"):
-        st.markdown("""
-        A Roth conversion is a deliberate decision to move money from your Traditional 401(k) (where you'll owe taxes when you withdraw) into a Roth IRA (where all future growth and withdrawals are tax-free). You pay the income taxes on the converted amount now, in the current year.
-        
-        **How the Optimizer Works:** When enabled, it identifies the years where your taxable income is below your chosen target bracket (e.g., the 24% bracket). It calculates exactly how much money it can convert to fill that bracket up to the brim, checks if you have enough liquid cash to pay the tax bill, and executes the conversion automatically. 
-        """)
-
-    st.subheader("📈 AI, SENSITIVITY & MONTE CARLO SIMULATION")
+    show_faq("What is Social Security, and how does the app calculate my benefit?",
+    """Social Security is a federal retirement program you've been paying into your entire working life. When you retire, you receive a monthly payment for life based on your 35 highest-earning years. 
     
-    with st.expander("How do the AI Fiduciary Report and What-If Simulator work?"):
-        st.markdown("""
-        Instead of generic financial advice, the AI tab passes your *exact* mathematical timeline, your asset balances, and your specific macroeconomic assumptions to an advanced Large Language Model (Gemini).
-        
-        * **The Comprehensive Report** acts as a fiduciary planner reviewing your baseline file. It will tell you specifically when your highest tax years are, warn you of impending IRMAA cliffs, and lay out an exact blueprint for Roth Conversions.
-        * **The What-If Simulator** allows you to type natural language scenarios ("What if I sold my rental property in 2030 and put the cash in my brokerage?"). The AI calculates how that alters your trajectory compared to your baseline plan.
-        """)
+    The critical decision the app helps you model is when to claim:
+    * **Claim at 62 (earliest possible):** Your benefit is permanently reduced by up to 30%.
+    * **Claim at your Full Retirement Age (66-67):** You receive 100% of your earned benefit.
+    * **Claim at 70 (latest recommended):** Your benefit is permanently increased by up to 24%.""")
 
-    with st.expander("What is the Sensitivity 'Tornado' Chart?"):
-        st.markdown("""
-        A Sensitivity Analysis tests how fragile your plan is to a single variable changing. 
-        
-        The Tornado Chart runs 10 alternate dimensions of your life simultaneously—tweaking Inflation by 1%, dropping Market Returns by 1%, retiring 2 years early, etc.—and measures how much each tweak changes your Final Net Worth. It is sorted from the biggest impact at the top to the smallest at the bottom. This helps you figure out what you actually need to worry about (e.g., "Market returns matter a lot, but real estate growth barely moves the needle for me").
-        """)
-        
-    with st.expander("What is Sequence of Returns Risk?"):
-        st.markdown("""
-        This is one of the most misunderstood retirement risks. The order in which you experience market returns matters enormously once you're withdrawing from your portfolio. 
-        
-        If the market crashes 40% in your first year of retirement and you're forced to sell investments to cover living expenses, you're locking in permanent losses at the worst possible time. Even if the market recovers beautifully over the next decade, you have fewer shares left to benefit from that recovery. The "-25% Market Crash at Retirement" stress test directly simulates this risk.
-        """)
-
-    with st.expander("What is Monte Carlo simulation in plain English?"):
-        st.markdown("""
-        Imagine running your retirement plan 200 times in parallel, but each time the stock market behaves differently — sometimes great, sometimes terrible, sometimes mediocre. 
-        
-        Monte Carlo simulation takes your real financial plan and runs it through hundreds of randomly generated market scenarios based on historical volatility. The result is a "probability of success" percentage. An 85% success rate means that in 85 out of 100 randomly generated futures, your money lasted until the end of your life expectancy.
-        """)
-
-    st.subheader("💾 SAVING & SECURITY")
+    show_faq("What does 'taxable Social Security' mean? I thought Social Security wasn't taxed?",
+    """This is one of the most surprising things people discover about retirement. Social Security can be taxed — up to 85% of your benefit can be added to your taxable income depending on how much other income you have. 
     
-    with st.expander("Is my financial data safe?"):
-        st.markdown("""
-        Your data is stored in Google Firebase — one of the most secure cloud storage platforms in the world. Your account is protected by email and password authentication. 
-        
-        That said, no online system is completely immune to risk. This app is a planning tool — **you do not need to enter actual account numbers, social security numbers, or banking credentials anywhere**. Only use estimated balances and income figures.
-        """)
+    The IRS uses something called "Provisional Income" (basically your other income plus half your Social Security) to determine how much of your benefit is taxable. If your Provisional Income is low enough, your Social Security is completely tax-free. As your other income rises, more of your Social Security becomes taxable. The app calculates this automatically.""")
 
-    with st.expander("What happens to my data if I use 'Guest Mode'?"):
-        st.markdown("""
-        In Guest Mode, everything you enter exists only in your current browser session. The moment you close the browser tab or refresh the page, all of your data is permanently gone. Guest Mode is great for a quick exploration of the app's features (which is why it pre-loads the fictional "Johnson Family"), but if you want to save your plan and return to it later, you need to create a free account and click the "Save" button.
-        """)
+    if not search_q: st.subheader("🏦 ASSETS, ACCOUNTS & INVESTING")
+    
+    show_faq("What is the difference between all these account types? (401k, IRA, Roth, Brokerage...)",
+    """This is one of the most important concepts to understand. All of these are just containers that hold your investments — the difference is purely about when the IRS taxes the money inside them. 
+    
+    * **Traditional 401(k) and Traditional IRA ("Pay taxes later"):** You put money in before paying taxes. Your money grows tax-free. When you withdraw it in retirement, you pay income taxes on every dollar you take out.
+    * **Roth 401(k) and Roth IRA ("Pay taxes now, never again"):** You put money in after already paying taxes on it. Your money grows tax-free and you can withdraw it in retirement completely tax-free.
+    * **Brokerage (Taxable) Account ("Pay taxes as you go"):** A regular investment account with no special tax protection. You pay taxes on dividends and capital gains. 
+    * **HSA (Health Savings Account) ("Triple tax advantage"):** You contribute pre-tax, it grows tax-free, and withdrawals for medical expenses are tax-free.
+    * **529 Plan ("Tax-free college savings"):** Money grows tax-free and can be withdrawn completely tax-free when used for qualified education expenses.""")
+
+    show_faq("How does the app decide which account to withdraw from first? (Withdrawal Strategy)",
+    """When your expenses exceed your income, you have a "shortfall" and must sell investments. The order in which you sell them has massive tax implications. The engine allows you to choose between two strategies:
+    
+    * **Standard Strategy (Default):** Drains liquid cash first, then Taxable Brokerage accounts, then Traditional 401(k)s/IRAs, and finally leaves your tax-free Roth accounts to grow for as long as possible.
+    * **Roth Preferred:** Drains liquid cash, then Taxable Brokerages, but then flips the script: it drains Roth accounts completely *before* touching Traditional 401(k)s. This is sometimes preferred by early retirees trying to keep their taxable income artificially low for healthcare subsidies.""")
+
+    show_faq("What happens if my plan runs out of money? (Shortfall Borrowing Rate)",
+    """If your expenses completely drain all of your liquid assets, brokerage accounts, and retirement accounts, the app enters **"Liquidity Crisis"** mode. It tracks the missing money as "Unfunded Debt." Because you still need to pay your bills, the engine assumes you must borrow this money via personal loans or credit cards. The Unfunded Debt will compound aggressively year over year based on the **Shortfall Borrowing Rate** you set.""")
+
+    show_faq("What are 'RMDs' and why do they matter so much?",
+    """RMD stands for Required Minimum Distribution. The IRS has a simple rule: you cannot keep money in a Traditional 401(k) or IRA forever. Starting at age 73 (or 75 if you were born in 1960 or later), you must withdraw a minimum amount every single year, whether you need the money or not. 
+    
+    Why do they matter? Because every dollar you're forced to withdraw is added to your taxable income that year — which can push you into a higher tax bracket, cause more of your Social Security to become taxable, and trigger Medicare surcharges (IRMAA).""")
+
+    if not search_q: st.subheader("🏡 REAL ESTATE & MORTGAGES")
+    
+    show_faq("How does the app handle my mortgage?",
+    """You simply enter three things: your current loan balance, your interest rate, and your monthly payment. The app mathematically pays down your mortgage month by month, exactly as your bank would. 
+    
+    When the balance finally hits zero, the mortgage expense automatically disappears from your cash flow for every future year. **You should NOT separately list your mortgage payment in the budget section**.""")
+
+    show_faq("What's the difference between a 'primary residence' and an 'investment property'?",
+    """* **Your primary residence** is where you live. Its mortgage payment and monthly expenses (property taxes, insurance, HOA) flow out as living costs. 
+    * **An investment property** is treated as a business. The app calculates the net cash flow — rent collected minus mortgage payment minus expenses — and only the net profit or loss affects your overall cash flow.""")
+
+    if not search_q: st.subheader("💸 BUDGETS & EXPENSES")
+    
+    show_faq("The expense table has 'Start Phase' and 'End Phase' — what do these mean?",
+    """These control exactly when each expense is active in your lifetime simulation:
+
+    * **"Now"** means the expense starts today.
+    * **"At Retirement"** means the expense either starts when you retire (like travel) or ends when you retire (like a commute).
+    * **"End of Life"** means the expense continues until the last year of your simulation.
+    * **"Custom Year"** lets you enter a specific year.""")
+
+    show_faq("How does healthcare inflation work, and why is it different from regular inflation?",
+    """Regular consumer inflation (food, clothing) has historically averaged around 2-3% per year. Healthcare costs, however, have consistently risen at 5-7% per year for decades. This means a healthcare expense that costs $500/month today might cost over $1,300/month in 20 years. The app applies a separate, higher inflation rate specifically to anything categorized as "Healthcare" or "Insurance".""")
+
+    if not search_q: st.subheader("🏥 HEALTHCARE & MEDICARE")
+    
+    show_faq("What is the 'Pre-Medicare Gap' and why is it so expensive?",
+    """If you retire before age 65, you face a potentially brutal financial gap. Most working Americans get health insurance through their employer. The moment you retire, that coverage ends. You're now on your own for health insurance until Medicare kicks in at age 65. The app automatically adds a proxy cost to your simulation if you retire early, scaled to your income level.""")
+
+    show_faq("What is 'IRMAA' and why might I have to pay extra for Medicare?",
+    """IRMAA stands for Income-Related Monthly Adjustment Amount. It's essentially a Medicare "high earner surcharge." If your income in retirement exceeds certain thresholds (starting around $103,000/year for singles or $206,000/year for couples), the government charges you extra for your Medicare premiums. The app calculates and applies IRMAA automatically every year.""")
+
+    show_faq("What is 'Long-Term Care' and why is it in the stress tests?",
+    """Long-Term Care (LTC) refers to extended help with daily activities — typically needed in the final years of life. This care is extremely expensive: a private nursing home room in the US costs $90,000-$120,000+ per year, and this is almost entirely NOT covered by regular Medicare. The "LTC Shock" stress test injects a massive medical expense into the final 2-3 years of your simulation.""")
+
+    if not search_q: st.subheader("📊 TAXES & ROTH CONVERSIONS")
+    
+    show_faq("What is a 'progressive' tax system? Why don't I just multiply my income by my tax rate?",
+    """The US uses a system where higher income is taxed at progressively higher rates — but crucially, only the portion of your income that falls within each "bracket" is taxed at that bracket's rate. Think of it like filling buckets. Only income above the highest bracket threshold gets taxed at the top rate.""")
+        
+    show_faq("How do I read the 'Tax Obligations Breakdown' chart?",
+    """Because taxes are often the single largest expense in retirement, the app separates them out so you can see exactly where your money is going:
+    
+    * **Baseline Federal & State Tax:** Your normal income taxes.
+    * **FICA (SS & Medicare):** Payroll taxes. You'll notice these completely disappear the year you retire.
+    * **Roth Conversion Taxes:** The extra income tax you volunteered to pay to move money from a Traditional to a Roth account.
+    * **Cap Gains & Penalties:** Taxes paid when you are forced to sell Brokerage assets, or the 10% IRS early withdrawal penalty.
+    * **Medicare IRMAA Surcharge:** The hidden high-income Medicare penalty.""")
+
+    show_faq("What is a Roth conversion and how does the Optimizer work?",
+    """A Roth conversion is a deliberate decision to move money from your Traditional 401(k) (where you'll owe taxes when you withdraw) into a Roth IRA (where all future growth and withdrawals are tax-free). You pay the income taxes on the converted amount now, in the current year.
+    
+    **How the Optimizer Works:** When enabled, it identifies the years where your taxable income is below your chosen target bracket (e.g., the 24% bracket). It calculates exactly how much money it can convert to fill that bracket up to the brim, checks if you have enough liquid cash to pay the tax bill, and executes the conversion automatically.""")
+
+    if not search_q: st.subheader("📈 AI, SENSITIVITY & MONTE CARLO SIMULATION")
+    
+    show_faq("How do the AI Fiduciary Report and What-If Simulator work?",
+    """Instead of generic financial advice, the AI tab passes your *exact* mathematical timeline, your asset balances, and your specific macroeconomic assumptions to an advanced Large Language Model (Gemini).
+    
+    * **The Comprehensive Report** acts as a fiduciary planner reviewing your baseline file. It will tell you specifically when your highest tax years are, warn you of impending IRMAA cliffs, and lay out an exact blueprint for Roth Conversions.
+    * **The What-If Simulator** allows you to type natural language scenarios ("What if I sold my rental property in 2030?") and the AI calculates how that alters your trajectory.""")
+
+    show_faq("What is the Sensitivity 'Tornado' Chart?",
+    """A Sensitivity Analysis tests how fragile your plan is to a single variable changing. 
+    
+    The Tornado Chart runs 10 alternate dimensions of your life simultaneously—tweaking Inflation by 1%, dropping Market Returns by 1%, retiring 2 years early, etc.—and measures how much each tweak changes your Final Net Worth. It is sorted from the biggest impact at the top to the smallest at the bottom.""")
+        
+    show_faq("What is Sequence of Returns Risk?",
+    """The order in which you experience market returns matters enormously once you're withdrawing from your portfolio. 
+    
+    If the market crashes 40% in your first year of retirement and you're forced to sell investments to cover living expenses, you're locking in permanent losses at the worst possible time. Even if the market recovers beautifully over the next decade, you have fewer shares left to benefit from that recovery. The "-25% Market Crash at Retirement" stress test directly simulates this risk.""")
+
+    show_faq("What is Monte Carlo simulation in plain English?",
+    """Imagine running your retirement plan 200 times in parallel, but each time the stock market behaves differently — sometimes great, sometimes terrible, sometimes mediocre. 
+    
+    Monte Carlo simulation takes your real financial plan and runs it through hundreds of randomly generated market scenarios based on historical volatility. The result is a "probability of success" percentage. An 85% success rate means that in 85 out of 100 randomly generated futures, your money lasted until the end of your life expectancy.""")
+
+    if not search_q: st.subheader("💾 SAVING & SECURITY")
+    
+    show_faq("Is my financial data safe?",
+    """Your data is stored in Google Firebase — one of the most secure cloud storage platforms in the world. Your account is protected by email and password authentication. 
+    
+    That said, no online system is completely immune to risk. This app is a planning tool — **you do not need to enter actual account numbers, social security numbers, or banking credentials anywhere**. Only use estimated balances and income figures.""")
+
+    show_faq("What happens to my data if I use 'Guest Mode'?",
+    """In Guest Mode, everything you enter exists only in your current browser session. The moment you close the browser tab or refresh the page, all of your data is permanently gone. Guest Mode is great for a quick exploration of the app's features, but if you want to save your plan and return to it later, you need to create a free account.""")
 
 
 # --- PAGE ROUTING & EXECUTION ---
