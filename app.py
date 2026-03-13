@@ -3391,18 +3391,21 @@ with st.sidebar:
     status = get_completion_status()
     current_page = st.session_state.get('current_page', list(PAGES.keys())[0])
 
-    # --- FIX: High-Specificity CSS for Left Alignment ---
+    # --- FIX: Deep CSS Override for Left Alignment ---
     st.markdown("""
         <style>
-        /* Force the button container itself to left-align */
-        section[data-testid="stSidebar"] .stButton button {
+        /* Force the main button to flex left */
+        body [data-testid="stSidebar"] div.stButton > button {
             justify-content: flex-start !important;
-            padding-left: 15px !important;
-            width: 100% !important;
+            padding-left: 15% !important; /* Pushes the text nicely off the edge */
         }
-        /* Force the inner text paragraph to left-align */
-        section[data-testid="stSidebar"] .stButton button p {
+        
+        /* Pierce through Streamlit's inner wrappers to force text alignment */
+        body [data-testid="stSidebar"] div.stButton > button div[data-testid="stMarkdownContainer"], 
+        body [data-testid="stSidebar"] div.stButton > button div[data-testid="stMarkdownContainer"] > p {
             text-align: left !important;
+            justify-content: flex-start !important;
+            display: flex !important;
             margin: 0 !important;
         }
         </style>
@@ -3410,27 +3413,32 @@ with st.sidebar:
 
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
 
-    # --- FIX: Map UI Page Names to Exact Backend Keys ---
-    status_key_map = {
-        "👤 Profile & Family": "profile",
-        "💵 Income Streams": "income",
-        "🏛️ Assets & Debts": "assets",
-        "💸 Cash Flows": "expenses"
-    }
-
+    # --- FIX: Foolproof Substring Mapping for Checkmarks ---
     for page_name in PAGES.keys():
-        # Check if this page is one of the 4 setup pages
-        if page_name in status_key_map:
-            dict_key = status_key_map[page_name]
-            is_complete = status.get(dict_key, False)
-            prefix = "✅ " if is_complete else "  " # Unicode Em Space
+        
+        # Substring logic ignores emoji/spacing mismatches completely
+        if "Profile" in page_name:
+            is_complete = status.get("profile", False)
+            prefix = "✅ " if is_complete else "  "
+            
+        elif "Income" in page_name:
+            is_complete = status.get("income", False)
+            prefix = "✅ " if is_complete else "  "
+            
+        elif "Assets" in page_name:
+            is_complete = status.get("assets", False)
+            prefix = "✅ " if is_complete else "  "
+            
+        elif "Cash" in page_name:
+            is_complete = status.get("expenses", False)
+            prefix = "✅ " if is_complete else "  "
+            
         else:
-            # Dashboard, Simulation, AI, etc. get blank space for perfect alignment
+            # Dashboard, Simulation, AI, etc. get blank space
             prefix = "  " 
 
         label = f"{prefix}{page_name}"
         
-        # Primary = Active (blue), Tertiary = Inactive (flat/transparent)
         btn_type = "primary" if page_name == current_page else "tertiary"
         
         if st.button(label, type=btn_type, use_container_width=True, key=f"nav_{page_name}"):
