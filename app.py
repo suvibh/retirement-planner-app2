@@ -1027,6 +1027,12 @@ def run_simulation(mkt_sequence, ctx):
     sim_res, det_res, nw_det_res = [], [], []
     milestones_by_year = {}
 
+    # --- ADD THESE LINES HERE ---
+    irmaa_triggered = False
+    last_irmaa_tier = 0.0  
+    roth_irmaa_logged = False 
+    # -----------------------------
+
     tapped_brokerage = tapped_trad = tapped_roth = cash_depleted = False
     ss_started_me = ss_started_spouse = irmaa_triggered = spouse_died_notified = me_died_notified = False
 
@@ -1725,32 +1731,31 @@ def run_simulation(mkt_sequence, ctx):
         # --- FIX: Post-Roth IRMAA Penalty Trap & Milestone Tracking ---
         final_irmaa = get_irmaa_surcharge(pre_tax_ord, active_mfj, year_offset, ctx['infl'], num_medicare)
         
-        # --- FIX: State Tracking for IRMAA Milestones ---
         if final_irmaa > 0:
-            # 1. Only show "Triggered" milestone the VERY FIRST time it happens
+            # A: The very first time IRMAA is ever paid
             if not irmaa_triggered:
                 if year not in milestones_by_year: milestones_by_year[year] = []
-                milestones_by_year[year].append({
-                    "desc": "📉 Medicare IRMAA Surcharge Triggered", 
-                    "amt": final_irmaa, 
-                    "type": "system"
-                })
-                irmaa_triggered = True # This locks it so it never triggers again
+                milestones_by_year[year].append({"desc": "📉 Medicare IRMAA Surcharge Triggered", "amt": final_irmaa, "type": "system"})
+                irmaa_triggered = True
+                last_irmaa_tier = final_irmaa # Set the initial floor
             
-            # 2. Only show "Tier Jumped" if the new penalty is significantly higher than the last peak
-            # (Using a $500 buffer to ignore small inflationary adjustments)
-            if final_irmaa > last_irmaa_tier + 500:
+            # B: Only log a "Tier Jumped" if the new penalty is at least $1,000 higher than the last record
+            # This prevents small inflationary adjustments from triggering the alert every year
+            elif final_irmaa > (last_irmaa_tier + 1000):
                 if year not in milestones_by_year: milestones_by_year[year] = []
-                milestones_by_year[year].append({
-                    "desc": "📉 Medicare IRMAA Tier Jumped", 
-                    "amt": final_irmaa, 
-                    "type": "system"
-                })
+                milestones_by_year[year].append({"desc": "📉 Medicare IRMAA Tier Jumped", "amt": final_irmaa, "type": "system"})
                 last_irmaa_tier = final_irmaa # Update the high-water mark
 
-        # 3. Roth Conversion Penalty Logic - Ensure this also only fires once
+        # C: Handle the Roth-specific penalty warning
         irmaa_penalty_jump = final_irmaa - baseline_irmaa
-        if irmaa_penalty_jump > 0 and not a.get('roth_irmaa_logged'):
+        if irmaa_penalty_jump > 0 and not roth_irmaa_logged:
+            # We add it to expenses every year, but only add the MILESTONE once
+            if year not in milestones_by_year: milestones_by_year[year] = []
+            milestones_by_year[year].append({"desc": "📉 Roth Conversion Triggered IRMAA Penalty", "amt": irmaa_penalty_jump, "type": "system"})
+            roth_irmaa_logged = True
+            
+        # Ensure the actual cost is still applied even if the milestone isn't shown
+        if irmaa_penalty_jump > 0:
             total_exp += irmaa_penalty_jump
             yd["Expense: Medicare IRMAA Surcharge"] = yd.get("Expense: Medicare IRMAA Surcharge", 0) + irmaa_penalty_jump
             
