@@ -827,8 +827,8 @@ def _withdraw(a, current_shortfall, tax_treatment, ctx, my_current_age, spouse_c
     return current_shortfall - net_cash, tax_inc, withdrawn
 # ------------------------------------------------
 
-def run_simulation(mkt_sequence, ctx_input):
-    ctx = copy.deepcopy(ctx_input)
+# --- FIX: Removed redundant deepcopy for massive Monte Carlo performance boost ---
+def run_simulation(mkt_sequence, ctx):
     
     if ctx['max_years'] <= 0: return [], [], [], {}
 
