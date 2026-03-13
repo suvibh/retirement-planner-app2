@@ -1706,7 +1706,6 @@ def execute_sim_engine_v8(mkt_sequence_tuple, ctx_json):
 # =====================================================================
 
 def render_dashboard():
-    st.warning("DEBUG 1: Dashboard function started!") # <-- Add this at the very top
     status = get_completion_status()
     if status['score'] < 100:
         st.markdown(
@@ -1780,8 +1779,6 @@ def render_dashboard():
         clean_ctx = sanitize_for_cache(sim_ctx)
         ctx_json = json.dumps(clean_ctx, sort_keys=True)
         df_sim_nominal, df_det_nominal, df_nw_nominal, run_milestones = execute_sim_engine_v8(mkt_seq, ctx_json)
-
-        st.warning("DEBUG 2: Simulation engine finished!") # <-- Add this after the engine runs
         
         st.session_state['df_sim_nominal'] = df_sim_nominal
         st.session_state['df_det'] = df_det_nominal
@@ -1914,8 +1911,6 @@ def render_dashboard():
                                                          color=link_colors))])
         fig_sankey.update_layout(height=900, margin=dict(l=0, r=0, t=30, b=50), font=dict(size=12))
         st.plotly_chart(fig_sankey, width='stretch')
-
-        st.warning("DEBUG 3: Charts rendered!") # <-- Add this at the very bottom
 
 def render_profile():
     section_header("Profile & Family Context",
@@ -3516,54 +3511,48 @@ with st.sidebar:
         time.sleep(0.5)
         st.rerun()
 
-# --- FIX: Global Contextual Banners (Guest vs. Registered) ---
-user_email = st.session_state.get('user_email')
+# --- FIX: The Global Data Loader (Cures the Phantom Page) ---
+# If a user is logged in but their data hasn't been loaded into memory yet (e.g., after a refresh)
+if user_email and not st.session_state.get('data_loaded_flag'):
+    
+    # 1. Fetch the data from your Firestore function
+    db_data = load_user_data(user_email)
+    
+    # 2. Map the database arrays into session state (with empty fallbacks)
+    st.session_state['profile_data'] = db_data.get('profile_data', {})
+    st.session_state['income_data'] = db_data.get('income_data', [])
+    st.session_state['liquid_assets_data'] = db_data.get('liquid_assets_data', [])
+    st.session_state['real_estate_data'] = db_data.get('real_estate_data', [])
+    st.session_state['business_data'] = db_data.get('business_data', [])
+    st.session_state['liabilities_data'] = db_data.get('liabilities_data', [])
+    st.session_state['lifetime_expenses'] = db_data.get('lifetime_expenses', [])
+    
+    # 3. Map settings with your default fallbacks
+    default_assumptions = {'infl': 2.5, 'inv_growth': 6.0, 'housing_growth': 3.0, 'tax_rate': 22.0}
+    st.session_state['assumptions'] = db_data.get('assumptions', default_assumptions)
+    st.session_state['ret_age'] = db_data.get('ret_age', 65)
+    
+    # 4. Lock it in so we don't spam Firestore on every button click
+    st.session_state['data_loaded_flag'] = True
 
+
+# --- Global Contextual Banners (Guest vs. Registered) ---
 if user_email == "guest_demo":
-    # Prominent Guest CTA - Always visible for guests to prevent data loss frustration
     guest_col1, guest_col2 = st.columns([4, 1])
     guest_col1.info("🏃 **Guest Mode:** Your data is only stored in this browser tab. To save your progress and access it from any device, create a free account.")
     if guest_col2.button("💾 Create Account", type="primary", key="btn_guest_signup", width='stretch'):
-        # Nuke guest session and send them back to the login/signup screen
         st.session_state.clear()
         st.rerun()
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
 
 elif st.session_state.get('dirty', False):
-    # Standard Save reminder for registered users
     warn_col1, warn_col2 = st.columns([5, 1])
     warn_col1.warning("⚠️ **Unsaved Changes Detected:** You have modified your financial blueprint. Don't forget to save your profile to the cloud before closing the app!")
-    
     if warn_col2.button("💾 Save Now", type="primary", key="btn_global_save", width='stretch'):
         save_profile()
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
 
-# --- FIX: The "Phantom Page" Initialization Guard ---
-# Ensure all critical data structures exist BEFORE the Dashboard tries to read them.
-state_updated = False
-core_lists = [
-    'income_data', 'liquid_assets_data', 'real_estate_data', 
-    'business_data', 'liabilities_data', 'lifetime_expenses'
-]
 
-for key in core_lists:
-    if key not in st.session_state:
-        st.session_state[key] = []
-        state_updated = True
-
-if 'assumptions' not in st.session_state:
-    st.session_state['assumptions'] = {'infl': 2.5, 'inv_growth': 6.0, 'housing_growth': 3.0, 'tax_rate': 22.0}
-    state_updated = True
-
-if 'ret_age' not in st.session_state:
-    st.session_state['ret_age'] = 65
-    state_updated = True
-
-# If we had to inject missing structures (e.g., after an F5 refresh), force a rerun 
-# to lock the state and ensure the Dashboard engine reads the fresh context.
-if state_updated:
-    st.rerun()
-
-# Render the active page below the relevant banner
+# --- Render the Active Page ---
 if st.session_state.get('current_page') in PAGES:
     PAGES[st.session_state['current_page']]()
