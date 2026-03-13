@@ -3516,6 +3516,9 @@ with st.sidebar:
         st.rerun()
 
 # --- Global Contextual Banners (Guest vs. Registered) ---
+
+user_email = st.session_state.get('user_email') # <--- JUST ADD THIS LINE BACK IN
+
 if user_email == "guest_demo":
     guest_col1, guest_col2 = st.columns([4, 1])
     guest_col1.info("🏃 **Guest Mode:** Your data is only stored in this browser tab. To save your progress and access it from any device, create a free account.")
