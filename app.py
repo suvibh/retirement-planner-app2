@@ -1520,8 +1520,10 @@ def run_simulation(mkt_sequence, ctx):
                 pre_tax_ord += total_converted
                 yd["Roth Conversion Amount"] = total_converted
 
-        final_qbi = get_qbi(pre_tax_ord)
-        tax_base_ord = max(0, pre_tax_ord - final_qbi - pre_tax_deductions)
+        # --- FIX: Isolate QBI from Roth Conversions ---
+        # Lock in the QBI deduction based strictly on operating baseline, 
+        # preventing voluntary Roth conversions from triggering a phase-out penalty.
+        tax_base_ord = max(0, pre_tax_ord - pre_conversion_qbi - pre_tax_deductions)
 
         # --- FIX: Smart Asset-Class Volatility Routing (Cash Crash Immunity) ---
         for a in sim_assets:
