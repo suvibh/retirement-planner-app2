@@ -303,6 +303,9 @@ def bootstrap_session_state():
         if key not in st.session_state:
             st.session_state[key] = default_val
 
+# --- FIX: Guarantee core state exists BEFORE Auth or Firebase ---
+bootstrap_session_state()
+
 def sync_editor_state(state_key, new_records):
     """
     Safely compares new data editor records against session state to prevent infinite rerun loops.
@@ -3428,9 +3431,6 @@ PAGES = {
     "🤖 AI Advisor": render_ai,
     "📖 User Guide & FAQ": render_faq
 }
-
-# --- 2. Guarantee core state variables exist ---
-bootstrap_session_state()
 
 with st.sidebar:
     st.markdown("<h2 style='text-align: center; color: white; font-family: Inter;'>🏦 Pro Planner</h2>",
