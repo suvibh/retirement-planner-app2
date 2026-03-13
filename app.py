@@ -3390,9 +3390,6 @@ def render_ai():
                             res = call_gemini_text(prompt)
                             if res:
                                 st.session_state['ai_analysis_report'] = res
-                                # Tell the engine the data is "dirty" for saving, 
-                                # but DON'T kill the report we just generated!
-                                mark_dirty(clear_ai=False)
                             else:
                                 st.error("⚠️ AI Analysis failed to generate.")
                     else:
@@ -3422,7 +3419,6 @@ def render_ai():
                             res = call_gemini_text(prompt)
                             if res:
                                 st.session_state['what_if_analysis_report'] = res
-                                mark_dirty()
                             else:
                                 st.error("⚠️ AI Analysis failed to generate.")
                     elif not what_if_query:
