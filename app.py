@@ -3538,6 +3538,32 @@ elif st.session_state.get('dirty', False):
         save_profile()
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
 
+# --- FIX: The "Phantom Page" Initialization Guard ---
+# Ensure all critical data structures exist BEFORE the Dashboard tries to read them.
+state_updated = False
+core_lists = [
+    'income_data', 'liquid_assets_data', 'real_estate_data', 
+    'business_data', 'liabilities_data', 'lifetime_expenses'
+]
+
+for key in core_lists:
+    if key not in st.session_state:
+        st.session_state[key] = []
+        state_updated = True
+
+if 'assumptions' not in st.session_state:
+    st.session_state['assumptions'] = {'infl': 2.5, 'inv_growth': 6.0, 'housing_growth': 3.0, 'tax_rate': 22.0}
+    state_updated = True
+
+if 'ret_age' not in st.session_state:
+    st.session_state['ret_age'] = 65
+    state_updated = True
+
+# If we had to inject missing structures (e.g., after an F5 refresh), force a rerun 
+# to lock the state and ensure the Dashboard engine reads the fresh context.
+if state_updated:
+    st.rerun()
+
 # Render the active page below the relevant banner
 if st.session_state.get('current_page') in PAGES:
     PAGES[st.session_state['current_page']]()
