@@ -221,6 +221,24 @@ def sanitize_for_cache(obj, decimals=4):
         return tuple(sanitize_for_cache(item, decimals) for item in obj)
     return obj
 
+def sanitize_for_ai(obj):
+    """
+    Recursively sanitizes user data to prevent AI prompt injection attacks.
+    Strips system/markdown characters, truncates length, and blocks injection keywords.
+    """
+    if isinstance(obj, str):
+        # 1. Strip dangerous system/markdown characters and truncate to 200 chars
+        cleaned = re.sub(r'[`{}<>|]', '', obj)[:200]
+        # 2. Block overt prompt injection commands
+        if any(cmd in cleaned.lower() for cmd in ['ignore previous', 'ignore all', 'system prompt', 'forget instructions']):
+            return "[REDACTED SECURITY VIOLATION]"
+        return cleaned.strip()
+    elif isinstance(obj, dict):
+        return {str(k): sanitize_for_ai(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [sanitize_for_ai(item) for item in obj]
+    return obj
+
 def apply_chart_theme(fig, title=""):
     fig.update_layout(
         title=dict(text=title, font=dict(size=16, weight=700, color="#0f172a")),
@@ -2510,7 +2528,8 @@ def render_cashflows():
                 with st.spinner("Analyzing localized CPI data, timelines, and family needs..."):
                     valid = edited_exp[edited_exp["Description"].astype(str) != ""].copy()
                     locked = valid[valid["AI Estimate?"] == False].to_dict('records')
-                    locked_desc = [x['Description'] for x in locked]
+                    # --- FIX: Sanitize user-typed descriptions before passing to AI ---
+                    locked_desc = sanitize_for_ai([x['Description'] for x in locked])
 
                     current_year = datetime.date.today().year
                     my_age = relativedelta(datetime.date.today(), st.session_state.get('my_dob', datetime.date(1980, 1, 1))).years
@@ -3286,11 +3305,14 @@ def render_ai():
             try:
                 if check_ai_rate_limit():
                     if sim_summary:
-                        with st.spinner("AI extracting timeseries data and acting as fiduciary advisor..."):
-                            prompt = f"""Act as an expert fiduciary financial planner. Review this user's summary: {json.dumps(sim_summary)}, their core economic & strategic assumptions: {json.dumps(ai_assumptions)}, and their chronological 5-year cash flow progression: {json.dumps(timeline_summary)}. 
-                            Provide a highly detailed, year-by-year or phase-by-phase tactical analysis based strictly on these parameters. 
-                            CRITICAL INSTRUCTION: You MUST include a distinct, bolded section titled "Roth Conversion Strategy Blueprint". In this section, provide actionable, mathematical advice on EXACTLY when they should execute Roth conversions. For example: "Between ages X and Y, convert $Z per year to fill the 24% bracket before RMDs begin at age 75." Be as specific as possible using their exact numbers and tax data.
-                            Format your response in clean Markdown."""
+                        with st.spinner("AI processing alternative timelines and computing what-if scenario..."):
+                            # --- FIX: Armor the payload and user text against injection ---
+                            safe_summary = json.dumps(sanitize_for_ai(sim_summary))
+                            safe_assumptions = json.dumps(sanitize_for_ai(ai_assumptions))
+                            safe_timeline = json.dumps(sanitize_for_ai(timeline_summary))
+                            safe_query = sanitize_for_ai(what_if_query)
+                            
+                            prompt = f"Act as an expert fiduciary financial planner. Review this user's baseline simulation summary: {safe_summary}, their baseline economic assumptions: {safe_assumptions}, and their chronological 5-year cash flow progression: {safe_timeline}. The user wants to run the following 'what-if' scenario: '{safe_query}'. Analyze how this change would mathematically and strategically impact their net worth, cash flow, and tax strategy compared to their baseline assumptions. Provide a highly detailed, reasonable estimate and tactical breakdown of this scenario. Format your response in clean Markdown."
 
                             res = call_gemini_text(prompt)
                             if res:
