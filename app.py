@@ -16,6 +16,7 @@ import concurrent.futures
 import warnings
 import firebase_admin
 import hashlib
+import functools
 from firebase_admin import credentials, firestore
 from concurrent.futures import ThreadPoolExecutor
 from dateutil.relativedelta import relativedelta
@@ -745,36 +746,57 @@ IRS_UNIFORM_TABLE = {73: 26.5, 74: 25.5, 75: 24.6, 76: 23.7, 77: 22.9, 78: 22.0,
                      110: 3.5, 111: 3.4, 112: 3.3, 113: 3.1, 114: 3.0, 115: 2.9, 116: 2.8, 117: 2.7, 118: 2.5,
                      119: 2.3, 120: 2.0}
 
-def calc_federal_tax(ordinary_income, is_mfj, year_offset, inflation_rate):
-    infl_factor = (1 + inflation_rate / 100) ** year_offset
+import functools
+
+# --- FIX: Memoized Tax Bracket Generators ---
+@functools.lru_cache(maxsize=1024)
+def get_tax_brackets(is_mfj, year_offset, inflation_rate):
+    infl_factor = (1 + inflation_rate / 100.0) ** year_offset
     std_deduction = (29200 if is_mfj else 14600) * infl_factor
-    taxable_ordinary = max(0, ordinary_income - std_deduction)
 
-    b_mfj = [(23200, 0.10), (94300, 0.12), (201050, 0.22), (383900, 0.24), (487450, 0.32), (731200, 0.35), (float('inf'), 0.37)]
-    b_single = [(11600, 0.10), (47150, 0.12), (100525, 0.22), (191950, 0.24), (243725, 0.32), (609350, 0.35), (float('inf'), 0.37)]
-    brackets = b_mfj if is_mfj else b_single
+    # Base brackets (limit, rate)
+    b_base = [(23200, 0.10), (94300, 0.12), (201050, 0.22), (383900, 0.24), (487450, 0.32), (731200, 0.35)] if is_mfj else [(11600, 0.10), (47150, 0.12), (100525, 0.22), (191950, 0.24), (243725, 0.32), (609350, 0.35)]
+    
+    # Store as an immutable tuple for fast iteration
+    adj_brackets = tuple((limit * infl_factor, rate) for limit, rate in b_base)
+    return std_deduction, adj_brackets
 
-    ord_tax, prev_limit = 0, 0
-    for limit, rate in brackets:
-        adj_limit = limit * infl_factor
-        if taxable_ordinary > prev_limit:
-            taxable_in_bracket = min(taxable_ordinary, adj_limit) - prev_limit
-            ord_tax += taxable_in_bracket * rate
-        prev_limit = adj_limit
+def calc_federal_tax(ordinary_income, is_mfj, year_offset, inflation_rate):
+    # O(1) Cache hit - retrieves pre-calculated brackets instantly
+    std_deduction, adj_brackets = get_tax_brackets(is_mfj, year_offset, inflation_rate)
+    taxable = max(0, ordinary_income - std_deduction)
 
-    marginal_rate = 0.10
-    for limit, rate in brackets:
-        if taxable_ordinary < limit * infl_factor:
-            marginal_rate = rate
+    tax, prev_limit = 0, 0
+    marginal = 0.10
+    
+    for limit, rate in adj_brackets:
+        if taxable > prev_limit:
+            tax += (min(taxable, limit) - prev_limit) * rate
+        if taxable <= limit:
+            marginal = rate
             break
-    if taxable_ordinary > brackets[-1][0] * infl_factor: marginal_rate = 0.37
-    return ord_tax, marginal_rate
+        prev_limit = limit
+    else:
+        # If taxable income exceeds the highest defined bracket limit
+        if taxable > prev_limit:
+            tax += (taxable - prev_limit) * 0.37
+        marginal = 0.37
+        
+    return tax, marginal
+
+
+@functools.lru_cache(maxsize=1024)
+def get_ltcg_thresholds(is_mfj, year_offset, inflation_rate):
+    infl_factor = (1 + inflation_rate / 100.0) ** year_offset
+    return (
+        ADDL_MED_TAX_THRESHOLD * infl_factor,          # niit_threshold
+        (94050 if is_mfj else 47025) * infl_factor,    # cg_0
+        (583750 if is_mfj else 518900) * infl_factor   # cg_15
+    )
 
 def get_ltcg_rate(ordinary_income, is_mfj, year_offset, inflation_rate):
-    infl_factor = (1 + inflation_rate / 100) ** year_offset
-    niit_threshold = ADDL_MED_TAX_THRESHOLD * infl_factor
-    cg_threshold_0 = 94050 * infl_factor if is_mfj else 47025 * infl_factor
-    cg_threshold_15 = 583750 * infl_factor if is_mfj else 518900 * infl_factor
+    # O(1) Cache hit
+    niit_threshold, cg_threshold_0, cg_threshold_15 = get_ltcg_thresholds(is_mfj, year_offset, inflation_rate)
 
     if ordinary_income < cg_threshold_0: base_rate = 0.0
     elif ordinary_income < cg_threshold_15: base_rate = 0.15
@@ -1435,19 +1457,23 @@ def run_simulation(mkt_sequence, ctx):
                             a['bal'] -= convert
                             total_converted += convert
 
-                            # --- FIX: EXACT TAX DELTA CALCULATION ---
-                            base_fed, _ = calc_federal_tax(tax_base_ord_pre, active_mfj, year_offset, ctx['infl'])
-                            base_state = tax_base_ord_pre * (state_tax_rate / 100.0)
+                            # --- FIX: Cumulative Tax Delta Calculation ---
+                            # Calculate exactly how much extra tax this specific chunk generated
+                            # by comparing the cumulative total against the previous step.
+                            prev_tax_base = tax_base_ord_pre + (total_converted - convert)
+                            proposed_tax_base = tax_base_ord_pre + total_converted
                             
-                            proposed_tax_base = tax_base_ord_pre + convert
+                            prev_fed, _ = calc_federal_tax(prev_tax_base, active_mfj, year_offset, ctx['infl'])
                             prop_fed, _ = calc_federal_tax(proposed_tax_base, active_mfj, year_offset, ctx['infl'])
+                            
+                            prev_state = prev_tax_base * (state_tax_rate / 100.0)
                             prop_state = proposed_tax_base * (state_tax_rate / 100.0)
                             
-                            tax_cost = (prop_fed + prop_state) - (base_fed + base_state)
+                            tax_cost = (prop_fed + prop_state) - (prev_fed + prev_state)
                             
-                            # --- FIX: Track Roth taxes, but wait to log them to prevent double-counting ---
-                            roth_fed_tax_paid += (prop_fed - base_fed)
-                            roth_state_tax_paid += (prop_state - base_state)
+                            # Track Roth taxes for the UI
+                            roth_fed_tax_paid += (prop_fed - prev_fed)
+                            roth_state_tax_paid += (prop_state - prev_state)
 
                             for ca in sim_assets:
                                 if tax_cost <= 0: break
