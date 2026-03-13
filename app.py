@@ -3051,7 +3051,15 @@ def render_simulation():
                                     if completed_idx % max(1, mc_runs // 20) == 0: 
                                         mc_progress.progress(min(1.0, (completed_idx + 1) / mc_runs))
                         except Exception as e:
-                            st.error(f"Simulation failed during multi-threading: {e}")
+                            # --- FIX: Purge Stale State on Engine Failure ---
+                            # Guarantee that a crashed simulation cannot leave behind 
+                            # a false "Success Rate" badge on the main dashboard.
+                            st.session_state['mc_success_rate'] = None
+                            if 'mc_raw_results' in st.session_state:
+                                st.session_state['mc_raw_results'] = None
+                                
+                            st.error(f"🚨 Monte Carlo Engine Error: {str(e)}")
+                            st.stop()
                         finally:
                             mc_progress.empty()
 
