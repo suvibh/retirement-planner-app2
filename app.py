@@ -3511,6 +3511,8 @@ with st.sidebar:
         time.sleep(0.5)
         st.rerun()
 
+user_email = st.session_state.get('user_email') # <--- ADD THIS LINE
+
 # --- FIX: The Global Data Loader (Cures the Phantom Page) ---
 # If a user is logged in but their data hasn't been loaded into memory yet (e.g., after a refresh)
 if user_email and not st.session_state.get('data_loaded_flag'):
