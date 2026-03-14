@@ -2992,7 +2992,7 @@ def render_simulation():
                     if m_x_alert: fig_main.add_trace(go.Scatter(x=m_x_alert, y=[0] * len(m_x_alert), mode='markers', marker=dict(symbol='star', size=18, color='#ef4444', line=dict(width=2, color='white')), showlegend=False, hoverinfo='text', text=m_text_alert, legendgroup="2"), row=2, col=1)
 
                     # --- 3. Unified Layout & Background ---
-                    fig_main = apply_chart_theme(fig_main)
+                    fig_main = apply_chart_theme(fig_main, "Master Financial Trajectory")
                     
                     fig_main.update_layout(
                         barmode='relative',  # Ensures liabilities stack below 0
@@ -3330,7 +3330,7 @@ def render_simulation():
                             ), row=2, col=1)
 
                     # --- RESTORE THE UNIFIED WHITE BOX ---
-                    fig_tax = apply_chart_theme(fig_tax)
+                    fig_tax = apply_chart_theme(fig_tax, "Tax Obligations & Roth Strategy")
                     
                     fig_tax.update_layout(
                         barmode='stack', 
