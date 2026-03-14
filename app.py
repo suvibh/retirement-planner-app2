@@ -165,6 +165,7 @@ def check_ai_rate_limit():
     except Exception as e:
         # Fail open: If the database is unreachable, we don't want to completely break the AI.
         # We rely on Gemini's API quota as the ultimate backstop.
+        logger.error(f"Firebase rate limit check failed, falling back to local: {e}", exc_info=True)
         st.session_state['last_ai_call'] = now
         return True
 
