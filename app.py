@@ -45,7 +45,7 @@ st.set_page_config(page_title="AI Retirement Planner Pro", layout="wide", page_i
                    initial_sidebar_state="expanded")
 
 # --- GLOBAL CONSTANTS ---
-GEMINI_MODEL = "gemini-3-flash-preview"
+GEMINI_MODEL = st.secrets.get("GEMINI_MODEL")
 
 SS_WAGE_BASE_2026, ADDL_MED_TAX_THRESHOLD = 168600, 250000
 IRA_LIMIT_BASE, PLAN_401K_LIMIT_BASE = 7000, 23500
@@ -478,58 +478,47 @@ def save_profile():
         st.error(f"🚨 Cloud Sync Failed: {str(e)}")
         st.info("Your changes are still in your browser session. Please check your internet connection and try saving again.")
 
-def call_gemini_json(prompt, retries=3):
+def call_gemini(prompt, retries=3, response_format="text"):
     if not GEMINI_API_KEY:
         st.error("⚠️ GEMINI_API_KEY is missing. AI operations disabled.")
         return None
+        
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
-    payload = {"contents": [{"parts": [{"text": prompt}]}],
-               "generationConfig": {"responseMimeType": "application/json"}}
-
-    for attempt in range(retries):
-        try:
-            res = requests.post(url, json=payload, timeout=45)
-            res.raise_for_status()
-            res_json = res.json()
-            if "error" in res_json:
-                if attempt == retries - 1: st.error(f"⚠️ API Error: {res_json['error'].get('message')}"); return None
-                time.sleep(2 ** attempt);
-                continue
-            text = res_json['candidates'][0]['content']['parts'][0]['text'].strip()
-            text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
-            text = re.sub(r"\n?```$", "", text).strip()
-            parsed = json.loads(text)
-            return parsed
-        except requests.exceptions.RequestException as e:
-            if attempt == retries - 1: st.error(f"⚠️ Network Error connecting to AI: {e}")
-            time.sleep(2 ** attempt)
-        except json.JSONDecodeError:
-            if attempt == retries - 1: st.error("⚠️ AI returned invalid JSON formatting. Please try again.")
-            time.sleep(2 ** attempt)
-        except Exception as e:
-            if attempt == retries - 1: st.error(f"⚠️ Unexpected AI Error: {e}")
-            time.sleep(2 ** attempt)
-    return None
-
-
-def call_gemini_text(prompt, retries=3):
-    if not GEMINI_API_KEY:
-        st.error("⚠️ GEMINI_API_KEY is missing. AI operations disabled.")
-        return None
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+    
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    if response_format == "json":
+        payload["generationConfig"] = {"responseMimeType": "application/json"}
+
     for attempt in range(retries):
         try:
             res = requests.post(url, json=payload, timeout=60)
             res.raise_for_status()
             res_json = res.json()
+            
             if "error" in res_json:
-                if attempt == retries - 1: st.error(f"⚠️ API Error: {res_json['error'].get('message')}"); return None
-                time.sleep(2 ** attempt);
+                if attempt == retries - 1: 
+                    st.error(f"⚠️ API Error: {res_json['error'].get('message')}")
+                    return None
+                time.sleep(2 ** attempt)
                 continue
-            return res_json['candidates'][0]['content']['parts'][0]['text']
+                
+            text = res_json['candidates'][0]['content']['parts'][0]['text']
+            
+            # Parse and clean JSON if requested
+            if response_format == "json":
+                text = text.strip()
+                text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
+                text = re.sub(r"\n?```$", "", text).strip()
+                return json.loads(text)
+                
+            # Otherwise, return raw text
+            return text
+            
         except requests.exceptions.RequestException as e:
             if attempt == retries - 1: st.error(f"⚠️ Network Error connecting to AI: {e}")
+            time.sleep(2 ** attempt)
+        except json.JSONDecodeError:
+            if attempt == retries - 1: st.error("⚠️ AI returned invalid JSON formatting. Please try again.")
             time.sleep(2 ** attempt)
         except KeyError:
             if attempt == retries - 1: st.error("⚠️ Unexpected AI response format.")
@@ -537,8 +526,8 @@ def call_gemini_text(prompt, retries=3):
         except Exception as e:
             if attempt == retries - 1: st.error(f"⚠️ Unexpected AI Error: {e}")
             time.sleep(2 ** attempt)
+            
     return None
-
 
 def initialize_session_state():
     if not st.session_state.get('initialized', False):
@@ -2290,7 +2279,7 @@ def render_income():
                     else:
                         prompt = f"User is {my_age} years old making ${curr_inc}/year. Estimate their annual Social Security primary insurance amount (PIA) at Full Retirement Age. Return JSON: {{'ss_amount_me': integer}}"
                     
-                    res = call_gemini_json(prompt)
+                    res = call_gemini(prompt, response_format="json")
                     if res:
                         current_inc = [row for row in edited_inc.to_dict('records') if row.get("Category") != "Social Security"]
                         my_birth_year = st.session_state.get('my_dob', datetime.date(1980, 1, 1)).year
@@ -2601,7 +2590,7 @@ def render_cashflows():
                     allowed_cats = ", ".join(BUDGET_CATEGORIES)
                     prompt = f"Current City: {curr_city_flow_clean}. Planned Retirement City: {ret_city_flow_clean}. Family: {f_ctx}. Current Year is {current_year}. {wealth_ctx} Generate a comprehensive list of missing living expenses AND expected future life milestones. {ai_exclusion} Skip these items: {json.dumps(locked_desc)}. Return ONLY a JSON array of objects with keys: 'Description', 'Category' (MUST be exactly one of: {allowed_cats}), 'Frequency' (Monthly/Yearly/One-Time), 'Amount ($)' (number), 'Start Phase' (Now/At Retirement/Custom Year), 'Start Year' (integer or null), 'End Phase' (End of Life/At Retirement/Custom Year), 'End Year' (integer or null), and 'AI Estimate?' (true)."
                     
-                    res = call_gemini_json(prompt)
+                    res = call_gemini(prompt, response_format="json")
                     if res and isinstance(res, list) and len(res) > 0:
                         st.session_state['lifetime_expenses'] = locked + res
                         mark_dirty()
@@ -2666,7 +2655,7 @@ def render_simulation():
                     if check_ai_rate_limit():
                         with st.spinner("AI estimating..."):
                             enhanced_prompt = prompt + " CRITICAL INSTRUCTION: You MUST return the value as a percentage number between 0 and 100 (e.g., return 5.5 for 5.5%, DO NOT return 0.055). Return ONLY a JSON object."
-                            res = call_gemini_json(enhanced_prompt)
+                            res = call_gemini(enhanced_prompt, response_format="json")
                             if res and state_key in res:
                                 new_val = float(res[state_key])
                                 if 0 < new_val < 0.30: new_val *= 100.0
@@ -3419,7 +3408,7 @@ def render_ai():
                             Look at their liquid cash versus their investment accounts in the first 5 years of retirement. Do they have enough cash to survive a 25% market crash without selling stocks at the bottom? Recommend an exact cash buffer size based on their annual expenses.
                             """
 
-                            res = call_gemini_text(prompt)
+                            res = call_gemini(prompt)
                             if res:
                                 st.session_state['ai_analysis_report'] = res
                             else:
@@ -3448,7 +3437,7 @@ def render_ai():
                     if sim_summary and what_if_query:
                         with st.spinner("AI processing alternative timelines and computing what-if scenario..."):
                             prompt = f"Act as an expert fiduciary financial planner. Review this user's baseline simulation summary: {json.dumps(sim_summary)}, their baseline economic assumptions: {json.dumps(ai_assumptions)}, and their chronological 5-year cash flow progression: {json.dumps(timeline_summary)}. The user wants to run the following 'what-if' scenario: '{what_if_query}'. Analyze how this change would mathematically and strategically impact their net worth, cash flow, and tax strategy compared to their baseline assumptions. Provide a highly detailed, reasonable estimate and tactical breakdown of this scenario. Format your response in clean Markdown."
-                            res = call_gemini_text(prompt)
+                            res = call_gemini(prompt)
                             if res:
                                 st.session_state['what_if_analysis_report'] = res
                             else:
