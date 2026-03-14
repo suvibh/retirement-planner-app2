@@ -312,17 +312,13 @@ def apply_chart_theme(fig, title="", lock_axes=True):
         legend=dict(
             orientation="h",
             yanchor="top",
-            y=-0.15,
+            y=-0.25,             # Pushed further down to clear the X-axis
             xanchor="center",
             x=0.5,
-            bgcolor="rgba(255,255,255,0.8)", # Slight transparency prevents gridline collision
-            bordercolor="#f1f5f9",
-            borderwidth=1,
+            # Removed the background color and border so boxes don't overlap
             font=dict(size=11, color="#334155"),
             traceorder="normal",
-            itemsizing="constant",
-            valign="top",
-            entrywidth=80 # Forces pagination on mobile
+            valign="top"
         ),
         margin=dict(t=60, b=120, l=50, r=50)
     )
@@ -2992,10 +2988,10 @@ def render_simulation():
                     for i, col in enumerate(ast_cols):
                         fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw[col], name=col.replace("Asset: ", ""), marker_color=bar_colors[i % len(bar_colors)]))
 
-                    fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Real Estate Equity"], name='Real Estate Equity', marker_color='#4338ca'))
-                    fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Business Equity"], name='Business Equity', marker_color='#92400e'))
-                    fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Debt Liabilities"], name='Liabilities (Inc. Shortfalls)', marker_color='#dc2626'))
-                    fig_nw.add_trace(go.Scatter(x=df_nw["Year"], y=df_nw["Total Net Worth"], mode='lines', name='Total Net Worth', line=dict(color='#0f172a', width=3, dash='solid')))
+                    fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Real Estate Equity"], name='Real Estate<br>Equity', marker_color='#4338ca'))
+                    fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Business Equity"], name='Business<br>Equity', marker_color='#92400e'))
+                    fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Debt Liabilities"], name='Liabilities<br>(Inc. Shortfalls)', marker_color='#dc2626'))
+                    fig_nw.add_trace(go.Scatter(x=df_nw["Year"], y=df_nw["Total Net Worth"], mode='lines', name='Total<br>Net Worth', line=dict(color='#0f172a', width=3, dash='solid')))
 
                     if m_x_normal: fig_nw.add_trace(go.Scatter(x=m_x_normal, y=m_y_normal, mode='markers', marker=dict(symbol='star', size=14, color='#eab308', line=dict(width=1.5, color='white')), name='User Milestones', hoverinfo='text', text=m_text_normal))
                     if m_x_system: fig_nw.add_trace(go.Scatter(x=m_x_system, y=m_y_system, mode='markers', marker=dict(symbol='star', size=14, color='#3b82f6', line=dict(width=1.5, color='white')), name='System Events', hoverinfo='text', text=m_text_system))
@@ -3012,11 +3008,11 @@ def render_simulation():
                     # --- CHART 2: Cash Flow Timeline ---
                     fig_cf = go.Figure()
                     
-                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Income"], mode='lines', name='Organic Income', line=dict(color='#4f46e5', width=3)))
-                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Asset Withdrawals"], mode='lines', name='Asset Withdrawals', line=dict(color='#a855f7', width=3, dash='dot')))
+                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Income"], mode='lines', name='Organic<br>Income', line=dict(color='#4f46e5', width=3)))
+                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Asset Withdrawals"], mode='lines', name='Asset<br>Withdrawals', line=dict(color='#a855f7', width=3, dash='dot')))
                     fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Expenses"], mode='lines', name='Expenses', line=dict(color='#f43f5e', width=3)))
                     fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Taxes"], mode='lines', name='Taxes', line=dict(color='#f59e0b', width=3)))
-                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Net Savings"], mode='lines', name='Net Cashflow', line=dict(color='#10b981', width=3, dash='dot')))
+                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Net Savings"], mode='lines', name='Net<br>Cashflow', line=dict(color='#10b981', width=3, dash='dot')))
 
                     # Add the invisible markers to trigger the milestone tooltips on this chart too!
                     if m_x_normal: fig_cf.add_trace(go.Scatter(x=m_x_normal, y=[0]*len(m_x_normal), mode='markers', marker=dict(symbol='star', size=14, color='#eab308', line=dict(width=1.5, color='white')), showlegend=False, hoverinfo='text', text=m_text_normal))
@@ -3164,10 +3160,16 @@ def render_simulation():
                             title='', 
                             automargin=True
                         ),
-                        # Use 'y unified' because the bars are horizontal
                         hovermode='y unified',
-                        height=600,
-                        margin=dict(l=20, r=80, t=80, b=50)
+                        height=750,                           # <-- Increased height from 600
+                        margin=dict(l=20, r=80, t=80, b=150), # <-- Increased bottom margin to 150
+                        
+                        hoverlabel=dict(
+                            bgcolor="white",
+                            font_color="#0f172a",
+                            bordercolor="#cbd5e1",
+                            font_size=13
+                        )
                     )
                     
                     # --- FIX: Remove invalid kwargs. Warning banner above provides the 'Stale' context ---
@@ -3294,9 +3296,9 @@ def render_simulation():
                     fig_brackets = go.Figure()
 
                     # --- Distinct Color Palette for Row 1 (Income = Slate/Teal) ---
-                    fig_brackets.add_trace(go.Bar(x=df_det["Year"], y=df_det.get("Tax: Base Ordinary Income", [0]*len(df_det)), name="Base Ordinary Income", marker_color="#475569"))
+                    fig_brackets.add_trace(go.Bar(x=df_det["Year"], y=df_det.get("Tax: Base Ordinary Income", [0]*len(df_det)), name="Base Ordinary<br>Income", marker_color="#475569"))
                     if "Roth Conversion Amount" in df_det.columns:
-                        fig_brackets.add_trace(go.Bar(x=df_det["Year"], y=df_det["Roth Conversion Amount"], name="Roth Conversions", marker_color="#14b8a6"))
+                        fig_brackets.add_trace(go.Bar(x=df_det["Year"], y=df_det["Roth Conversion Amount"], name="Roth<br>Conversions", marker_color="#14b8a6"))
 
                     fig_brackets.add_trace(go.Scatter(x=df_det["Year"], y=df_det.get("Tax: 0% Limit (Std Ded)", [0]*len(df_det)), mode="lines", name="Standard Deduction", line=dict(color="#cbd5e1", dash="dot", width=2)))
                     fig_brackets.add_trace(go.Scatter(x=df_det["Year"], y=df_det.get("Tax: 12% Limit", [0]*len(df_det)), mode="lines", name="12% Limit", line=dict(color="#86efac", dash="dot", width=2)))
@@ -3316,12 +3318,12 @@ def render_simulation():
 
                     # --- Distinct Color Palette for Row 2 (Taxes = Blues/Purples/Warms) ---
                     tax_categories = [
-                        ("Tax Breakdown: Federal", "#3b82f6", "Baseline Federal Tax"),
-                        ("Tax Breakdown: State", "#0ea5e9", "Baseline State Tax"),
-                        ("Tax Breakdown: Roth Conversion", "#8b5cf6", "Roth Conversion Taxes"), 
-                        ("Tax Breakdown: FICA", "#10b981", "FICA (SS & Medicare)"),
-                        ("Tax Breakdown: Withdrawals", "#f59e0b", "Cap Gains & Penalties"),
-                        ("Expense: Medicare IRMAA Surcharge", "#ef4444", "Medicare IRMAA Surcharge")
+                        ("Tax Breakdown: Federal", "#3b82f6", "Baseline<br>Federal Tax"),
+                        ("Tax Breakdown: State", "#0ea5e9", "Baseline<br>State Tax"),
+                        ("Tax Breakdown: Roth Conversion", "#8b5cf6", "Roth Conversion<br>Taxes"), 
+                        ("Tax Breakdown: FICA", "#10b981", "FICA<br>(SS & Med)"),
+                        ("Tax Breakdown: Withdrawals", "#f59e0b", "Cap Gains<br>& Penalties"),
+                        ("Expense: Medicare IRMAA Surcharge", "#ef4444", "Medicare IRMAA<br>Surcharge")
                     ]
 
                     for col_key, color, name in tax_categories:
