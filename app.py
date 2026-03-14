@@ -50,6 +50,13 @@ logger = logging.getLogger(__name__)
 # --- GLOBAL CONSTANTS ---
 GEMINI_MODEL = st.secrets.get("GEMINI_MODEL")
 
+PLOTLY_MOBILE_CONFIG = {
+    'displayModeBar': False,
+    'scrollZoom': False,
+    'doubleClick': 'reset',
+    'showAxisDragHandles': False
+}
+
 SS_WAGE_BASE_2026, ADDL_MED_TAX_THRESHOLD = 168600, 250000
 IRA_LIMIT_BASE, PLAN_401K_LIMIT_BASE = 7000, 23500
 CATCHUP_401K_BASE, CATCHUP_IRA_BASE = 7500, 1000
@@ -286,28 +293,50 @@ def sanitize_for_ai(obj):
         return [sanitize_for_ai(item) for item in obj]
     return obj
 
-def apply_chart_theme(fig, title=""):
+def apply_chart_theme(fig, title="", lock_axes=True):
     fig.update_layout(
-        title=dict(text=title, font=dict(size=16, weight=700, color="#0f172a")),
+        title=dict(text=title, font=dict(family="Inter", size=18, color="#0f172a", weight=800)),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Inter", color="#64748b", size=12), hovermode="x unified",
-        hoverlabel=dict(bgcolor="white", bordercolor="#e2e8f0", font_size=13, font_family="Inter"),
+        font=dict(family="Inter", color="#64748b", size=12),
+        hovermode="x unified",
+        
+        # Consolidate the crisp white tooltip box here so NO other chart needs to define it
+        hoverlabel=dict(
+            bgcolor="white", 
+            font_color="#0f172a", 
+            bordercolor="#cbd5e1", 
+            font_size=13, 
+            font_family="Inter"
+        ),
         
         legend=dict(
             orientation="h",
             yanchor="top",
-            y=-0.25,             # Push it slightly further down to avoid overlap with X-axis
+            y=-0.15,
             xanchor="center",
             x=0.5,
-            bgcolor="rgba(0,0,0,0)",
-            font=dict(size=10),   # Slightly smaller font helps prevent truncation on mobile
+            bgcolor="rgba(255,255,255,0.8)", # Slight transparency prevents gridline collision
+            bordercolor="#f1f5f9",
+            borderwidth=1,
+            font=dict(size=11, color="#334155"),
             traceorder="normal",
             itemsizing="constant",
-            valign="top"
+            valign="top",
+            entrywidth=80 # Forces pagination on mobile
         ),
-        # Increase bottom margin significantly to fit the dual-subplot legend entries
-        margin=dict(t=60, b=160, l=50, r=50)
+        margin=dict(t=60, b=120, l=50, r=50)
     )
+    
+    # Auto-detect and format Plotly Subplot Titles (which are stored as annotations)
+    if 'annotations' in fig.layout:
+        for ann in fig.layout.annotations:
+            ann.update(font=dict(family="Inter", size=14, color="#0f172a", weight=700))
+            
+    # Lock axes to prevent accidental rubber-banding or zooming
+    if lock_axes:
+        fig.update_xaxes(fixedrange=True)
+        fig.update_yaxes(fixedrange=True)
+        
     return fig
 
 
@@ -2164,8 +2193,8 @@ def render_dashboard():
                                                link=dict(source=source, target=target, value=value,
                                                          color=link_colors))])
                                                          
-        fig_sankey.update_layout(height=dynamic_height, margin=dict(l=0, r=0, t=30, b=50), font=dict(size=12))
-        st.plotly_chart(fig_sankey, width='stretch')
+        fig_sankey.update_layout(height=dynamic_height, margin=dict(l=0, r=0, t=30, b=50), font=dict(family="Inter", size=12, color="#0f172a"))
+        st.plotly_chart(fig_sankey, width='stretch', config=PLOTLY_MOBILE_CONFIG)
 
 def render_profile():
     section_header("Profile & Family Context",
@@ -2742,8 +2771,7 @@ def render_simulation():
         'has_spouse') else 0
 
     with tab_ages:
-        st.markdown("<div class='card' style='margin-bottom: 16px;'><h3 style='margin-top:0;'>Life Timeline Controls</h3><p style='color:#64748b; font-size:0.95rem; margin:0;'>Adjust your milestones here and click Apply to recalculate the blueprint.</p></div>", unsafe_allow_html=True)
-        
+        st.markdown("<div class='card' style='margin-bottom: 16px;'><h3 style='margin-top:0; color:#0f172a; font-weight:800; letter-spacing:-0.5px;'>Life Timeline Controls</h3><p style='color:#64748b; font-size:0.95rem; margin:0;'>Adjust your milestones here and click Apply to recalculate the blueprint.</p></div>", unsafe_allow_html=True)
         # --- FIX: Form Buffer prevents "stuttering" simulations while dragging sliders ---
         with st.form("form_timeline", border=False):
             cc1, cc2, cc3, cc4 = st.columns(4)
@@ -2781,7 +2809,7 @@ def render_simulation():
                     st.rerun()
 
     with tab_assumptions:
-        st.markdown("<div class='card' style='margin-bottom: 24px;'><h3 style='margin-top:0;'>Macroeconomic Assumptions</h3></div>", unsafe_allow_html=True)
+        st.markdown("<div class='card' style='margin-bottom: 24px;'><h3 style='margin-top:0; color:#0f172a; font-weight:800; letter-spacing:-0.5px;'>Macroeconomic Assumptions</h3></div>", unsafe_allow_html=True)
         ac1, ac2, ac3 = st.columns(3)
         mkt = ai_number_input("Market Growth (%)", 'market_growth', f"What is a realistic conservative long-term annual market growth rate for a diversified retirement portfolio? Return JSON: {{'market_growth': float}}", ac1, help_text="Expected average annual return for your invested assets.")
         infl = ai_number_input("General CPI Inflation (%)", 'inflation', f"What is the projected long-term average general US CPI inflation rate? Return JSON: {{'inflation': float}}", ac2, help_text="Expected annual increase in the cost of general goods.")
@@ -2818,7 +2846,7 @@ def render_simulation():
         shortfall_rate = ai_number_input("Shortfall Penalty/Borrowing Rate (%)", 'shortfall_rate', f"What is a realistic personal loan or credit card interest rate for someone forced to borrow during retirement shortfalls? Return JSON: {{'shortfall_rate': float}}", ac10, help_text="The interest rate charged on 'Unfunded Debt' if you run out of money and are forced to borrow to cover living expenses.")
 
     with tab_stress:
-        st.markdown("<div class='card' style='margin-bottom: 24px;'><h3 style='margin-top:0;'>Tax Engine & Stress Tests</h3></div>", unsafe_allow_html=True)
+        st.markdown("<div class='card' style='margin-bottom: 24px;'><h3 style='margin-top:0; color:#0f172a; font-weight:800; letter-spacing:-0.5px;'>Tax Engine & Stress Tests</h3></div>", unsafe_allow_html=True)
         sc1, sc2 = st.columns(2)
 
         def update_asm_toggle(key, val):
@@ -2995,23 +3023,17 @@ def render_simulation():
                     fig_main = apply_chart_theme(fig_main, "Master Financial Trajectory")
                     
                     fig_main.update_layout(
-                        barmode='relative',  # Ensures liabilities stack below 0
+                        barmode='relative',  
                         hovermode='x unified',
                         height=800,
-                        hoverdistance=-1,
-                        hoverlabel=dict(
-                            bgcolor="white",
-                            font_color="#0f172a",
-                            bordercolor="#cbd5e1",
-                            font_size=13
+                        hoverdistance=-1
                         )
-                    )
                     
                     fig_main.update_xaxes(
                         showspikes=False, 
                         showline=True, 
                         showgrid=True
-                    )
+                        )
                     
                     # Mobile friendly config from earlier
                     mobile_config = {
@@ -3020,7 +3042,7 @@ def render_simulation():
                         'doubleClick': 'reset',
                         'showAxisDragHandles': False
                     }
-                    st.plotly_chart(fig_main, width='stretch', config=mobile_config)
+                    st.plotly_chart(fig_main, width='stretch', config=PLOTLY_MOBILE_CONFIG)
                 else:
                     st.info("Please install Plotly to view the charts.")
 
@@ -3161,15 +3183,7 @@ def render_simulation():
                         # Use 'y unified' because the bars are horizontal
                         hovermode='y unified',
                         height=600,
-                        margin=dict(l=20, r=80, t=50, b=80),
-                        
-                        # --- ADD THE CONSISTENT WHITE HOVER BOX ---
-                        hoverlabel=dict(
-                            bgcolor="white",
-                            font_color="#0f172a",
-                            bordercolor="#cbd5e1",
-                            font_size=13
-                        )
+                        margin=dict(l=20, r=80, t=80, b=50)
                     )
                     
                     # --- FIX: Remove invalid kwargs. Warning banner above provides the 'Stale' context ---
@@ -3286,7 +3300,7 @@ def render_simulation():
                                 fig_mc.add_trace(go.Scatter(x=years_list, y=p10, mode='lines', name='10th Percentile (Severe)', line=dict(color='#f43f5e', dash='dot')))
                                 fig_mc = apply_chart_theme(fig_mc, "Stochastic Net Worth Projections")
                                 
-                                st.plotly_chart(fig_mc, width='stretch')
+                                st.plotly_chart(fig_mc, width='stretch', config=PLOTLY_MOBILE_CONFIG)
 
             with out_tab_tax:
                 st.markdown('<div class="info-text" style="margin-bottom: 20px;">💡 <strong>Dual Tax Dashboard:</strong> The top chart visualizes your progressive tax brackets and how Roth Conversions (if enabled) fill those brackets. The bottom chart breaks down exactly what kind of taxes you are paying each year.</div>', unsafe_allow_html=True)
@@ -3337,14 +3351,7 @@ def render_simulation():
                         barmode='stack', 
                         hovermode='x unified',   # Restores the single, clean summary box
                         height=800,
-                        hoverdistance=-1,
-                        # Hardcode the pristine white background so it never disappears
-                        hoverlabel=dict(
-                            bgcolor="white",
-                            font_color="#0f172a",
-                            bordercolor="#cbd5e1",
-                            font_size=13
-                        )
+                        hoverdistance=-1
                     )
                     
                     # Clean up the axes by deleting the broken spike logic
@@ -3354,7 +3361,7 @@ def render_simulation():
                         showgrid=True
                     )
                     
-                    st.plotly_chart(fig_tax, width='stretch')
+                    st.plotly_chart(fig_tax, width='stretch', config=PLOTLY_MOBILE_CONFIG)
                 else:
                     st.info("Please install Plotly to view the charts.")
 
