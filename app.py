@@ -3140,6 +3140,9 @@ def render_simulation():
                         hoverinfo='x+name'
                     ))
                     
+                    # --- FIX: Apply the Theme FIRST ---
+                    fig_tor = apply_chart_theme(fig_tor, "Sensitivity Tornado Chart")
+                    
                     fig_tor.update_layout(
                         barmode='relative',
                         xaxis=dict(
@@ -3154,11 +3157,19 @@ def render_simulation():
                             title='', 
                             automargin=True
                         ),
+                        # Use 'y unified' because the bars are horizontal
                         hovermode='y unified',
                         height=600,
-                        margin=dict(l=20, r=80, t=50, b=80) 
+                        margin=dict(l=20, r=80, t=50, b=80),
+                        
+                        # --- ADD THE CONSISTENT WHITE HOVER BOX ---
+                        hoverlabel=dict(
+                            bgcolor="white",
+                            font_color="#0f172a",
+                            bordercolor="#cbd5e1",
+                            font_size=13
+                        )
                     )
-                    fig_tor = apply_chart_theme(fig_tor, "Sensitivity Tornado Chart")
                     
                     # --- FIX: Remove invalid kwargs. Warning banner above provides the 'Stale' context ---
                     if st.session_state.get('sens_ctx_hash') != current_ctx_hash:
