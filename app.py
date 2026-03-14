@@ -3284,17 +3284,25 @@ def render_simulation():
                     # --- FIX 3: Apply the Theme FIRST, then force the Crosshair Overrides ---
                     fig_tax = apply_chart_theme(fig_tax)
                     
-                    # 1. Turn on the Layout-level crosshair
+                    # 1. Switch to 'x' instead of 'x unified' to break the subplot barrier
                     fig_tax.update_layout(
                         barmode='stack', 
-                        hovermode='x unified', 
-                        height=800
+                        hovermode='x',       # <-- THE MAGIC FIX
+                        height=800,
+                        spikedistance=-1,
+                        hoverdistance=-1
                     )
                     
-                    # 2. Remove the restrictive "spikes" entirely, keep only the clean grid
+                    # 2. Re-enable the piercing spikes across all subplots
                     fig_tax.update_xaxes(
+                        showspikes=True, 
+                        spikemode="across",  # <-- Now this is allowed to work!
+                        spikesnap="cursor", 
                         showline=True, 
-                        showgrid=True
+                        showgrid=True,
+                        spikecolor="#64748b",
+                        spikethickness=1,
+                        spikedash="solid"
                     )
                     
                     st.plotly_chart(fig_tax, width='stretch')
