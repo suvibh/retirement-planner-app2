@@ -3284,28 +3284,20 @@ def render_simulation():
                     # --- FIX 3: Apply the Theme FIRST, then force the Crosshair Overrides ---
                     fig_tax = apply_chart_theme(fig_tax)
                     
+                    # 1. Turn on the Layout-level crosshair
                     fig_tax.update_layout(
                         barmode='stack', 
-                        hovermode='x unified', # Forces the vertical line back on for this specific chart
-                        height=800,
-                        hoverdistance=-1,
-                        spikedistance=-1
+                        hovermode='x unified', 
+                        height=800
                     )
                     
-                    # Ensure the spike line cuts across both subplots flawlessly
+                    # 2. Remove the restrictive "spikes" entirely, keep only the clean grid
                     fig_tax.update_xaxes(
-                        showspikes=True, 
-                        spikemode="across", 
-                        spikesnap="cursor", 
                         showline=True, 
-                        showgrid=True,
-                        spikecolor="#64748b",
-                        spikethickness=1,
-                        spikedash="solid"
+                        showgrid=True
                     )
                     
-                    # Optional: If you implemented the mobile_config earlier, pass it here too!
-                    st.plotly_chart(fig_tax, use_container_width=True)
+                    st.plotly_chart(fig_tax, width='stretch')
                 else:
                     st.info("Please install Plotly to view the charts.")
 
