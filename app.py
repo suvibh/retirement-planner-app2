@@ -3281,28 +3281,28 @@ def render_simulation():
                                 legendgroup="2"
                             ), row=2, col=1)
 
-                    # --- FIX 3: Apply the Theme FIRST, then force the Crosshair Overrides ---
+                    # --- RESTORE THE UNIFIED WHITE BOX ---
                     fig_tax = apply_chart_theme(fig_tax)
                     
-                    # 1. Switch to 'x' instead of 'x unified' to break the subplot barrier
                     fig_tax.update_layout(
                         barmode='stack', 
-                        hovermode='x',       # <-- THE MAGIC FIX
+                        hovermode='x unified',   # Restores the single, clean summary box
                         height=800,
-                        spikedistance=-1,
-                        hoverdistance=-1
+                        hoverdistance=-1,
+                        # Hardcode the pristine white background so it never disappears
+                        hoverlabel=dict(
+                            bgcolor="white",
+                            font_color="#0f172a",
+                            bordercolor="#cbd5e1",
+                            font_size=13
+                        )
                     )
                     
-                    # 2. Re-enable the piercing spikes across all subplots
+                    # Clean up the axes by deleting the broken spike logic
                     fig_tax.update_xaxes(
-                        showspikes=True, 
-                        spikemode="across",  # <-- Now this is allowed to work!
-                        spikesnap="cursor", 
+                        showspikes=False, 
                         showline=True, 
-                        showgrid=True,
-                        spikecolor="#64748b",
-                        spikethickness=1,
-                        spikedash="solid"
+                        showgrid=True
                     )
                     
                     st.plotly_chart(fig_tax, width='stretch')
