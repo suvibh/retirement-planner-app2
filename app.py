@@ -2128,14 +2128,38 @@ def render_dashboard():
 
     st.divider()
 
-    c_sank1, c_sank2 = st.columns([3, 1])
-    with c_sank1:
-        st.write("#### 🌊 Cash Flow Visualizer")
-    with c_sank2:
-        sankey_year = st.slider("Select Year", min_value=int(df_det_nominal['Year'].min()),
-                                max_value=int(df_det_nominal['Year'].max()), value=int(df_det_nominal['Year'].min()),
-                                label_visibility="collapsed")
+    # --- 1. Map Years to Emojis for the Select Slider ---
+    sankey_years = sorted(df_det_nominal['Year'].unique().tolist())
+    year_options = []
+    year_mapping = {}
+    
+    for y in sankey_years:
+        label = str(int(y))
+        if run_milestones and int(y) in run_milestones:
+            events = run_milestones[int(y)]
+            if any(e.get('type') == 'critical' for e in events):
+                label += " 🔴"
+            elif any(e.get('type') == 'system' for e in events):
+                label += " 🔵"
+            else:
+                label += " ⭐"
+        year_options.append(label)
+        year_mapping[label] = int(y)
 
+    # --- 2. Render the Slider FIRST so we know what year to calculate ---
+    c_sank1, c_sank2 = st.columns([3, 2]) # Gave the slider slightly more room for the emojis
+    
+    with c_sank2:
+        st.markdown("<div style='text-align: right; font-weight: 600; color: #64748b; margin-bottom: 8px; font-size: 0.9rem;'>Inspect Year:</div>", unsafe_allow_html=True)
+        selected_label = st.select_slider(
+            "Select Year", 
+            options=year_options, 
+            value=year_options[0], 
+            label_visibility="collapsed"
+        )
+        sankey_year = year_mapping[selected_label]
+
+    # --- 3. Calculate the Data for the Selected Year ---
     row = df_det_nominal[df_det_nominal['Year'] == sankey_year].iloc[0].copy()
 
     if st.session_state.get('view_todays_dollars', True):
@@ -2146,10 +2170,30 @@ def render_dashboard():
 
     inflows = {k.replace('Income: ', ''): v for k, v in row.items() if k.startswith('Income:') and v > 0}
     outflows = {k.replace('Expense: ', ''): v for k, v in row.items() if k.startswith('Expense:') and v > 0}
+    total_inflow = sum(inflows.values())
 
+    # --- 4. Render the Top-Left Header WITH the calculated Total Budget ---
+    with c_sank1:
+        st.markdown(f"""
+            <div style='display: flex; align-items: center; gap: 16px; margin-bottom: 8px;'>
+                <h4 style='margin: 0; color: #0f172a; font-weight: 800; letter-spacing: -0.5px;'>🌊 Cash Flow Visualizer</h4>
+                <div style='background: #e0e7ff; color: #4f46e5; padding: 4px 12px; border-radius: 999px; font-weight: 700; font-size: 0.9rem; border: 1px solid #c7d2fe;'>
+                    Total Budget: ${total_inflow:,.0f}
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # Display the actual event descriptions for this year right beneath the header!
+        if run_milestones and sankey_year in run_milestones:
+            event_html = "".join([f"<div style='font-size: 0.9rem; color: #475569; margin-top: 4px; border-left: 2px solid #cbd5e1; padding-left: 10px;'>{html.escape(e['desc'])}</div>" for e in run_milestones[sankey_year]])
+            st.markdown(event_html, unsafe_allow_html=True)
+        else:
+            # Invisible placeholder to keep the UI from jumping when scrolling through empty years
+            st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
+
+    # --- Proceed with the rest of your Sankey drawing code ---
     in_labels = [f"{html.escape(k)}<br>${v:,.0f}" for k, v in inflows.items()]
     out_labels = [f"{html.escape(k)}<br>${v:,.0f}" for k, v in outflows.items()]
-    total_inflow = sum(inflows.values())
     mid_label = f"Total Budget Pool<br>${total_inflow:,.0f}"
 
     labels = in_labels + [mid_label] + out_labels
