@@ -1757,19 +1757,6 @@ def run_simulation(mkt_sequence, ctx):
                 if year not in milestones_by_year: milestones_by_year[year] = []
                 milestones_by_year[year].append({"desc": "📉 Roth Conversion Triggered IRMAA Penalty", "amt": irmaa_penalty_jump, "type": "system"})
                 roth_irmaa_logged = True
-            
-        # Ensure the actual cost is still applied even if the milestone isn't shown
-        if irmaa_penalty_jump > 0:
-            total_exp += irmaa_penalty_jump
-            yd["Expense: Medicare IRMAA Surcharge"] = yd.get("Expense: Medicare IRMAA Surcharge", 0) + irmaa_penalty_jump
-            
-            if year not in milestones_by_year: milestones_by_year[year] = []
-            milestones_by_year[year].append({
-                "desc": "📉 Roth Conversion Triggered IRMAA Penalty", 
-                "amt": irmaa_penalty_jump, 
-                "type": "system"
-            })
-            a['roth_irmaa_logged'] = True # Lock this specific warning
 
         if user_out_of_pocket_contribs > 0:
             yd["Expense: Portfolio Contributions"] = user_out_of_pocket_contribs
