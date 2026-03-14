@@ -3306,6 +3306,11 @@ def render_simulation():
                     fig_brackets.add_trace(go.Scatter(x=df_det["Year"], y=df_det.get("Tax: 24% Limit", [0]*len(df_det)), mode="lines", name="24% Limit", line=dict(color="#fdba74", dash="dot", width=2)))
                     fig_brackets.add_trace(go.Scatter(x=df_det["Year"], y=df_det.get("Tax: 32% Limit", [0]*len(df_det)), mode="lines", name="32% Limit", line=dict(color="#f9a8d4", dash="dot", width=2)))
 
+                    # --- INJECT MILESTONES HERE ---
+                    if m_x_normal: fig_brackets.add_trace(go.Scatter(x=m_x_normal, y=[0]*len(m_x_normal), mode='markers', marker=dict(symbol='star', size=14, color='#eab308', line=dict(width=1.5, color='white')), showlegend=False, hoverinfo='text', text=m_text_normal))
+                    if m_x_system: fig_brackets.add_trace(go.Scatter(x=m_x_system, y=[0]*len(m_x_system), mode='markers', marker=dict(symbol='star', size=14, color='#3b82f6', line=dict(width=1.5, color='white')), showlegend=False, hoverinfo='text', text=m_text_system))
+                    if m_x_alert: fig_brackets.add_trace(go.Scatter(x=m_x_alert, y=[0]*len(m_x_alert), mode='markers', marker=dict(symbol='star', size=18, color='#ef4444', line=dict(width=2, color='white')), showlegend=False, hoverinfo='text', text=m_text_alert))
+
                     fig_brackets = apply_chart_theme(fig_brackets, "Roth Optimizer vs. Tax Brackets")
                     fig_brackets.update_layout(barmode='stack', height=500)
                     st.plotly_chart(fig_brackets, width='stretch', config=PLOTLY_MOBILE_CONFIG)
@@ -3334,6 +3339,11 @@ def render_simulation():
                                 name=name, 
                                 marker_color=color
                             ))
+                            
+                    # --- INJECT MILESTONES HERE ---
+                    if m_x_normal: fig_taxes.add_trace(go.Scatter(x=m_x_normal, y=[0]*len(m_x_normal), mode='markers', marker=dict(symbol='star', size=14, color='#eab308', line=dict(width=1.5, color='white')), showlegend=False, hoverinfo='text', text=m_text_normal))
+                    if m_x_system: fig_taxes.add_trace(go.Scatter(x=m_x_system, y=[0]*len(m_x_system), mode='markers', marker=dict(symbol='star', size=14, color='#3b82f6', line=dict(width=1.5, color='white')), showlegend=False, hoverinfo='text', text=m_text_system))
+                    if m_x_alert: fig_taxes.add_trace(go.Scatter(x=m_x_alert, y=[0]*len(m_x_alert), mode='markers', marker=dict(symbol='star', size=18, color='#ef4444', line=dict(width=2, color='white')), showlegend=False, hoverinfo='text', text=m_text_alert))
 
                     fig_taxes = apply_chart_theme(fig_taxes, "Annual Tax Obligations Breakdown")
                     fig_taxes.update_layout(barmode='stack', height=500)
