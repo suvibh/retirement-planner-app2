@@ -15,6 +15,7 @@ import warnings
 import firebase_admin
 import hashlib
 import functools
+import logging
 from firebase_admin import credentials, firestore
 from concurrent.futures import ThreadPoolExecutor
 from dateutil.relativedelta import relativedelta
@@ -41,6 +42,10 @@ except ImportError:
 warnings.simplefilter(action='ignore', category=FutureWarning)
 st.set_page_config(page_title="AI Retirement Planner Pro", layout="wide", page_icon="🏦",
                    initial_sidebar_state="expanded")
+
+# Set up logging for production visibility
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # --- GLOBAL CONSTANTS ---
 GEMINI_MODEL = st.secrets.get("GEMINI_MODEL")
@@ -176,15 +181,24 @@ def city_autocomplete(label, key_prefix, default_val=""):
             api_key = st.secrets.get("GOOGLE_MAPS_API_KEY", "")
             if api_key:
                 url = f"https://maps.googleapis.com/maps/api/place/autocomplete/json?input={current_val_clean}&types=(cities)&key={api_key}"
-                res = requests.get(url).json()
-                if res.get("status") == "OK":
+                res = requests.get(url, timeout=3) # Add a timeout so a hanging API doesn't freeze the app!
+                res.raise_for_status() # Catch 4xx and 5xx HTTP errors
+                data = res.json()
+                
+                if data.get("status") == "OK":
                     st.caption("Did you mean:")
-                    for p in res.get("predictions", [])[:3]:
+                    for p in data.get("predictions", [])[:3]:
                         st.button(p["description"], key=f"{key_prefix}_{p['place_id']}",
-                                  on_click=lambda k=input_key, v=p["description"]: st.session_state.update(
-                                      {k: v, 'dirty': True}))
-        except:
-            pass
+                                  on_click=lambda k=input_key, v=p["description"]: st.session_state.update({k: v, 'dirty': True}))
+                elif data.get("status") != "ZERO_RESULTS":
+                    # Log API-level errors (like OVER_QUERY_LIMIT)
+                    logger.warning(f"Google Maps API returned status: {data.get('status')}")
+                    
+        # Catch specific request exceptions rather than a bare except
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error connecting to Google Maps API: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error in city_autocomplete: {e}", exc_info=True)
     return current_val
 
 
@@ -217,7 +231,10 @@ def safe_num(val, default=0.0):
             num = float(match.group(0))
             return -abs(num) if is_accounting_neg else num
         return default
-    except Exception:
+    except (ValueError, TypeError) as e:
+        # Use debug level here so it doesn't spam your production logs
+        # every time someone types an incomplete number in the UI
+        logger.debug(f"safe_num failed to parse '{val}': {e}")
         return default
 
 
@@ -410,18 +427,20 @@ if 'firebase_enabled' not in st.session_state:
     st.session_state['firebase_enabled'] = True
     if not firebase_admin._apps:
         try:
-            cred = credentials.Certificate(
-                dict(st.secrets["firebase"])) if "firebase" in st.secrets else credentials.Certificate(
-                'firebase_creds.json')
+            cred = credentials.Certificate(dict(st.secrets["firebase"])) if "firebase" in st.secrets else credentials.Certificate('firebase_creds.json')
             firebase_admin.initialize_app(cred)
-        except Exception:
+        except Exception as e:
             st.session_state['firebase_enabled'] = False
+            logger.error(f"Firebase initialization failed (Check credentials): {e}", exc_info=True)
             st.warning("⚠️ Cloud Sync Disabled (Local Mode Active). Firebase initialization failed.")
 
 try:
-    if st.session_state['firebase_enabled']: db = firestore.client()
-except Exception:
+    if st.session_state['firebase_enabled']: 
+        db = firestore.client()
+except Exception as e:
     st.session_state['firebase_enabled'] = False
+    logger.error(f"Firestore client connection failed: {e}", exc_info=True)
+    st.warning("⚠️ Database connection lost. Operating in local mode.")
 
 FIREBASE_WEB_API_KEY, GEMINI_API_KEY = st.secrets.get("FIREBASE_WEB_API_KEY", ""), st.secrets.get("GEMINI_API_KEY", "")
 
@@ -599,11 +618,14 @@ def initialize_session_state():
                 if m.get("Description"):
                     try:
                         sy_int = int(str(m.get("Start Date (MM/YYYY)", "")).split('/')[-1])
-                    except:
+                    except (ValueError, TypeError, IndexError) as e:
+                        logger.debug(f"Migration: Failed to parse Start Date for '{m.get('Description')}'. Defaulting to {current_year}. Error: {e}")
                         sy_int = current_year
+                        
                     try:
                         ey_int = int(str(m.get("End Date (MM/YYYY)", "")).split('/')[-1])
-                    except:
+                    except (ValueError, TypeError, IndexError) as e:
+                        logger.debug(f"Migration: Failed to parse End Date for '{m.get('Description')}'. Defaulting to start year. Error: {e}")
                         ey_int = sy_int
                     migrated.append({"Description": m.get("Description"), "Category": "Other",
                                      "Frequency": m.get("Frequency", "One-Time"), "Amount ($)": m.get("Amount ($)", 0),
