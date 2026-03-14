@@ -4,11 +4,9 @@ import requests
 import json
 import datetime
 import time
-import random
 import math
 import html
 import re
-import copy
 import io
 import os
 import numpy as np
@@ -132,13 +130,38 @@ def get_completion_status():
 
 
 def check_ai_rate_limit():
+    uid = st.session_state.get('user_uid')
     now = time.time()
-    if 'last_ai_call' in st.session_state:
-        if now - st.session_state['last_ai_call'] < 3:
-            st.warning("⏳ AI is cooling down. Please wait 3 seconds before requesting again.")
+    
+    # 1. Fallback to session state for Guest Mode or if Firebase drops
+    if uid == "guest_demo" or not st.session_state.get('firebase_enabled', False):
+        if 'last_ai_call' in st.session_state and now - st.session_state['last_ai_call'] < 3:
+            st.warning("⏳ AI is cooling down. Please wait 3 seconds.")
             return False
-    st.session_state['last_ai_call'] = now
-    return True
+        st.session_state['last_ai_call'] = now
+        return True
+
+    # 2. Hard Server-Side Enforcement for Registered Users
+    try:
+        user_ref = db.collection('users').document(uid)
+        # Fetch ONLY the timestamp field to minimize read bandwidth
+        doc = user_ref.get(['last_ai_call']) 
+        
+        if doc.exists:
+            last_call = doc.to_dict().get('last_ai_call', 0)
+            if now - last_call < 3: # 3-second global cooldown
+                st.warning("⏳ AI is cooling down. Please wait 3 seconds.")
+                return False
+                
+        # Update the timestamp in the database asynchronously
+        user_ref.set({'last_ai_call': now}, merge=True)
+        return True
+        
+    except Exception as e:
+        # Fail open: If the database is unreachable, we don't want to completely break the AI.
+        # We rely on Gemini's API quota as the ultimate backstop.
+        st.session_state['last_ai_call'] = now
+        return True
 
 
 def city_autocomplete(label, key_prefix, default_val=""):
@@ -613,14 +636,19 @@ def initialize_session_state():
         st.rerun()
 
 if 'user_uid' not in st.session_state:
-    # --- FIX: Read the secure UID from the cookie ---
     saved_uid = cookie_manager.get(cookie="user_uid")
     if saved_uid and not st.session_state.get('logged_out_flag'):
-        # Note: We also clear out legacy email cookies if they exist to force a clean transition
         st.session_state['user_uid'] = saved_uid
         st.session_state['user_data'] = load_user_data(saved_uid)
         st.session_state['user_email'] = st.session_state['user_data'].get('account_email', '')
         st.session_state['initialized'] = False 
+        
+        # --- FIX: Sliding Window Cookie Refresh ---
+        # Push the expiration out 7 days from their current active session
+        cookie_manager.set("user_uid", saved_uid, expires_at=datetime.datetime.now() + datetime.timedelta(days=7))
+        
+        # Give the component a fraction of a second to register the new cookie before rerunning
+        time.sleep(0.2) 
         st.rerun()
 
     st.markdown(
@@ -642,8 +670,7 @@ if 'user_uid' not in st.session_state:
                     st.session_state['initialized'] = False 
                     
                     # --- FIX: Save UID to the cookie, not the email ---
-                    cookie_manager.set("user_uid", res['localId'],
-                                       expires_at=datetime.datetime.now() + datetime.timedelta(days=1))
+                    cookie_manager.set("user_uid", saved_uid, expires_at=datetime.datetime.now() + datetime.timedelta(days=7))
                     time.sleep(0.2)
                     st.rerun()
                 else:
@@ -661,8 +688,7 @@ if 'user_uid' not in st.session_state:
                         st.session_state['user_data'] = {}
                         
                         # --- FIX: Save UID to the cookie, not the email ---
-                        cookie_manager.set("user_uid", res['localId'],
-                                           expires_at=datetime.datetime.now() + datetime.timedelta(days=1))
+                        cookie_manager.set("user_uid", saved_uid, expires_at=datetime.datetime.now() + datetime.timedelta(days=7))
                         time.sleep(0.2)
                         st.rerun()
                 else:
@@ -725,7 +751,7 @@ if 'user_uid' not in st.session_state:
             st.session_state['initialized'] = False
 
             # --- FIX: Save mock UID to cookie ---
-            cookie_manager.set("user_uid", "guest_demo", expires_at=datetime.datetime.now() + datetime.timedelta(days=1))
+            cookie_manager.set("user_uid", "guest_demo", expires_at=datetime.datetime.now() + datetime.timedelta(days=7))
             st.toast("Guest mode active: Demo profile loaded successfully!", icon="🚀")
             st.rerun()
     st.stop()
