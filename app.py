@@ -2983,66 +2983,50 @@ def render_simulation():
                                 m_x_alert.append(y); m_y_alert.append(nw_val)
                                 m_text_alert.append(f"<b>⚠️ ALERT ({y}):</b><br>" + "<br>".join([f"• {html.escape(m['desc'])}" for m in alerts]))
 
-                    # --- 2. Combine into a Dual Subplot ---
-                    fig_main = make_subplots(
-                        rows=2, cols=1, 
-                        shared_xaxes=True, 
-                        vertical_spacing=0.1,
-                        subplot_titles=("Net Worth Composition (Smart Asset Drawdown)", "Annual Cash Flow Timeline")
-                    )
+                    # --- CHART 1: Net Worth Composition ---
+                    fig_nw = go.Figure()
                     
                     ast_cols = [c for c in df_nw.columns if c.startswith("Asset: ")]
                     bar_colors = ['#2563eb', '#059669', '#d97706', '#0d9488', '#db2777', '#eab308', '#0891b2', '#65a30d', '#8b5cf6', '#ea580c']
 
-                    # --- ROW 1: Net Worth Bars ---
                     for i, col in enumerate(ast_cols):
-                        fig_main.add_trace(go.Bar(x=df_nw["Year"], y=df_nw[col], name=col.replace("Asset: ", ""), marker_color=bar_colors[i % len(bar_colors)], legendgroup="1"), row=1, col=1)
+                        fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw[col], name=col.replace("Asset: ", ""), marker_color=bar_colors[i % len(bar_colors)]))
 
-                    fig_main.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Real Estate Equity"], name='Real Estate Equity', marker_color='#4338ca', legendgroup="1"), row=1, col=1)
-                    fig_main.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Business Equity"], name='Business Equity', marker_color='#92400e', legendgroup="1"), row=1, col=1)
-                    fig_main.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Debt Liabilities"], name='Total Liabilities (Inc. Shortfalls)', marker_color='#dc2626', legendgroup="1"), row=1, col=1)
-                    fig_main.add_trace(go.Scatter(x=df_nw["Year"], y=df_nw["Total Net Worth"], mode='lines', name='Total Net Worth', line=dict(color='#0f172a', width=3, dash='solid'), legendgroup="1"), row=1, col=1)
+                    fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Real Estate Equity"], name='Real Estate Equity', marker_color='#4338ca'))
+                    fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Business Equity"], name='Business Equity', marker_color='#92400e'))
+                    fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Debt Liabilities"], name='Liabilities (Inc. Shortfalls)', marker_color='#dc2626'))
+                    fig_nw.add_trace(go.Scatter(x=df_nw["Year"], y=df_nw["Total Net Worth"], mode='lines', name='Total Net Worth', line=dict(color='#0f172a', width=3, dash='solid')))
 
-                    if m_x_normal: fig_main.add_trace(go.Scatter(x=m_x_normal, y=m_y_normal, mode='markers', marker=dict(symbol='star', size=14, color='#eab308', line=dict(width=1.5, color='white')), name='User Milestones', hoverinfo='text', text=m_text_normal, legendgroup="1"), row=1, col=1)
-                    if m_x_system: fig_main.add_trace(go.Scatter(x=m_x_system, y=m_y_system, mode='markers', marker=dict(symbol='star', size=14, color='#3b82f6', line=dict(width=1.5, color='white')), name='System Events', hoverinfo='text', text=m_text_system, legendgroup="1"), row=1, col=1)
-                    if m_x_alert: fig_main.add_trace(go.Scatter(x=m_x_alert, y=m_y_alert, mode='markers', marker=dict(symbol='star', size=18, color='#ef4444', line=dict(width=2, color='white')), name='Critical Alerts', hoverinfo='text', text=m_text_alert, legendgroup="1"), row=1, col=1)
+                    if m_x_normal: fig_nw.add_trace(go.Scatter(x=m_x_normal, y=m_y_normal, mode='markers', marker=dict(symbol='star', size=14, color='#eab308', line=dict(width=1.5, color='white')), name='User Milestones', hoverinfo='text', text=m_text_normal))
+                    if m_x_system: fig_nw.add_trace(go.Scatter(x=m_x_system, y=m_y_system, mode='markers', marker=dict(symbol='star', size=14, color='#3b82f6', line=dict(width=1.5, color='white')), name='System Events', hoverinfo='text', text=m_text_system))
+                    if m_x_alert: fig_nw.add_trace(go.Scatter(x=m_x_alert, y=m_y_alert, mode='markers', marker=dict(symbol='star', size=18, color='#ef4444', line=dict(width=2, color='white')), name='Critical Alerts', hoverinfo='text', text=m_text_alert))
 
-                    # --- ROW 2: Cash Flow Lines ---
-                    fig_main.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Income"], mode='lines', name='Organic Income', line=dict(color='#4f46e5', width=3), legendgroup="2"), row=2, col=1)
-                    fig_main.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Asset Withdrawals"], mode='lines', name='Asset Withdrawals', line=dict(color='#a855f7', width=3, dash='dot'), legendgroup="2"), row=2, col=1)
-                    fig_main.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Expenses"], mode='lines', name='Expenses', line=dict(color='#f43f5e', width=3), legendgroup="2"), row=2, col=1)
-                    fig_main.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Taxes"], mode='lines', name='Taxes', line=dict(color='#f59e0b', width=3), legendgroup="2"), row=2, col=1)
-                    fig_main.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Net Savings"], mode='lines', name='Net Cashflow', line=dict(color='#10b981', width=3, dash='dot'), legendgroup="2"), row=2, col=1)
+                    # Apply theme and render
+                    fig_nw = apply_chart_theme(fig_nw, "Net Worth Composition")
+                    fig_nw.update_layout(barmode='relative', height=500)
+                    st.plotly_chart(fig_nw, width='stretch', config=PLOTLY_MOBILE_CONFIG)
 
-                    # Add duplicate invisible milestone markers on bottom chart so the tooltips trigger there too
-                    if m_x_normal: fig_main.add_trace(go.Scatter(x=m_x_normal, y=[0] * len(m_x_normal), mode='markers', marker=dict(symbol='star', size=14, color='#eab308', line=dict(width=1.5, color='white')), showlegend=False, hoverinfo='text', text=m_text_normal, legendgroup="2"), row=2, col=1)
-                    if m_x_system: fig_main.add_trace(go.Scatter(x=m_x_system, y=[0] * len(m_x_system), mode='markers', marker=dict(symbol='star', size=14, color='#3b82f6', line=dict(width=1.5, color='white')), showlegend=False, hoverinfo='text', text=m_text_system, legendgroup="2"), row=2, col=1)
-                    if m_x_alert: fig_main.add_trace(go.Scatter(x=m_x_alert, y=[0] * len(m_x_alert), mode='markers', marker=dict(symbol='star', size=18, color='#ef4444', line=dict(width=2, color='white')), showlegend=False, hoverinfo='text', text=m_text_alert, legendgroup="2"), row=2, col=1)
+                    # Add some breathing room between the charts
+                    st.markdown("<br>", unsafe_allow_html=True) 
 
-                    # --- 3. Unified Layout & Background ---
-                    fig_main = apply_chart_theme(fig_main, "Master Financial Trajectory")
+                    # --- CHART 2: Cash Flow Timeline ---
+                    fig_cf = go.Figure()
                     
-                    fig_main.update_layout(
-                        barmode='relative',  
-                        hovermode='x unified',
-                        height=800,
-                        hoverdistance=-1
-                        )
-                    
-                    fig_main.update_xaxes(
-                        showspikes=False, 
-                        showline=True, 
-                        showgrid=True
-                        )
-                    
-                    # Mobile friendly config from earlier
-                    mobile_config = {
-                        'displayModeBar': False,
-                        'scrollZoom': False,
-                        'doubleClick': 'reset',
-                        'showAxisDragHandles': False
-                    }
-                    st.plotly_chart(fig_main, width='stretch', config=PLOTLY_MOBILE_CONFIG)
+                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Income"], mode='lines', name='Organic Income', line=dict(color='#4f46e5', width=3)))
+                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Asset Withdrawals"], mode='lines', name='Asset Withdrawals', line=dict(color='#a855f7', width=3, dash='dot')))
+                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Expenses"], mode='lines', name='Expenses', line=dict(color='#f43f5e', width=3)))
+                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Taxes"], mode='lines', name='Taxes', line=dict(color='#f59e0b', width=3)))
+                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Net Savings"], mode='lines', name='Net Cashflow', line=dict(color='#10b981', width=3, dash='dot')))
+
+                    # Add the invisible markers to trigger the milestone tooltips on this chart too!
+                    if m_x_normal: fig_cf.add_trace(go.Scatter(x=m_x_normal, y=[0]*len(m_x_normal), mode='markers', marker=dict(symbol='star', size=14, color='#eab308', line=dict(width=1.5, color='white')), showlegend=False, hoverinfo='text', text=m_text_normal))
+                    if m_x_system: fig_cf.add_trace(go.Scatter(x=m_x_system, y=[0]*len(m_x_system), mode='markers', marker=dict(symbol='star', size=14, color='#3b82f6', line=dict(width=1.5, color='white')), showlegend=False, hoverinfo='text', text=m_text_system))
+                    if m_x_alert: fig_cf.add_trace(go.Scatter(x=m_x_alert, y=[0]*len(m_x_alert), mode='markers', marker=dict(symbol='star', size=18, color='#ef4444', line=dict(width=2, color='white')), showlegend=False, hoverinfo='text', text=m_text_alert))
+
+                    # Apply theme and render
+                    fig_cf = apply_chart_theme(fig_cf, "Annual Cash Flow Timeline")
+                    fig_cf.update_layout(height=500)
+                    st.plotly_chart(fig_cf, width='stretch', config=PLOTLY_MOBILE_CONFIG)
                 else:
                     st.info("Please install Plotly to view the charts.")
 
@@ -3306,25 +3290,31 @@ def render_simulation():
                 st.markdown('<div class="info-text" style="margin-bottom: 20px;">💡 <strong>Dual Tax Dashboard:</strong> The top chart visualizes your progressive tax brackets and how Roth Conversions (if enabled) fill those brackets. The bottom chart breaks down exactly what kind of taxes you are paying each year.</div>', unsafe_allow_html=True)
 
                 if HAS_PLOTLY:
-                    fig_tax = make_subplots(
-                        rows=2, cols=1, 
-                        shared_xaxes=True, 
-                        vertical_spacing=0.1,
-                        subplot_titles=("Roth Optimizer: Ordinary Income vs. Brackets", "Annual Tax Obligations Breakdown")
-                    )
+                    # --- CHART 1: Roth Optimizer vs Brackets ---
+                    fig_brackets = go.Figure()
 
-                    # --- FIX 1: Distinct Color Palette for Row 1 (Income = Slate/Teal) ---
-                    fig_tax.add_trace(go.Bar(x=df_det["Year"], y=df_det.get("Tax: Base Ordinary Income", [0]*len(df_det)), name="Base Ordinary Income", marker_color="#475569", legendgroup="1"), row=1, col=1)
+                    # --- Distinct Color Palette for Row 1 (Income = Slate/Teal) ---
+                    fig_brackets.add_trace(go.Bar(x=df_det["Year"], y=df_det.get("Tax: Base Ordinary Income", [0]*len(df_det)), name="Base Ordinary Income", marker_color="#475569"))
                     if "Roth Conversion Amount" in df_det.columns:
-                        fig_tax.add_trace(go.Bar(x=df_det["Year"], y=df_det["Roth Conversion Amount"], name="Roth Conversions", marker_color="#14b8a6", legendgroup="1"), row=1, col=1)
+                        fig_brackets.add_trace(go.Bar(x=df_det["Year"], y=df_det["Roth Conversion Amount"], name="Roth Conversions", marker_color="#14b8a6"))
 
-                    fig_tax.add_trace(go.Scatter(x=df_det["Year"], y=df_det.get("Tax: 0% Limit (Std Ded)", [0]*len(df_det)), mode="lines", name="Standard Deduction", line=dict(color="#cbd5e1", dash="dot", width=2), legendgroup="1"), row=1, col=1)
-                    fig_tax.add_trace(go.Scatter(x=df_det["Year"], y=df_det.get("Tax: 12% Limit", [0]*len(df_det)), mode="lines", name="12% Limit", line=dict(color="#86efac", dash="dot", width=2), legendgroup="1"), row=1, col=1)
-                    fig_tax.add_trace(go.Scatter(x=df_det["Year"], y=df_det.get("Tax: 22% Limit", [0]*len(df_det)), mode="lines", name="22% Limit", line=dict(color="#fde047", dash="dot", width=2), legendgroup="1"), row=1, col=1)
-                    fig_tax.add_trace(go.Scatter(x=df_det["Year"], y=df_det.get("Tax: 24% Limit", [0]*len(df_det)), mode="lines", name="24% Limit", line=dict(color="#fdba74", dash="dot", width=2), legendgroup="1"), row=1, col=1)
-                    fig_tax.add_trace(go.Scatter(x=df_det["Year"], y=df_det.get("Tax: 32% Limit", [0]*len(df_det)), mode="lines", name="32% Limit", line=dict(color="#f9a8d4", dash="dot", width=2), legendgroup="1"), row=1, col=1)
+                    fig_brackets.add_trace(go.Scatter(x=df_det["Year"], y=df_det.get("Tax: 0% Limit (Std Ded)", [0]*len(df_det)), mode="lines", name="Standard Deduction", line=dict(color="#cbd5e1", dash="dot", width=2)))
+                    fig_brackets.add_trace(go.Scatter(x=df_det["Year"], y=df_det.get("Tax: 12% Limit", [0]*len(df_det)), mode="lines", name="12% Limit", line=dict(color="#86efac", dash="dot", width=2)))
+                    fig_brackets.add_trace(go.Scatter(x=df_det["Year"], y=df_det.get("Tax: 22% Limit", [0]*len(df_det)), mode="lines", name="22% Limit", line=dict(color="#fde047", dash="dot", width=2)))
+                    fig_brackets.add_trace(go.Scatter(x=df_det["Year"], y=df_det.get("Tax: 24% Limit", [0]*len(df_det)), mode="lines", name="24% Limit", line=dict(color="#fdba74", dash="dot", width=2)))
+                    fig_brackets.add_trace(go.Scatter(x=df_det["Year"], y=df_det.get("Tax: 32% Limit", [0]*len(df_det)), mode="lines", name="32% Limit", line=dict(color="#f9a8d4", dash="dot", width=2)))
 
-                    # --- FIX 2: Distinct Color Palette for Row 2 (Taxes = Blues/Purples/Warms) ---
+                    fig_brackets = apply_chart_theme(fig_brackets, "Roth Optimizer vs. Tax Brackets")
+                    fig_brackets.update_layout(barmode='stack', height=500)
+                    st.plotly_chart(fig_brackets, width='stretch', config=PLOTLY_MOBILE_CONFIG)
+
+                    # Add some breathing room between the charts
+                    st.markdown("<br>", unsafe_allow_html=True) 
+
+                    # --- CHART 2: Tax Obligations Breakdown ---
+                    fig_taxes = go.Figure()
+
+                    # --- Distinct Color Palette for Row 2 (Taxes = Blues/Purples/Warms) ---
                     tax_categories = [
                         ("Tax Breakdown: Federal", "#3b82f6", "Baseline Federal Tax"),
                         ("Tax Breakdown: State", "#0ea5e9", "Baseline State Tax"),
@@ -3336,32 +3326,16 @@ def render_simulation():
 
                     for col_key, color, name in tax_categories:
                         if col_key in df_det.columns:
-                            fig_tax.add_trace(go.Bar(
+                            fig_taxes.add_trace(go.Bar(
                                 x=df_det["Year"], 
                                 y=df_det[col_key], 
                                 name=name, 
-                                marker_color=color,
-                                legendgroup="2"
-                            ), row=2, col=1)
+                                marker_color=color
+                            ))
 
-                    # --- RESTORE THE UNIFIED WHITE BOX ---
-                    fig_tax = apply_chart_theme(fig_tax, "Tax Obligations & Roth Strategy")
-                    
-                    fig_tax.update_layout(
-                        barmode='stack', 
-                        hovermode='x unified',   # Restores the single, clean summary box
-                        height=800,
-                        hoverdistance=-1
-                    )
-                    
-                    # Clean up the axes by deleting the broken spike logic
-                    fig_tax.update_xaxes(
-                        showspikes=False, 
-                        showline=True, 
-                        showgrid=True
-                    )
-                    
-                    st.plotly_chart(fig_tax, width='stretch', config=PLOTLY_MOBILE_CONFIG)
+                    fig_taxes = apply_chart_theme(fig_taxes, "Annual Tax Obligations Breakdown")
+                    fig_taxes.update_layout(barmode='stack', height=500)
+                    st.plotly_chart(fig_taxes, width='stretch', config=PLOTLY_MOBILE_CONFIG)
                 else:
                     st.info("Please install Plotly to view the charts.")
 
