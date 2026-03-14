@@ -3147,6 +3147,7 @@ def render_simulation():
                         barmode='relative',
                         xaxis=dict(
                             title='Impact on Final Net Worth', 
+                            side='top',
                             tickformat='$,.0f', 
                             zeroline=True, 
                             zerolinecolor='#0f172a', 
