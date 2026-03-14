@@ -1042,14 +1042,19 @@ def run_simulation(mkt_sequence, ctx):
     sim_res, det_res, nw_det_res = [], [], []
     milestones_by_year = {}
 
-    # --- ADD THESE LINES HERE ---
+    # --- FIX: Consolidated & Bulletproof Milestone State ---
+    
+    # 1. Tax & Medicare Flags
     irmaa_triggered = False
-    last_irmaa_tier = 0.0  
+    last_irmaa_tier = 0
     roth_irmaa_logged = False 
-    # -----------------------------
-
+    
+    # 2. Portfolio Drawdown Flags
     tapped_brokerage = tapped_trad = tapped_roth = cash_depleted = False
-    ss_started_me = ss_started_spouse = irmaa_triggered = spouse_died_notified = me_died_notified = False
+    
+    # 3. Life & Income Event Flags
+    ss_started_me = ss_started_spouse = False
+    spouse_died_notified = me_died_notified = False
 
     prev_debt_bals = {d['name']: d['bal'] for d in sim_debts}
     prev_re_debts = {r['name']: r['debt'] for r in sim_re}
