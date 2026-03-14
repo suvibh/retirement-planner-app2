@@ -828,7 +828,7 @@ IRS_UNIFORM_TABLE = {73: 26.5, 74: 25.5, 75: 24.6, 76: 23.7, 77: 22.9, 78: 22.0,
 
 @functools.lru_cache(maxsize=1024)
 def get_irmaa_surcharge(magi, is_mfj, year_offset, inflation_rate, num_medicare):
-    if num_medicare <= 0: return 0
+    if num_medicare <= 0: return 0, 0  # <--- Now returns a tuple (surcharge, tier)
     infl_f = (1 + inflation_rate / 100.0) ** year_offset
     
     # IRS IRMAA MAGI Brackets (MFJ limits are roughly 2x Single, except the top tier)
@@ -838,14 +838,14 @@ def get_irmaa_surcharge(magi, is_mfj, year_offset, inflation_rate, num_medicare)
     t4 = 193000 * infl_f * (2 if is_mfj else 1)
     t5 = 500000 * infl_f * (1.5 if is_mfj else 1)
     
-    surcharge = 0
-    if magi > t5: surcharge = 6500 * infl_f
-    elif magi > t4: surcharge = 5500 * infl_f
-    elif magi > t3: surcharge = 4000 * infl_f
-    elif magi > t2: surcharge = 2500 * infl_f
-    elif magi > t1: surcharge = 1000 * infl_f
+    surcharge, tier = 0, 0
+    if magi > t5: surcharge, tier = 6500 * infl_f, 5
+    elif magi > t4: surcharge, tier = 5500 * infl_f, 4
+    elif magi > t3: surcharge, tier = 4000 * infl_f, 3
+    elif magi > t2: surcharge, tier = 2500 * infl_f, 2
+    elif magi > t1: surcharge, tier = 1000 * infl_f, 1
     
-    return surcharge * num_medicare
+    return surcharge * num_medicare, tier
 
 # --- FIX: Config-Driven Memoized Tax Bracket Generators ---
 @functools.lru_cache(maxsize=1024)
@@ -1720,39 +1720,43 @@ def run_simulation(mkt_sequence, ctx):
         yd["Tax Breakdown: FICA"] = yd.get("Tax Breakdown: FICA", 0) + fica_tax
 
         # --- FIX: Baseline IRMAA Cost Lock-In ---
-        # Calculate Medicare surcharges before Roth optimization so the engine 
-        # doesn't accidentally spend required living capital on voluntary taxes.
         num_medicare = (1 if is_my_alive and my_current_age >= 65 else 0) + (1 if is_spouse_alive and spouse_current_age >= 65 else 0)
-        baseline_irmaa = get_irmaa_surcharge(tax_base_ord_pre, active_mfj, year_offset, ctx['infl'], num_medicare)
+        
+        # Unpack the new tuple responses
+        baseline_irmaa, base_tier = get_irmaa_surcharge(tax_base_ord_pre, active_mfj, year_offset, ctx['infl'], num_medicare)
         
         if baseline_irmaa > 0:
             total_exp += baseline_irmaa
             yd["Expense: Medicare IRMAA Surcharge"] = baseline_irmaa
+
         # --- FIX: Post-Roth IRMAA Penalty Trap & Milestone Tracking ---
-        final_irmaa = get_irmaa_surcharge(pre_tax_ord, active_mfj, year_offset, ctx['infl'], num_medicare)
+        final_irmaa, final_tier = get_irmaa_surcharge(pre_tax_ord, active_mfj, year_offset, ctx['infl'], num_medicare)
         
         if final_irmaa > 0:
-            # A: The very first time IRMAA is ever paid
-            if not irmaa_triggered:
-                if year not in milestones_by_year: milestones_by_year[year] = []
-                milestones_by_year[year].append({"desc": "📉 Medicare IRMAA Surcharge Triggered", "amt": final_irmaa, "type": "system"})
-                irmaa_triggered = True
-                last_irmaa_tier = final_irmaa # Set the initial floor
-            
-            # B: Only log a "Tier Jumped" if the new penalty is at least $1,000 higher than the last record
-            # This prevents small inflationary adjustments from triggering the alert every year
-            elif final_irmaa > (last_irmaa_tier + 1000):
-                if year not in milestones_by_year: milestones_by_year[year] = []
-                milestones_by_year[year].append({"desc": "📉 Medicare IRMAA Tier Jumped", "amt": final_irmaa, "type": "system"})
-                last_irmaa_tier = final_irmaa # Update the high-water mark
+            # Check for a legitimate tier change, ignoring standard inflation dollar creeps
+            if final_tier > last_irmaa_tier:
+                if last_irmaa_tier == 0:
+                    if year not in milestones_by_year: milestones_by_year[year] = []
+                    milestones_by_year[year].append({"desc": f"📉 Medicare IRMAA Triggered (Tier {final_tier})", "amt": final_irmaa, "type": "system"})
+                else:
+                    if year not in milestones_by_year: milestones_by_year[year] = []
+                    milestones_by_year[year].append({"desc": f"📉 Medicare IRMAA Tier Jumped to Tier {final_tier}", "amt": final_irmaa, "type": "system"})
+                
+                last_irmaa_tier = final_tier # Update the high-water mark
 
-        # C: Handle the Roth-specific penalty warning
+        # Handle the Roth-specific penalty warning perfectly
         irmaa_penalty_jump = final_irmaa - baseline_irmaa
-        if irmaa_penalty_jump > 0 and not roth_irmaa_logged:
-            # We add it to expenses every year, but only add the MILESTONE once
-            if year not in milestones_by_year: milestones_by_year[year] = []
-            milestones_by_year[year].append({"desc": "📉 Roth Conversion Triggered IRMAA Penalty", "amt": irmaa_penalty_jump, "type": "system"})
-            roth_irmaa_logged = True
+        
+        if irmaa_penalty_jump > 0:
+            # 1. Ensure the math is always applied
+            total_exp += irmaa_penalty_jump
+            yd["Expense: Medicare IRMAA Surcharge"] = yd.get("Expense: Medicare IRMAA Surcharge", 0) + irmaa_penalty_jump
+            
+            # 2. ONLY log the milestone once!
+            if not roth_irmaa_logged:
+                if year not in milestones_by_year: milestones_by_year[year] = []
+                milestones_by_year[year].append({"desc": "📉 Roth Conversion Triggered IRMAA Penalty", "amt": irmaa_penalty_jump, "type": "system"})
+                roth_irmaa_logged = True
             
         # Ensure the actual cost is still applied even if the milestone isn't shown
         if irmaa_penalty_jump > 0:
@@ -3287,6 +3291,21 @@ def render_simulation():
                                                                                   "Total Debt Liabilities",
                                                                                   "Total Net Worth"]
                     df_nw[ord_nw].to_excel(writer, sheet_name='Net_Worth_Log', index=False)
+
+                    # --- NEW FIX: Inject Milestones into a dedicated Excel Tab ---
+                    milestone_rows = []
+                    if run_milestones:
+                        for y_ms in sorted(run_milestones.keys()):
+                            for event in run_milestones[y_ms]:
+                                milestone_rows.append({
+                                    "Year": y_ms, 
+                                    "Type": str(event.get('type', '')).upper(), 
+                                    "Description": event.get('desc', ''), 
+                                    "Amount Impact ($)": event.get('amt', 0)
+                                })
+                    df_milestones = pd.DataFrame(milestone_rows)
+                    if not df_milestones.empty:
+                        df_milestones.to_excel(writer, sheet_name='Milestone_Log', index=False)
 
                     flat_ctx = []
                     for k, v in sim_ctx.items():
