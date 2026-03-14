@@ -2925,9 +2925,14 @@ def render_simulation():
             ])
 
             with out_tab_main:
+                # --- 1. Consistent Styled Heading ---
+                st.markdown('<div class="info-text" style="margin-bottom: 20px;">💡 <strong>Main Projection Dashboard:</strong> The top chart shows your Net Worth composition and asset drawdowns over time. The bottom chart tracks your Annual Cash Flow, Income, Expenses, and Net Savings.</div>', unsafe_allow_html=True)
+
                 if HAS_PLOTLY:
                     current_year = datetime.date.today().year
-                    m_x_normal, m_y_normal, m_text_normal, m_x_system, m_y_system, m_text_system, m_x_alert, m_y_alert, m_text_alert = [], [], [], [], [], [], [], [], []
+                    m_x_normal, m_y_normal, m_text_normal = [], [], []
+                    m_x_system, m_y_system, m_text_system = [], [], []
+                    m_x_alert, m_y_alert, m_text_alert = [], [], []
 
                     if run_milestones:
                         m_years = sorted(list(run_milestones.keys()))
@@ -2935,7 +2940,9 @@ def render_simulation():
                             row = df_sim[df_sim['Year'] == y]
                             nw_val = row['Net Worth'].values[0] if not row.empty else 0
                             events = run_milestones[y]
-                            normals, systems, alerts = [e for e in events if e.get('type') == 'normal'], [e for e in events if e.get('type') == 'system'], [e for e in events if e.get('type') == 'critical']
+                            normals = [e for e in events if e.get('type') == 'normal']
+                            systems = [e for e in events if e.get('type') == 'system']
+                            alerts = [e for e in events if e.get('type') == 'critical']
                             discount = (1 + sim_ctx['infl'] / 100) ** (y - current_year) if view_todays_dollars else 1.0
 
                             if normals:
@@ -2948,42 +2955,72 @@ def render_simulation():
                                 m_x_alert.append(y); m_y_alert.append(nw_val)
                                 m_text_alert.append(f"<b>⚠️ ALERT ({y}):</b><br>" + "<br>".join([f"• {html.escape(m['desc'])}" for m in alerts]))
 
-                    st.write("#### Net Worth Composition (Smart Asset Drawdown)")
-                    fig_nw = go.Figure()
-                    ast_cols = [c for c in df_nw.columns if c.startswith("Asset: ")]
+                    # --- 2. Combine into a Dual Subplot ---
+                    fig_main = make_subplots(
+                        rows=2, cols=1, 
+                        shared_xaxes=True, 
+                        vertical_spacing=0.1,
+                        subplot_titles=("Net Worth Composition (Smart Asset Drawdown)", "Annual Cash Flow Timeline")
+                    )
                     
+                    ast_cols = [c for c in df_nw.columns if c.startswith("Asset: ")]
                     bar_colors = ['#2563eb', '#059669', '#d97706', '#0d9488', '#db2777', '#eab308', '#0891b2', '#65a30d', '#8b5cf6', '#ea580c']
 
+                    # --- ROW 1: Net Worth Bars ---
                     for i, col in enumerate(ast_cols):
-                        fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw[col], name=col.replace("Asset: ", ""), marker_color=bar_colors[i % len(bar_colors)]))
+                        fig_main.add_trace(go.Bar(x=df_nw["Year"], y=df_nw[col], name=col.replace("Asset: ", ""), marker_color=bar_colors[i % len(bar_colors)], legendgroup="1"), row=1, col=1)
 
-                    fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Real Estate Equity"], name='Real Estate Equity', marker_color='#4338ca'))
-                    fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Business Equity"], name='Business Equity', marker_color='#92400e'))
-                    fig_nw.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Debt Liabilities"], name='Total Liabilities (Inc. Shortfalls)', marker_color='#dc2626'))
-                    fig_nw.add_trace(go.Scatter(x=df_nw["Year"], y=df_nw["Total Net Worth"], mode='lines', name='Total Net Worth', line=dict(color='#0f172a', width=3, dash='solid')))
+                    fig_main.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Real Estate Equity"], name='Real Estate Equity', marker_color='#4338ca', legendgroup="1"), row=1, col=1)
+                    fig_main.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Business Equity"], name='Business Equity', marker_color='#92400e', legendgroup="1"), row=1, col=1)
+                    fig_main.add_trace(go.Bar(x=df_nw["Year"], y=df_nw["Total Debt Liabilities"], name='Total Liabilities (Inc. Shortfalls)', marker_color='#dc2626', legendgroup="1"), row=1, col=1)
+                    fig_main.add_trace(go.Scatter(x=df_nw["Year"], y=df_nw["Total Net Worth"], mode='lines', name='Total Net Worth', line=dict(color='#0f172a', width=3, dash='solid'), legendgroup="1"), row=1, col=1)
 
-                    if m_x_normal: fig_nw.add_trace(go.Scatter(x=m_x_normal, y=m_y_normal, mode='markers', marker=dict(symbol='star', size=14, color='#eab308', line=dict(width=1.5, color='white')), name='User Milestones', hoverinfo='text', text=m_text_normal))
-                    if m_x_system: fig_nw.add_trace(go.Scatter(x=m_x_system, y=m_y_system, mode='markers', marker=dict(symbol='star', size=14, color='#3b82f6', line=dict(width=1.5, color='white')), name='System Events', hoverinfo='text', text=m_text_system))
-                    if m_x_alert: fig_nw.add_trace(go.Scatter(x=m_x_alert, y=m_y_alert, mode='markers', marker=dict(symbol='star', size=18, color='#ef4444', line=dict(width=2, color='white')), name='Critical Alerts', hoverinfo='text', text=m_text_alert))
+                    if m_x_normal: fig_main.add_trace(go.Scatter(x=m_x_normal, y=m_y_normal, mode='markers', marker=dict(symbol='star', size=14, color='#eab308', line=dict(width=1.5, color='white')), name='User Milestones', hoverinfo='text', text=m_text_normal, legendgroup="1"), row=1, col=1)
+                    if m_x_system: fig_main.add_trace(go.Scatter(x=m_x_system, y=m_y_system, mode='markers', marker=dict(symbol='star', size=14, color='#3b82f6', line=dict(width=1.5, color='white')), name='System Events', hoverinfo='text', text=m_text_system, legendgroup="1"), row=1, col=1)
+                    if m_x_alert: fig_main.add_trace(go.Scatter(x=m_x_alert, y=m_y_alert, mode='markers', marker=dict(symbol='star', size=18, color='#ef4444', line=dict(width=2, color='white')), name='Critical Alerts', hoverinfo='text', text=m_text_alert, legendgroup="1"), row=1, col=1)
 
-                    fig_nw.update_layout(barmode='relative')
-                    fig_nw = apply_chart_theme(fig_nw)
-                    st.plotly_chart(fig_nw, width='stretch')
+                    # --- ROW 2: Cash Flow Lines ---
+                    fig_main.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Income"], mode='lines', name='Organic Income', line=dict(color='#4f46e5', width=3), legendgroup="2"), row=2, col=1)
+                    fig_main.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Asset Withdrawals"], mode='lines', name='Asset Withdrawals', line=dict(color='#a855f7', width=3, dash='dot'), legendgroup="2"), row=2, col=1)
+                    fig_main.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Expenses"], mode='lines', name='Expenses', line=dict(color='#f43f5e', width=3), legendgroup="2"), row=2, col=1)
+                    fig_main.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Taxes"], mode='lines', name='Taxes', line=dict(color='#f59e0b', width=3), legendgroup="2"), row=2, col=1)
+                    fig_main.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Net Savings"], mode='lines', name='Net Cashflow', line=dict(color='#10b981', width=3, dash='dot'), legendgroup="2"), row=2, col=1)
 
-                    st.write("#### Annual Cash Flow & Progressive Taxes")
-                    fig_cf = go.Figure()
-                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Income"], mode='lines', name='Organic Income', line=dict(color='#4f46e5', width=3)))
-                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Asset Withdrawals"], mode='lines', name='Asset Withdrawals', line=dict(color='#a855f7', width=3, dash='dot')))
-                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Expenses"], mode='lines', name='Expenses', line=dict(color='#f43f5e', width=3)))
-                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Taxes"], mode='lines', name='Taxes', line=dict(color='#f59e0b', width=3)))
-                    fig_cf.add_trace(go.Scatter(x=df_sim["Year"], y=df_sim["Annual Net Savings"], mode='lines', name='Net Cashflow', line=dict(color='#10b981', width=3, dash='dot')))
+                    # Add duplicate invisible milestone markers on bottom chart so the tooltips trigger there too
+                    if m_x_normal: fig_main.add_trace(go.Scatter(x=m_x_normal, y=[0] * len(m_x_normal), mode='markers', marker=dict(symbol='star', size=14, color='#eab308', line=dict(width=1.5, color='white')), showlegend=False, hoverinfo='text', text=m_text_normal, legendgroup="2"), row=2, col=1)
+                    if m_x_system: fig_main.add_trace(go.Scatter(x=m_x_system, y=[0] * len(m_x_system), mode='markers', marker=dict(symbol='star', size=14, color='#3b82f6', line=dict(width=1.5, color='white')), showlegend=False, hoverinfo='text', text=m_text_system, legendgroup="2"), row=2, col=1)
+                    if m_x_alert: fig_main.add_trace(go.Scatter(x=m_x_alert, y=[0] * len(m_x_alert), mode='markers', marker=dict(symbol='star', size=18, color='#ef4444', line=dict(width=2, color='white')), showlegend=False, hoverinfo='text', text=m_text_alert, legendgroup="2"), row=2, col=1)
 
-                    if m_x_normal: fig_cf.add_trace(go.Scatter(x=m_x_normal, y=[0] * len(m_x_normal), mode='markers', marker=dict(symbol='star', size=14, color='#eab308', line=dict(width=1.5, color='white')), name='User Milestones', hoverinfo='text', text=m_text_normal))
-                    if m_x_system: fig_cf.add_trace(go.Scatter(x=m_x_system, y=[0] * len(m_x_system), mode='markers', marker=dict(symbol='star', size=14, color='#3b82f6', line=dict(width=1.5, color='white')), name='System Events', hoverinfo='text', text=m_text_system))
-                    if m_x_alert: fig_cf.add_trace(go.Scatter(x=m_x_alert, y=[0] * len(m_x_alert), mode='markers', marker=dict(symbol='star', size=18, color='#ef4444', line=dict(width=2, color='white')), name='Critical Alerts', hoverinfo='text', text=m_text_alert))
-
-                    fig_cf = apply_chart_theme(fig_cf)
-                    st.plotly_chart(fig_cf, width='stretch')
+                    # --- 3. Unified Layout & Background ---
+                    fig_main = apply_chart_theme(fig_main)
+                    
+                    fig_main.update_layout(
+                        barmode='relative',  # Ensures liabilities stack below 0
+                        hovermode='x unified',
+                        height=800,
+                        hoverdistance=-1,
+                        hoverlabel=dict(
+                            bgcolor="white",
+                            font_color="#0f172a",
+                            bordercolor="#cbd5e1",
+                            font_size=13
+                        )
+                    )
+                    
+                    fig_main.update_xaxes(
+                        showspikes=False, 
+                        showline=True, 
+                        showgrid=True
+                    )
+                    
+                    # Mobile friendly config from earlier
+                    mobile_config = {
+                        'displayModeBar': False,
+                        'scrollZoom': False,
+                        'doubleClick': 'reset',
+                        'showAxisDragHandles': False
+                    }
+                    st.plotly_chart(fig_main, width='stretch', config=mobile_config)
                 else:
                     st.info("Please install Plotly to view the charts.")
 
