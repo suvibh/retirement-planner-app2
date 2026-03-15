@@ -1227,58 +1227,61 @@ def run_simulation(mkt_sequence, ctx):
             yd["Income: RMDs"] = rmd_income
 
         primary_ss_entitlement, spouse_ss_entitlement = 0, 0
+        # --- PENSION & INCOME ENGINE ---
         for inc in ctx['inc_records']:
             owner = inc.get("Owner", "Me")
             cat_name = inc.get("Category", "Other")
-            owner_retire_year = ctx['primary_retire_year'] if owner in ["Me", "Joint"] else ctx['spouse_retire_year']
+            
+            # Skip SS as it is handled by its own dedicated engine above
+            if cat_name == "Social Security": continue
 
             raw_start = inc.get('Start Year')
-            start_year = int(safe_num(raw_start)) if raw_start and not pd.isna(raw_start) and str(raw_start).strip() != "" else ctx['primary_retire_year']
-
+            start_year = int(safe_num(raw_start)) if raw_start and str(raw_start).strip() != "" else ctx['primary_retire_year']
             end_year = safe_num(inc.get('End Year'), 2100)
 
-            is_active = (year >= start_year) and (not inc.get("Stop at Ret.?", False) or year < owner_retire_year)
-            if cat_name in ["Social Security", "Pension"]:
+            # Determine eligibility
+            owner_ret_yr = ctx['primary_retire_year'] if owner in ["Me", "Joint"] else ctx['spouse_retire_year']
+            is_active = (year >= start_year) and (not inc.get("Stop at Ret.?", False) or year < owner_ret_yr)
+            
+            if cat_name == "Pension":
                 is_active = (year >= start_year) and (year <= end_year)
 
-            if inc.get("Description"):
-                base_amt = safe_num(inc.get('Annual Amount ($)'))
+            if not is_active or not inc.get("Description"):
+                continue
 
-                if cat_name == "Social Security":
-                    # Let the dedicated Fiduciary SS engine handle this below
-                    continue
+            # --- CALCULATE BENEFIT ---
+            base_amt = safe_num(inc.get('Annual Amount ($)'))
+            g = safe_num(inc.get('Override Growth (%)'), ctx['inc_g'])
+            offset_for_growth = max(0, year - int(start_year))
+            
+            amt = base_amt * ((1 + g / 100) ** offset_for_growth)
 
-                if not is_active:
-                    continue
+            # --- PENSION SURVIVOR LOGIC ---
+            # If the owner is deceased, we apply a Survivor Benefit haircut.
+            # Users can model 50% or 100% options by adjusting "Override Growth" to a negative 
+            # value in the year of death, but the engine should handle the base case:
+            owner_alive = is_my_alive if owner in ["Me", "Joint"] else is_spouse_alive
+            
+            if cat_name == "Pension" and not owner_alive:
+                # Default Fiduciary Assumption: 50% Survivor Benefit unless otherwise specified 
+                # (You can tell users to add a second 'Survivor Pension' row for complex setups)
+                amt *= 0.50 
 
-                g = safe_num(inc.get('Override Growth (%)'), ctx['inc_g'])
-                
-                # --- FIX: Unlock Historical & Future Compounding ---
-                # Removes the current_year clamp so past start dates correctly inflate 
-                # to their present-day value, and future start dates compound normally.
-                offset_for_growth = max(0, year - int(start_year))
-                
-                amt = base_amt * ((1 + g / 100) ** offset_for_growth)
+            # --- ROUTING ---
+            if cat_name == "Employer Match (401k/HSA)":
+                if (owner == "Me" and is_my_alive) or (owner == "Spouse" and is_spouse_alive) or (owner == "Joint" and (is_my_alive or is_spouse_alive)):
+                    match_income_by_owner[owner] += amt
+                continue
 
-                if cat_name == "Employer Match (401k/HSA)":
-                    if (owner == "Me" and is_my_alive) or (owner == "Spouse" and is_spouse_alive) or (
-                            owner == "Joint" and (is_my_alive or is_spouse_alive)):
-                        match_income_by_owner[owner] += amt
-                    continue
-
-                if (owner == "Me" and not is_my_alive) or (owner == "Spouse" and not is_spouse_alive) or (
-                        owner == "Joint" and not is_my_alive and not is_spouse_alive):
-                    continue
-
+            # Standard income routing
+            if owner_alive or (cat_name == "Pension" and (is_my_alive or is_spouse_alive)):
                 annual_inc += amt
                 pre_tax_ord += amt
                 yd[f"Income: {cat_name}"] = yd.get(f"Income: {cat_name}", 0) + amt
 
                 if cat_name in ["Base Salary (W-2)", "Bonus / Commission", "Contractor (1099)"]:
-                    if owner in ["Me", "Joint"]:
-                        earned_income_me += amt
-                    elif owner == "Spouse":
-                        earned_income_spouse += amt
+                    if owner in ["Me", "Joint"]: earned_income_me += amt
+                    elif owner == "Spouse": earned_income_spouse += amt
 
         # --- FIX: Fiduciary-Grade Social Security Engine ---
         active_ss = 0
