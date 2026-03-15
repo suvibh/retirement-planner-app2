@@ -543,8 +543,7 @@ def save_profile():
         st.session_state['user_data'] = user_data
         st.session_state['dirty'] = False
         st.toast("✅ Complete Financial Blueprint Synchronized Successfully!")
-        time.sleep(0.5)
-        st.rerun()
+        st.rerun() # The toast will automatically survive this rerun!
         
     except Exception as e:
         # --- FIX: Graceful Error Handling for Network/Permission issues ---
