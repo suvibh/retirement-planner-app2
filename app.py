@@ -2151,8 +2151,9 @@ def render_dashboard():
         # --- NEW: Custom Visual Milestone Track ---
         # This draws a delicate horizontal line with colored dots precisely aligned to the slider's math
         if run_milestones:
-            # FIX: Adjusted padding to exactly 18px to match Streamlit's native slider thumb radius
-            track_html = '<div style="padding: 0 18px; margin-top: -15px; margin-bottom: 15px;">'
+            # FIX: 18px was squishing the line! 7px perfectly matches the radius of the slider thumb.
+            # Also pulled the margin-top up to -20px to tuck it snugly under the track.
+            track_html = '<div style="padding: 0 7px; margin-top: -20px; margin-bottom: 15px;">'
             track_html += '<div style="position: relative; width: 100%; height: 12px;">'
             track_html += '<div style="position: absolute; top: 5px; left: 0; right: 0; height: 2px; background: #e2e8f0; border-radius: 1px;"></div>'
             
@@ -2176,7 +2177,7 @@ def render_dashboard():
             st.markdown(track_html, unsafe_allow_html=True)
         else:
             st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-            
+
         # Render the events for the SELECTED year directly under the visual track
         if run_milestones and sankey_year in run_milestones:
             event_html = "".join([f"<div style='font-size: 0.85rem; color: #0f172a; margin-top: 4px; border-left: 3px solid #3b82f6; background: #eff6ff; padding: 6px 10px; border-radius: 0 4px 4px 0; box-shadow: 0 1px 2px rgba(0,0,0,0.05);'><b>{sankey_year} Event:</b> {html.escape(e['desc'])}</div>" for e in run_milestones[sankey_year]])
