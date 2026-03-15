@@ -605,30 +605,33 @@ def ai_number_input(label, state_key, prompt, col, help_text=""):
     if state_key not in st.session_state:
         st.session_state[state_key] = float(st.session_state.get('assumptions', {}).get(state_key, 0.0))
 
-    # --- FIX 1: The "Stop Sign" Blocker ---
-    # Tap into the global ai_loading state to gray out the button
+    # The "Stop Sign" Blocker
     ai_disabled = st.session_state.get('ai_loading', False)
     trigger_key = f"trigger_ai_{state_key}"
 
     with col:
-        # Place the label strictly on top
-        st.markdown(f"<div style='font-size: 0.85rem; font-weight: 600; margin-bottom: 2px;'>{label}</div>", unsafe_allow_html=True)
-        
-        # Place the input and the button side-by-side, locked to the bottom
+        # --- FIX: Let Streamlit handle the label natively ---
+        # By removing the custom HTML label and putting the native label back on the number_input,
+        # the rich dark-mode ? tooltip comes back. vertical_alignment="bottom" ensures the 
+        # button still snaps perfectly to the bottom of the input field!
         c_input, c_btn = st.columns([8, 2], vertical_alignment="bottom")
         
+        with c_input:
+            val = st.number_input(
+                label, 
+                key=state_key, 
+                help=help_text  # <-- The tooltip is back!
+                # label_visibility="collapsed" has been REMOVED
+            )
+
         with c_btn:
-            # Add disabled=ai_disabled so it locks up visually
             if st.button("✨", key=f"ai_btn_{state_key}", help="Ask Fiduciary AI", type="primary", use_container_width=True, disabled=ai_disabled):
                 
-                # --- FIX 2: The 2-Step Trigger Pattern ---
-                # We lock the UI state and force a redraw FIRST, so the button physically 
-                # grays out before we ever attempt to talk to Gemini.
                 st.session_state[trigger_key] = True
                 st.session_state['ai_loading'] = True
                 st.rerun()
 
-        # --- FIX 3: Safely execute the AI logic during the locked rerun ---
+        # Safely execute the AI logic during the locked rerun
         if st.session_state.get(trigger_key):
             rate_limit_hit = False
             try:
@@ -663,28 +666,14 @@ def ai_number_input(label, state_key, prompt, col, help_text=""):
                     except Exception as e:
                         st.toast("⚠️ AI couldn't parse the number. Try again.")
                 else:
-                    # We hit the 3-second spam wall!
                     rate_limit_hit = True
                     
             finally:
-                # Unlock the UI
                 st.session_state[trigger_key] = False
                 st.session_state['ai_loading'] = False
                 
-                # --- FIX 4: Clear the Sticking Warning ---
-                # If the rate limit was hit, we purposely SKIP the rerun. 
-                # This leaves the UI frozen with the warning visible for exactly one interaction.
-                # The moment they click anywhere else, the UI redraws clean!
                 if not rate_limit_hit:
                     st.rerun()
-
-        with c_input:
-            val = st.number_input(
-                label, 
-                key=state_key, 
-                help=help_text, 
-                label_visibility="collapsed"
-            )
             
         # Catch manual user typing and trigger mark_dirty()
         if st.session_state['assumptions'].get(state_key) != val:
