@@ -602,7 +602,7 @@ def call_gemini(prompt, retries=3, response_format="text"):
             
     return None
 
- def ai_number_input(label, state_key, prompt, col, help_text=""):
+def ai_number_input(label, state_key, prompt, col, help_text=""):
     # 1. Initialize the widget's UI state from the master assumptions dictionary 
     # so it doesn't render blank on the first load.
     if state_key not in st.session_state:
