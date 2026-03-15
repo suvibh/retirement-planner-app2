@@ -484,6 +484,11 @@ def sign_up(email, password): return requests.post(
     f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_WEB_API_KEY}",
     json={"email": email, "password": password, "returnSecureToken": True}).json()
 
+def reset_password(email): 
+    return requests.post(
+        f"https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key={FIREBASE_WEB_API_KEY}",
+        json={"requestType": "PASSWORD_RESET", "email": email}
+    ).json()
 
 def load_user_data(uid):
     if uid == "guest_demo" or not st.session_state.get('firebase_enabled', False): return {}
@@ -707,22 +712,37 @@ if 'user_uid' not in st.session_state:
         tab1, tab2 = st.tabs(["Secure Login", "New Account"])
         with tab1:
             le, lp = st.text_input("Email", key="le"), st.text_input("Password", type="password", key="lp")
+            
             if st.button("Sign In", type="primary", width='stretch'):
                 res = sign_in(le, lp)
                 if "idToken" in res:
                     st.session_state.pop('logged_out_flag', None)
                     st.session_state['user_email'] = res['email']
-                    # --- FIX: Extract and cache the secure UID ---
                     st.session_state['user_uid'] = res['localId']
                     st.session_state['user_data'] = load_user_data(res['localId'])
                     st.session_state['initialized'] = False 
                     
-                    # --- FIX: Save UID to the cookie, not the email ---
-                    cookie_manager.set("user_uid", saved_uid, expires_at=datetime.datetime.now() + datetime.timedelta(days=7))
+                    cookie_manager.set("user_uid", res['localId'], expires_at=datetime.datetime.now() + datetime.timedelta(days=7))
                     time.sleep(0.2)
                     st.rerun()
                 else:
                     st.error("Login failed. Please check your email and password.")
+                    
+            # --- NEW: Password Reset Flow ---
+            if st.button("Forgot Password?", type="tertiary", width='stretch'):
+                if le and "@" in le:
+                    res = reset_password(le)
+                    if "email" in res:
+                        st.success(f"✅ Password reset link sent to {le}. Please check your inbox and spam folder.")
+                    else:
+                        error_msg = res.get('error', {}).get('message', 'Unknown error')
+                        if error_msg == "EMAIL_NOT_FOUND":
+                            st.error("⚠️ No account found with this email address.")
+                        else:
+                            st.error(f"⚠️ Failed to send reset link: {error_msg}")
+                else:
+                    st.warning("⚠️ Please type your email address in the field above first, then click 'Forgot Password?'.")
+                    
         with tab2:
             se, sp = st.text_input("New Email", key="se"), st.text_input("New Password", type="password", key="sp")
             if st.button("Create Account", type="primary", width='stretch'):
