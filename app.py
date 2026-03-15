@@ -2151,11 +2151,10 @@ def render_dashboard():
         # --- NEW: Custom Visual Milestone Track ---
         # This draws a delicate horizontal line with colored dots precisely aligned to the slider's math
         if run_milestones:
-            track_html = """
-            <div style="padding: 0 14px; margin-top: -12px; margin-bottom: 15px;">
-                <div style="position: relative; width: 100%; height: 12px;">
-                    <div style="position: absolute; top: 5px; left: 0; right: 0; height: 2px; background: #e2e8f0; border-radius: 1px;"></div>
-            """
+            track_html = '<div style="padding: 0 14px; margin-top: -12px; margin-bottom: 15px;">'
+            track_html += '<div style="position: relative; width: 100%; height: 12px;">'
+            track_html += '<div style="position: absolute; top: 5px; left: 0; right: 0; height: 2px; background: #e2e8f0; border-radius: 1px;"></div>'
+            
             for y in sorted(run_milestones.keys()):
                 # Calculate the exact horizontal percentage position
                 pct = ((y - min_year) / max(1, (max_year - min_year))) * 100
@@ -2169,14 +2168,13 @@ def render_dashboard():
                 else:
                     color = "#eab308"
                     
-                # Inject the dot onto the track
-                track_html += f"""
-                <div style="position: absolute; left: {pct}%; top: 1px; width: 10px; height: 10px; background: {color}; border-radius: 50%; transform: translateX(-50%); box-shadow: 0 0 0 2px white; z-index: 10;" title="Year {y}"></div>
-                """
-            track_html += "</div></div>"
+                # Inject the dot onto the track (No leading spaces!)
+                track_html += f'<div style="position: absolute; left: {pct}%; top: 1px; width: 10px; height: 10px; background: {color}; border-radius: 50%; transform: translateX(-50%); box-shadow: 0 0 0 2px white; z-index: 10;" title="Year {y}"></div>'
+                
+            track_html += '</div></div>'
             st.markdown(track_html, unsafe_allow_html=True)
         else:
-            st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True) 
+            st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
 
         # Render the events for the SELECTED year directly under the visual track
         if run_milestones and sankey_year in run_milestones:
