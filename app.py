@@ -635,14 +635,19 @@ def ai_number_input(label, state_key, prompt, col, help_text=""):
                                 if 0.0 < new_val < 1.0:
                                     new_val = new_val * 100.0
                                 
-                                # Force UI Update
-                                st.session_state[state_key] = new_val
-                                st.session_state['assumptions'][state_key] = new_val
+                                # --- FIX: The "Unchanged" Gate ---
+                                current_val = float(st.session_state['assumptions'].get(state_key, 0.0))
                                 
-                                # --- FIX: Tap into the app's native dirty function! ---
-                                mark_dirty() 
-                                
-                                st.rerun()
+                                if new_val != current_val:
+                                    # The AI changed the number, so we update the state and flag dirty
+                                    st.session_state[state_key] = new_val
+                                    st.session_state['assumptions'][state_key] = new_val
+                                    mark_dirty() 
+                                    st.rerun()
+                                else:
+                                    # The number is exactly the same! Let the user know, but don't trigger a save prompt.
+                                    st.toast("✨ AI Fiduciary confirms your current assumption is perfectly aligned.")
+                                    
                     except Exception as e:
                         st.toast("⚠️ AI couldn't parse the number. Try again.")
 
