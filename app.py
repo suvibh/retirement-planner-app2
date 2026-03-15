@@ -2139,7 +2139,7 @@ def render_dashboard():
     with c_sank2:
         st.markdown("<div style='text-align: right; font-weight: 600; color: #64748b; margin-bottom: -15px; font-size: 0.9rem;'>Inspect Year:</div>", unsafe_allow_html=True)
         
-        # Revert to the smooth numerical slider
+        # The smooth numerical slider
         sankey_year = st.slider(
             "Select Year", 
             min_value=min_year, 
@@ -2148,18 +2148,43 @@ def render_dashboard():
             label_visibility="collapsed"
         )
         
-        # Render the events for the SELECTED year directly under the slider in a clean alert box
+        # --- NEW: Custom Visual Milestone Track ---
+        # This draws a delicate horizontal line with colored dots precisely aligned to the slider's math
+        if run_milestones:
+            track_html = """
+            <div style="padding: 0 14px; margin-top: -12px; margin-bottom: 15px;">
+                <div style="position: relative; width: 100%; height: 12px;">
+                    <div style="position: absolute; top: 5px; left: 0; right: 0; height: 2px; background: #e2e8f0; border-radius: 1px;"></div>
+            """
+            for y in sorted(run_milestones.keys()):
+                # Calculate the exact horizontal percentage position
+                pct = ((y - min_year) / max(1, (max_year - min_year))) * 100
+                events = run_milestones[y]
+                
+                # Color coding: Red (Alert), Blue (System), Yellow (Normal)
+                if any(e.get('type') == 'critical' for e in events):
+                    color = "#ef4444"
+                elif any(e.get('type') == 'system' for e in events):
+                    color = "#3b82f6"
+                else:
+                    color = "#eab308"
+                    
+                # Inject the dot onto the track
+                track_html += f"""
+                <div style="position: absolute; left: {pct}%; top: 1px; width: 10px; height: 10px; background: {color}; border-radius: 50%; transform: translateX(-50%); box-shadow: 0 0 0 2px white; z-index: 10;" title="Year {y}"></div>
+                """
+            track_html += "</div></div>"
+            st.markdown(track_html, unsafe_allow_html=True)
+        else:
+            st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True) 
+
+        # Render the events for the SELECTED year directly under the visual track
         if run_milestones and sankey_year in run_milestones:
             event_html = "".join([f"<div style='font-size: 0.85rem; color: #0f172a; margin-top: 4px; border-left: 3px solid #3b82f6; background: #eff6ff; padding: 6px 10px; border-radius: 0 4px 4px 0; box-shadow: 0 1px 2px rgba(0,0,0,0.05);'><b>{sankey_year} Event:</b> {html.escape(e['desc'])}</div>" for e in run_milestones[sankey_year]])
             st.markdown(event_html, unsafe_allow_html=True)
         else:
             # Invisible spacer to prevent the UI from jumping up and down when scrolling
             st.markdown("<div style='height: 36px;'></div>", unsafe_allow_html=True) 
-            
-        # Render the permanent "Milestone Map" so they are visible all the time
-        if run_milestones:
-            m_years_str = ", ".join([str(y) for y in sorted(run_milestones.keys())])
-            st.markdown(f"<div style='font-size: 0.8rem; color: #64748b; margin-top: 8px; line-height: 1.5; padding-top: 8px; border-top: 1px dashed #e2e8f0;'>📍 <b>Key Milestone Years:</b> {m_years_str}</div>", unsafe_allow_html=True)
 
     # --- 3. Calculate the Data for the Selected Year ---
     row = df_det_nominal[df_det_nominal['Year'] == sankey_year].iloc[0].copy()
