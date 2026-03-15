@@ -999,34 +999,57 @@ def _withdraw(a, current_shortfall, tax_treatment, ctx, my_current_age, spouse_c
     if a['bal'] <= 0 or current_shortfall <= 0: return current_shortfall, 0.0, 0.0
 
     eff_tax = 0.0
-    if tax_treatment == 'cg':
+    acct_type = a.get('Type', '')
+    o_acct = a.get('Owner', 'Me')
+    o_age = my_current_age if o_acct in ['Me', 'Joint'] else spouse_current_age
+    o_ret_yr = ctx['primary_retire_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_retire_year']
+    o_birth = ctx['my_birth_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_birth_year']
+    
+    # Check for "Rule of 55" eligibility for 401(k) plans
+    rule_of_55 = (year >= o_ret_yr) and ((o_ret_yr - o_birth) >= 55)
+
+    # --- NEW: HSA TRIPLE TAX LOGIC ---
+    if acct_type == 'HSA':
+        if tax_treatment == 'hsa_medical':
+            # 1. Qualified Medical Expense: Triple Tax Free
+            eff_tax = 0.0
+        else:
+            # 2. Non-Medical Withdrawal:
+            if o_age >= 65:
+                # After 65, HSA acts like a Traditional IRA (Ordinary Income Tax, No Penalty)
+                eff_tax = min(marginal_rate + (state_tax_rate / 100.0), 0.99)
+            else:
+                # Before 65, Non-medical = Ordinary Income Tax + 20% Penalty
+                eff_tax = min(marginal_rate + (state_tax_rate / 100.0) + 0.20, 0.99)
+
+    # --- EXISTING TAX TREATMENTS ---
+    elif tax_treatment == 'cg':
+        # Capital Gains (Brokerage): Check for Step-up basis on spouse death
         is_step_up = ctx['has_spouse'] and (not (year <= ctx['primary_end_year']) or not (year <= ctx['spouse_end_year']))
         eff_tax = 0.0 if is_step_up else (get_ltcg_rate(tax_base_ord, active_mfj, year_offset, ctx['infl']) + (state_tax_rate / 100.0))
+    
     elif tax_treatment == 'ordinary':
-        o_acct = a.get('Owner', 'Me')
-        o_age = my_current_age if o_acct in ['Me', 'Joint'] else spouse_current_age
-        o_ret_yr = ctx['primary_retire_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_retire_year']
-        o_birth = ctx['my_birth_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_birth_year']
-        rule_of_55 = (year >= o_ret_yr) and ((o_ret_yr - o_birth) >= 55)
+        # Ordinary Income (Traditional 401k/IRA): 10% penalty if under 59.5 unless Rule of 55
         penalty = 0.10 if (o_age < 59.5 and not rule_of_55) else 0.0
         eff_tax = min(marginal_rate + (state_tax_rate / 100.0) + penalty, 0.99)
+    
     elif tax_treatment == 'free':
-        o_acct = a.get('Owner', 'Me')
-        o_age = my_current_age if o_acct in ['Me', 'Joint'] else spouse_current_age
-        o_ret_yr = ctx['primary_retire_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_retire_year']
-        o_birth = ctx['my_birth_year'] if o_acct in ['Me', 'Joint'] else ctx['spouse_birth_year']
-        rule_of_55 = (year >= o_ret_yr) and ((o_ret_yr - o_birth) >= 55)
-        penalty = 0.10 if (a.get('Type') in ['Roth 401(k)', 'Roth 401k/IRA', 'Roth IRA'] and o_age < 59.5 and not rule_of_55) else 0.0
+        # Tax-Free (Roth/Cash): Check for early Roth withdrawal penalties
+        penalty = 0.10 if (acct_type in ['Roth 401(k)', 'Roth IRA'] and o_age < 59.5 and not rule_of_55) else 0.0
         eff_tax = min(penalty, 0.99)
 
+    # --- EXECUTE WITHDRAWAL MATH ---
+    # Calculate how much we need to take out to get the "Net" shortfall amount after taxes
     req_gross = current_shortfall / max(0.01, (1.0 - eff_tax))
     withdrawn = min(a['bal'], req_gross)
+    
     a['bal'] -= withdrawn
     tax_inc = withdrawn * eff_tax
     net_cash = withdrawn - tax_inc
 
     if withdrawn > 0:
-        yd[f"Income: Withdrawal ({a.get('Account Name', 'Account')})"] = yd.get(f"Income: Withdrawal ({a.get('Account Name', 'Account')})", 0) + withdrawn
+        label = f"Income: Withdrawal ({a.get('Account Name', 'Account')})"
+        yd[label] = yd.get(label, 0) + withdrawn
 
     return current_shortfall - net_cash, tax_inc, withdrawn
 # ------------------------------------------------
@@ -1932,7 +1955,8 @@ def run_simulation(mkt_sequence, ctx):
             roth_types = ['Roth 401(k)', 'Roth 401k/IRA', 'Roth IRA']
             tax_free_types = roth_types + ['HSA', 'Crypto', '529 Plan', 'Other']
 
-            seq = trad_types + tax_free_types if 'Standard' in ctx['active_withdrawal_strategy'] else tax_free_types + trad_types
+            # Standard drains Trad then Tax-Free. HSA is now a hybrid.
+            seq = trad_types + tax_free_types + ['HSA'] if 'Standard' in ctx['active_withdrawal_strategy'] else tax_free_types + ['HSA'] + trad_types
 
             for t in seq:
                 if shortfall <= 0: break
