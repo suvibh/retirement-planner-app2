@@ -848,51 +848,57 @@ if 'user_uid' not in st.session_state:
             # --- FIX: Assign a mock UID for guest mode ---
             st.session_state['user_uid'] = "guest_demo"
             
-            # --- FIX: Pre-load the "Johnson Family" to demonstrate the engine's capabilities immediately ---
+            # --- FIX: Pre-load the High-Net-Worth "Colorado Family" Demo ---
             st.session_state['user_data'] = {
                 "personal_info": {
-                    "name": "John Johnson", "dob": "1984-05-15",
-                    "retire_age": 60, "spouse_retire_age": 62,
+                    "name": "John", "dob": "1976-01-01", # 50 years old in 2026
+                    "retire_age": 55, "spouse_retire_age": 52, # Retiring in exactly 5 years
                     "my_life_exp": 92, "spouse_life_exp": 95,
-                    "current_city": "San Francisco, CA, USA",
-                    "has_spouse": True, "spouse_name": "Jane Johnson", "spouse_dob": "1986-08-20",
-                    "kids": [{"name": "Timmy", "age": 10}, {"name": "Sarah", "age": 8}]
+                    "current_city": "Aurora, CO, USA",
+                    "has_spouse": True, "spouse_name": "Jane", "spouse_dob": "1979-01-01", # 47 years old in 2026
+                    "kids": [{"name": "Child 1", "age": 15}, {"name": "Child 2", "age": 13}]
                 },
-                "retire_city": "Sedona, AZ, USA",
+                "retire_city": "Aurora, CO, USA",
                 "income": [
-                    {"Description": "John Base Salary", "Category": "Base Salary (W-2)", "Owner": "Me", "Annual Amount ($)": 180000, "Start Year": 2024, "End Year": 2100, "Stop at Ret.?": True, "Override Growth (%)": 3.0},
-                    {"Description": "Jane Base Salary", "Category": "Base Salary (W-2)", "Owner": "Spouse", "Annual Amount ($)": 120000, "Start Year": 2024, "End Year": 2100, "Stop at Ret.?": True, "Override Growth (%)": 3.0},
-                    {"Description": "John Social Security", "Category": "Social Security", "Owner": "Me", "Annual Amount ($)": 42000, "Start Year": 2051, "End Year": 2100, "Stop at Ret.?": False, "Override Growth (%)": 0},
-                    {"Description": "Jane Social Security", "Category": "Social Security", "Owner": "Spouse", "Annual Amount ($)": 36000, "Start Year": 2053, "End Year": 2100, "Stop at Ret.?": False, "Override Growth (%)": 0}
+                    {"Description": "John Base Salary", "Category": "Base Salary (W-2)", "Owner": "Me", "Annual Amount ($)": 300000, "Start Year": 2026, "End Year": 2100, "Stop at Ret.?": True, "Override Growth (%)": 3.0},
+                    {"Description": "Jane Base Salary", "Category": "Base Salary (W-2)", "Owner": "Spouse", "Annual Amount ($)": 200000, "Start Year": 2026, "End Year": 2100, "Stop at Ret.?": True, "Override Growth (%)": 3.0},
+                    # 5% Employer Matches - routed securely by the AI directly to the 401(k)s
+                    {"Description": "John 5% Match", "Category": "Employer Match (401k/HSA)", "Owner": "Me", "Annual Amount ($)": 15000, "Start Year": 2026, "End Year": 2100, "Stop at Ret.?": True, "Override Growth (%)": 3.0},
+                    {"Description": "Jane 5% Match", "Category": "Employer Match (401k/HSA)", "Owner": "Spouse", "Annual Amount ($)": 10000, "Start Year": 2026, "End Year": 2100, "Stop at Ret.?": True, "Override Growth (%)": 3.0},
+                    {"Description": "John Social Security", "Category": "Social Security", "Owner": "Me", "Annual Amount ($)": 45000, "Start Year": 2043, "End Year": 2100, "Stop at Ret.?": False, "Override Growth (%)": 0},
+                    {"Description": "Jane Social Security", "Category": "Social Security", "Owner": "Spouse", "Annual Amount ($)": 40000, "Start Year": 2046, "End Year": 2100, "Stop at Ret.?": False, "Override Growth (%)": 0}
                 ],
                 "liquid_assets": [
-                    {"Account Name": "John 401(k)", "Type": "Traditional 401(k)", "Owner": "Me", "Current Balance ($)": 400000, "Annual Contribution ($/yr)": 15000, "Est. Annual Growth (%)": 7.0, "Stop Contrib at Ret.?": True},
-                    {"Account Name": "Jane 401(k)", "Type": "Traditional 401(k)", "Owner": "Spouse", "Current Balance ($)": 300000, "Annual Contribution ($/yr)": 12000, "Est. Annual Growth (%)": 7.0, "Stop Contrib at Ret.?": True},
-                    {"Account Name": "Joint Brokerage", "Type": "Brokerage (Taxable)", "Owner": "Joint", "Current Balance ($)": 150000, "Annual Contribution ($/yr)": 6000, "Est. Annual Growth (%)": 7.0, "Stop Contrib at Ret.?": False},
-                    {"Account Name": "Emergency Fund", "Type": "HYSA", "Owner": "Joint", "Current Balance ($)": 45000, "Annual Contribution ($/yr)": 0, "Est. Annual Growth (%)": 4.0, "Stop Contrib at Ret.?": False},
-                    {"Account Name": "Timmy 529", "Type": "529 Plan", "Owner": "Joint", "Current Balance ($)": 35000, "Annual Contribution ($/yr)": 2400, "Est. Annual Growth (%)": 7.0, "Stop Contrib at Ret.?": False},
-                    {"Account Name": "Sarah 529", "Type": "529 Plan", "Owner": "Joint", "Current Balance ($)": 28000, "Annual Contribution ($/yr)": 2400, "Est. Annual Growth (%)": 7.0, "Stop Contrib at Ret.?": False}
+                    {"Account Name": "John 401(k)", "Type": "Traditional 401(k)", "Owner": "Me", "Current Balance ($)": 1500000, "Annual Contribution ($/yr)": 23500, "Est. Annual Growth (%)": 10.0, "Stop Contrib at Ret.?": True},
+                    {"Account Name": "Jane 401(k)", "Type": "Traditional 401(k)", "Owner": "Spouse", "Current Balance ($)": 1000000, "Annual Contribution ($/yr)": 23500, "Est. Annual Growth (%)": 10.0, "Stop Contrib at Ret.?": True},
+                    {"Account Name": "John Brokerage", "Type": "Brokerage (Taxable)", "Owner": "Me", "Current Balance ($)": 1000000, "Annual Contribution ($/yr)": 24000, "Est. Annual Growth (%)": 10.0, "Stop Contrib at Ret.?": False},
+                    {"Account Name": "Jane Brokerage", "Type": "Brokerage (Taxable)", "Owner": "Spouse", "Current Balance ($)": 1000000, "Annual Contribution ($/yr)": 24000, "Est. Annual Growth (%)": 10.0, "Stop Contrib at Ret.?": False},
+                    {"Account Name": "Emergency Fund", "Type": "HYSA", "Owner": "Joint", "Current Balance ($)": 50000, "Annual Contribution ($/yr)": 0, "Est. Annual Growth (%)": 4.0, "Stop Contrib at Ret.?": False},
+                    {"Account Name": "Child 1 529", "Type": "529 Plan", "Owner": "Joint", "Current Balance ($)": 75000, "Annual Contribution ($/yr)": 6000, "Est. Annual Growth (%)": 8.0, "Stop Contrib at Ret.?": False},
+                    {"Account Name": "Child 2 529", "Type": "529 Plan", "Owner": "Joint", "Current Balance ($)": 60000, "Annual Contribution ($/yr)": 6000, "Est. Annual Growth (%)": 8.0, "Stop Contrib at Ret.?": False}
                 ],
                 "real_estate": [
-                    {"Property Name": "SF Primary Home", "Is Primary Residence?": True, "Market Value ($)": 1200000, "Mortgage Balance ($)": 650000, "Interest Rate (%)": 3.5, "Mortgage Payment ($)": 3500, "Monthly Expenses ($)": 1200, "Monthly Rent ($)": 0, "Override Prop Growth (%)": 4.0, "Override Rent Growth (%)": 3.0}
+                    {"Property Name": "Aurora Primary Home", "Is Primary Residence?": True, "Market Value ($)": 1000000, "Mortgage Balance ($)": 350000, "Interest Rate (%)": 3.5, "Mortgage Payment ($)": 2500, "Monthly Expenses ($)": 900, "Monthly Rent ($)": 0, "Override Prop Growth (%)": 4.0, "Override Rent Growth (%)": 3.0}
                 ],
                 "business": [],
                 "liabilities": [
                     {"Debt Name": "Family SUV", "Type": "Auto", "Current Balance ($)": 24000, "Interest Rate (%)": 4.9, "Monthly Payment ($)": 650}
                 ],
                 "lifetime_expenses": [
-                    {"Description": "Base Living Expenses", "Category": "Other", "Frequency": "Monthly", "Amount ($)": 6000, "Start Phase": "Now", "Start Year": None, "End Phase": "At Retirement", "End Year": None, "AI Estimate?": False},
-                    {"Description": "Retirement Go-Go Years", "Category": "Other", "Frequency": "Monthly", "Amount ($)": 8500, "Start Phase": "At Retirement", "Start Year": None, "End Phase": "Custom Year", "End Year": 2054, "AI Estimate?": False},
-                    {"Description": "Retirement Slow-Go Years", "Category": "Other", "Frequency": "Monthly", "Amount ($)": 6000, "Start Phase": "Custom Year", "Start Year": 2055, "End Phase": "End of Life", "End Year": None, "AI Estimate?": False},
-                    {"Description": "Timmy College", "Category": "Education", "Frequency": "Yearly", "Amount ($)": 35000, "Start Phase": "Custom Year", "Start Year": 2032, "End Phase": "Custom Year", "End Year": 2035, "AI Estimate?": False},
-                    {"Description": "Sarah College", "Category": "Education", "Frequency": "Yearly", "Amount ($)": 35000, "Start Phase": "Custom Year", "Start Year": 2034, "End Phase": "Custom Year", "End Year": 2037, "AI Estimate?": False}
+                    {"Description": "Base Living Expenses", "Category": "Other", "Frequency": "Monthly", "Amount ($)": 12000, "Start Phase": "Now", "Start Year": None, "End Phase": "At Retirement", "End Year": None, "AI Estimate?": False},
+                    {"Description": "Retirement Go-Go Years", "Category": "Other", "Frequency": "Monthly", "Amount ($)": 14000, "Start Phase": "At Retirement", "Start Year": None, "End Phase": "Custom Year", "End Year": 2046, "AI Estimate?": False},
+                    {"Description": "Retirement Slow-Go Years", "Category": "Other", "Frequency": "Monthly", "Amount ($)": 9000, "Start Phase": "Custom Year", "Start Year": 2047, "End Phase": "End of Life", "End Year": None, "AI Estimate?": False},
+                    # Starts when Child 1 is 18 (2029)
+                    {"Description": "Child 1 College", "Category": "Education", "Frequency": "Yearly", "Amount ($)": 40000, "Start Phase": "Custom Year", "Start Year": 2029, "End Phase": "Custom Year", "End Year": 2032, "AI Estimate?": False},
+                    # Starts when Child 2 is 18 (2031)
+                    {"Description": "Child 2 College", "Category": "Education", "Frequency": "Yearly", "Amount ($)": 40000, "Start Phase": "Custom Year", "Start Year": 2031, "End Phase": "Custom Year", "End Year": 2034, "AI Estimate?": False}
                 ],
                 "assumptions": {
-                    "inflation": 3.0, "inflation_healthcare": 5.5, "inflation_education": 4.5, "market_growth": 7.0,
-                    "income_growth": 3.0, "property_growth": 3.0, "rent_growth": 3.0, "current_tax_rate": 9.3,
-                    "retire_tax_rate": 4.5, "roth_conversions": True, "roth_target": "24%", "withdrawal_strategy": "Standard",
+                    "inflation": 3.0, "inflation_healthcare": 5.5, "inflation_education": 4.5, "market_growth": 10.0,
+                    "income_growth": 3.0, "property_growth": 3.0, "rent_growth": 3.0, "current_tax_rate": 4.4, # Colorado Flat Tax
+                    "retire_tax_rate": 4.4, "roth_conversions": True, "roth_target": "24%", "withdrawal_strategy": "Standard",
                     "stress_test": False, "glidepath": True, "medicare_gap": True, "medicare_cliff": True,
-                    "ltc_shock": False, "shortfall_rate": 12.0
+                    "ltc_shock": False, "shortfall_rate": 12.0, "re_closing_cost": 8.0
                 }
             }
             
