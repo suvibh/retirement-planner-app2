@@ -675,7 +675,7 @@ def initialize_session_state():
         st.session_state['assumptions'] = ud.get('assumptions', {"inflation": 3.0, "inflation_healthcare": 5.5,
                                                                  "inflation_education": 4.5, "market_growth": 7.0,
                                                                  "income_growth": 3.0, "property_growth": 3.0,
-                                                                 "rent_growth": 3.0, "current_tax_rate": 5.0,
+                                                                 "rent_growth": 3.0, "re_closing_cost": 8.0, "current_tax_rate": 5.0,
                                                                  "retire_tax_rate": default_retire_tax, "roth_conversions": False,
                                                                  "roth_target": "24%",
                                                                  "withdrawal_strategy": "Standard",
@@ -876,8 +876,8 @@ def build_sim_context():
         'mkt': float(asm.get('market_growth', 7.0)), 'infl': float(asm.get('inflation', 3.0)),
         'infl_hc': float(asm.get('inflation_healthcare', 5.5)), 'infl_ed': float(asm.get('inflation_education', 4.5)),
         'inc_g': float(asm.get('income_growth', 3.0)), 'prop_g': float(asm.get('property_growth', 3.0)),
-        'rent_g': float(asm.get('rent_growth', 3.0)), 'cur_t': float(asm.get('current_tax_rate', 5.0)),
-        'ret_t': float(asm.get('retire_tax_rate', 0.0)),
+        'rent_g': float(asm.get('rent_growth', 3.0)), 're_closing_cost': float(asm.get('re_closing_cost', 8.0)) / 100.0,
+        'cur_t': float(asm.get('current_tax_rate', 5.0)), 'ret_t': float(asm.get('retire_tax_rate', 0.0)),
         'stress_test': asm.get('stress_test', False), 'glidepath': asm.get('glidepath', True),
         'medicare_gap': asm.get('medicare_gap', True), 'medicare_cliff': asm.get('medicare_cliff', True),
         'ltc_shock': asm.get('ltc_shock', False), 'shortfall_rate': float(asm.get('shortfall_rate', 12.0)) / 100.0,
@@ -1085,7 +1085,8 @@ def run_simulation(mkt_sequence, ctx):
                    r.get("Override Prop Growth (%)")) and str(r.get("Override Prop Growth (%)")).strip() != "" else ctx[
                    'prop_g'], "r_growth": float(r.get("Override Rent Growth (%)")) if pd.notna(
             r.get("Override Rent Growth (%)")) and str(r.get("Override Rent Growth (%)")).strip() != "" else ctx[
-            'rent_g'], "rate": safe_num(r.get("Interest Rate (%)")) / 100} for r in ctx['re_records'] if
+            'rent_g'], "rate": safe_num(r.get("Interest Rate (%)")) / 100,
+               "sale_year": safe_num(r.get("Sale Year", 0))} for r in ctx['re_records'] if
               r.get("Property Name")]
     sim_biz = [{"name": b.get("Business Name"), "val": safe_num(b.get("Total Valuation ($)")),
                 "own": safe_num(b.get("Your Ownership (%)")) / 100.0,
@@ -1425,6 +1426,7 @@ def run_simulation(mkt_sequence, ctx):
         # phase-out range, effectively increasing the marginal tax cost of the conversion!
         pre_conversion_qbi = get_qbi(pre_tax_ord)
 
+        active_re = []
         for r in sim_re:
             if year_offset > 0:
                 r['rent'] *= (1 + r['r_growth'] / 100)
@@ -1447,6 +1449,33 @@ def run_simulation(mkt_sequence, ctx):
                 if year not in milestones_by_year: milestones_by_year[year] = []
                 milestones_by_year[year].append({"desc": f"🏡 Mortgage Paid Off: {r['name']}", "amt": 0, "type": "system"})
             prev_re_debts[r['name']] = r['debt']
+            
+            # --- NEW: PROPERTY LIQUIDATION ENGINE ---
+            if r['sale_year'] > 0 and year == int(r['sale_year']):
+                gross_sale = r['val']
+                closing_costs = gross_sale * ctx.get('re_closing_cost', 0.08)
+                net_proceeds = gross_sale - closing_costs - r['debt']
+                
+                if net_proceeds > 0:
+                    # Safely deposit the massive equity payload directly into a Taxable Brokerage or Cash
+                    # This bypasses the ordinary income tax bracket loop completely.
+                    target_acct = next((a for a in sim_assets if a.get('Type') == 'Brokerage (Taxable)'), None)
+                    if not target_acct:
+                        target_acct = next((a for a in sim_assets if a.get('Type') in ['Checking/Savings', 'HYSA', 'Unallocated Cash']), None)
+                    if not target_acct:
+                        target_acct = {"Account Name": "Unallocated Cash", "Type": "Checking/Savings", "Owner": "Joint", "bal": 0.0, "contrib": 0.0, "growth": 0.0, "stop_at_ret": False}
+                        sim_assets.append(target_acct)
+                        
+                    target_acct['bal'] += net_proceeds
+                    yd[f"Income: Sale of {r['name']} (Net Proceeds)"] = net_proceeds
+                
+                if year not in milestones_by_year: milestones_by_year[year] = []
+                milestones_by_year[year].append({"desc": f"🏡 Sold Property: {r['name']}", "amt": net_proceeds, "type": "system"})
+                
+                # Do NOT append to active_re. The property is permanently removed from the simulation.
+                continue 
+
+            # If not sold, keep tracking equity and cashflow normally
             re_equity += (r['val'] - r['debt'])
 
             if r['is_primary']:
@@ -1465,7 +1494,12 @@ def run_simulation(mkt_sequence, ctx):
                     yd["Expense: Net Investment RE Loss"] = yd.get("Expense: Net Investment RE Loss", 0) + abs(net_re_cashflow)
 
             pre_tax_ord += max(0, r['rent'] - r['exp'] - interest_paid)
-
+            
+            # Keep property in the simulation for next year
+            active_re.append(r)
+            
+        # Overwrite the master list with only the remaining, unsold properties
+        sim_re = active_re
         user_out_of_pocket_contribs = 0
         pre_tax_deductions = 0
         person_401k_contribs = {'Me': 0, 'Spouse': 0, 'Joint': 0}
@@ -2522,24 +2556,29 @@ def render_assets():
 
     with tab_re:
         info_banner(
-            "Smart Mortgages: Enter your balance, rate, and payment. The math engine automatically pays it down and drops the expense once it hits zero.")
+            "Smart Mortgages & Sales: Enter your balance, rate, and payment to automatically amortize. Enter a Sale Year to simulate liquidating the asset and reinvesting the net equity.")
         df_re = pd.DataFrame(st.session_state.get('real_estate_data', []))
+        
+        # Ensure the column exists for legacy data
+        if not df_re.empty and "Sale Year" not in df_re.columns:
+            df_re["Sale Year"] = None
+
         if df_re.empty:
             df_re = pd.DataFrame(
                 columns=["Property Name", "Is Primary Residence?", "Market Value ($)", "Mortgage Balance ($)",
                          "Interest Rate (%)", "Mortgage Payment ($)", "Monthly Expenses ($)", "Monthly Rent ($)",
-                         "Override Prop Growth (%)", "Override Rent Growth (%)"])
+                         "Override Prop Growth (%)", "Override Rent Growth (%)", "Sale Year"])
         else:
             df_re = df_re.reindex(
                 columns=["Property Name", "Is Primary Residence?", "Market Value ($)", "Mortgage Balance ($)",
                          "Interest Rate (%)", "Mortgage Payment ($)", "Monthly Expenses ($)", "Monthly Rent ($)",
-                         "Override Prop Growth (%)", "Override Rent Growth (%)"])
+                         "Override Prop Growth (%)", "Override Rent Growth (%)", "Sale Year"])
 
         edited_re = st.data_editor(
             df_re,
             column_order=["Property Name", "Is Primary Residence?", "Market Value ($)", "Mortgage Balance ($)",
                           "Interest Rate (%)", "Mortgage Payment ($)", "Monthly Expenses ($)", "Monthly Rent ($)",
-                          "Override Prop Growth (%)", "Override Rent Growth (%)"],
+                          "Override Prop Growth (%)", "Override Rent Growth (%)", "Sale Year"],
             column_config={
                 "Property Name": st.column_config.TextColumn("Property Name"),
                 "Is Primary Residence?": st.column_config.CheckboxColumn("Primary Home?", default=False, help="Check if you live here. Its expenses will be counted as living costs instead of business deductions."),
@@ -2550,7 +2589,8 @@ def render_assets():
                 "Monthly Expenses ($)": st.column_config.NumberColumn("Taxes/Ins/HOA ($)", step=100, format="$%d", help="Include property taxes, insurance, and HOA. Do not include the mortgage payment."),
                 "Monthly Rent ($)": st.column_config.NumberColumn("Monthly Rent ($)", step=100, format="$%d"),
                 "Override Prop Growth (%)": st.column_config.NumberColumn("Property Growth (%)", step=0.1, format="%.1f%%", help="Custom annual appreciation rate for this property. Leave blank to use the global assumption."),
-                "Override Rent Growth (%)": st.column_config.NumberColumn("Rent Growth (%)", step=0.1, format="%.1f%%", help="Custom annual rent increase rate. Leave blank to use the global assumption.")
+                "Override Rent Growth (%)": st.column_config.NumberColumn("Rent Growth (%)", step=0.1, format="%.1f%%", help="Custom annual rent increase rate. Leave blank to use the global assumption."),
+                "Sale Year": st.column_config.NumberColumn("Sale Year", format="%d", min_value=1900, max_value=2100, help="Year to sell the property. Leave blank to hold forever.")
             }, num_rows="dynamic", width='stretch', key="re_editor"
         )
         # --- FIX: Bulletproof State Commit ---
@@ -2969,6 +3009,7 @@ def render_simulation():
 
         ac10, _, _ = st.columns(3)
         shortfall_rate = ai_number_input("Shortfall Penalty/Borrowing Rate (%)", 'shortfall_rate', f"What is a realistic personal loan or credit card interest rate for someone forced to borrow during retirement shortfalls? Return JSON: {{'shortfall_rate': float}}", ac10, help_text="The interest rate charged on 'Unfunded Debt' if you run out of money and are forced to borrow to cover living expenses.")
+        re_closing_cost = ai_number_input("RE Closing Costs (%)", 're_closing_cost', f"What is the average total cost to sell a home in {curr_city_flow_clean} (including agent commissions, staging, closing fees, transfer taxes) as a percentage of the sale price? Return JSON: {{'re_closing_cost': float}}", ac11, help_text="The percentage of a property's sale price lost to realtor fees, transfer taxes, and closing costs when simulating a sale.")
 
     with tab_stress:
         st.markdown("<div class='card' style='margin-bottom: 24px;'><h3 style='margin-top:0; color:#0f172a; font-weight:800; letter-spacing:-0.5px;'>Tax Engine & Stress Tests</h3></div>", unsafe_allow_html=True)
