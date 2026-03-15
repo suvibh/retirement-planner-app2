@@ -602,6 +602,59 @@ def call_gemini(prompt, retries=3, response_format="text"):
             
     return None
 
+ def ai_number_input(label, state_key, prompt, col, help_text=""):
+    # 1. Initialize the widget's UI state from the master assumptions dictionary 
+    # so it doesn't render blank on the first load.
+    if state_key not in st.session_state:
+        st.session_state[state_key] = float(st.session_state.get('assumptions', {}).get(state_key, 0.0))
+
+    with col:
+        # Create a tiny inner column layout to place the AI button next to the label
+        c_label, c_btn = st.columns([8, 2])
+        with c_label:
+            st.markdown(f"<div style='font-size: 0.85rem; font-weight: 600; margin-bottom: 4px;'>{label}</div>", unsafe_allow_html=True)
+        with c_btn:
+            if st.button("✨", key=f"ai_btn_{state_key}", help="Ask Fiduciary AI"):
+                with st.spinner(""):
+                    # NOTE: Ensure this matches your actual LLM calling function name!
+                    # For example, if you use call_gemini() and json.loads(), put that here.
+                    ai_response_text = call_gemini(prompt) 
+                    
+                    try:
+                        # Extract the JSON block from the response
+                        import json, re
+                        json_match = re.search(r'\{.*\}', ai_response_text, re.DOTALL)
+                        if json_match:
+                            parsed_data = json.loads(json_match.group(0))
+                            
+                            if state_key in parsed_data:
+                                new_val = float(parsed_data[state_key])
+                                
+                                # --- THE TWO CRITICAL FIXES ---
+                                # A. Force the widget's UI state to update
+                                st.session_state[state_key] = new_val
+                                
+                                # B. Keep the master dictionary in sync
+                                st.session_state['assumptions'][state_key] = new_val
+                                
+                                # C. Force the screen to refresh instantly
+                                st.rerun()
+                    except Exception as e:
+                        st.toast(f"⚠️ AI couldn't parse the number. Try again.")
+
+        # 2. Render the actual input box tied strictly to the state_key
+        val = st.number_input(
+            label, 
+            key=state_key, 
+            help=help_text, 
+            label_visibility="collapsed"
+        )
+        
+        # 3. If the user types a number manually, sync it back to the master dictionary
+        st.session_state['assumptions'][state_key] = val
+        
+        return val
+
 def initialize_session_state():
     if not st.session_state.get('initialized', False):
         ud = st.session_state.get('user_data', {})
@@ -2881,51 +2934,6 @@ def render_cashflows():
 
 def render_simulation():
     section_header("Simulation", "Fine-tune your timeline and run Monte Carlo scenarios.", "📈")
-
-    def ai_number_input(label, state_key, prompt, col, help_text=""):
-        # --- FIX: AI State & API Key Guard ---
-        ai_disabled = st.session_state.get('ai_loading', False) or not GEMINI_API_KEY
-        tooltip = "⚠️ Gemini API Key missing in secrets.toml" if not GEMINI_API_KEY else f"AI Estimate for {label}"
-        
-        with col:
-            sub_c1, sub_c2 = st.columns([5, 2])
-            widget_key = f"in_{state_key}"
-
-            val = sub_c1.number_input(label, step=0.1, key=widget_key,
-                                      value=float(st.session_state.get('assumptions', {}).get(state_key, 0.0)),
-                                      help=help_text)
-            if val != st.session_state.get('assumptions', {}).get(state_key):
-                new_assumptions = st.session_state.get('assumptions', {}).copy()
-                new_assumptions[state_key] = val
-                st.session_state['assumptions'] = new_assumptions
-                mark_dirty()
-
-            sub_c2.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-            
-            # Disable the button if ANY AI call is running OR the key is missing
-            if sub_c2.button("✨ AI", key=f"btn_{state_key}", help=tooltip, width='stretch', type="primary", disabled=ai_disabled):
-                st.session_state[f'trigger_ai_{state_key}'] = True
-                st.session_state['ai_loading'] = True
-                st.rerun()
-
-            if st.session_state.get(f'trigger_ai_{state_key}'):
-                try:
-                    if check_ai_rate_limit():
-                        with st.spinner("AI estimating..."):
-                            enhanced_prompt = prompt + " CRITICAL INSTRUCTION: You MUST return the value as a percentage number between 0 and 100 (e.g., return 5.5 for 5.5%, DO NOT return 0.055). Return ONLY a JSON object."
-                            res = call_gemini(enhanced_prompt, response_format="json")
-                            if res and state_key in res:
-                                new_val = float(res[state_key])
-                                if 0 < new_val < 0.30: new_val *= 100.0
-                                new_assumptions = st.session_state.get('assumptions', {}).copy()
-                                new_assumptions[state_key] = new_val
-                                st.session_state['assumptions'] = new_assumptions
-                                mark_dirty()
-                finally:
-                    st.session_state[f'trigger_ai_{state_key}'] = False
-                    st.session_state['ai_loading'] = False
-                    st.rerun()
-        return val
 
     tab_ages, tab_assumptions, tab_stress = st.tabs(
         ["⏳ Timeline & Ages", "📊 Macro Assumptions", "🌪️ Stress Tests & Taxes"])
