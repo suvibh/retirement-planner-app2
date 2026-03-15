@@ -608,7 +608,6 @@ def ai_number_input(label, state_key, prompt, col, help_text=""):
         st.session_state[state_key] = float(st.session_state.get('assumptions', {}).get(state_key, 0.0))
 
     with col:
-        # --- FIX 1: Perfect UI Alignment ---
         # Place the label strictly on top
         st.markdown(f"<div style='font-size: 0.85rem; font-weight: 600; margin-bottom: 2px;'>{label}</div>", unsafe_allow_html=True)
         
@@ -620,8 +619,7 @@ def ai_number_input(label, state_key, prompt, col, help_text=""):
             if st.button("✨", key=f"ai_btn_{state_key}", help="Ask Fiduciary AI", type="primary", use_container_width=True):
                 with st.spinner(""):
                     
-                    # --- FIX 2: Nominal vs. Real Guardrail ---
-                    # We explicitly forbid the AI from pre-subtracting inflation.
+                    # Nominal vs. Real Guardrail
                     strict_prompt = prompt + "\n\nCRITICAL INSTRUCTION: You MUST return the percentage as a whole number (e.g., return 7.5 for 7.5%). DO NOT return it as a decimal. ALWAYS provide the NOMINAL rate (do NOT subtract inflation), as the system handles inflation-adjusted discounting natively."
                     
                     ai_response_text = call_gemini(strict_prompt) 
@@ -643,9 +641,8 @@ def ai_number_input(label, state_key, prompt, col, help_text=""):
                                 st.session_state[state_key] = new_val
                                 st.session_state['assumptions'][state_key] = new_val
                                 
-                                # --- FIX 3: Trigger the Dirty Save Prompt ---
-                                # NOTE: If your app uses a different key like 'has_unsaved_changes', swap it here!
-                                st.session_state['unsaved_changes'] = True
+                                # --- FIX: Tap into the app's native dirty function! ---
+                                mark_dirty() 
                                 
                                 st.rerun()
                     except Exception as e:
@@ -659,10 +656,10 @@ def ai_number_input(label, state_key, prompt, col, help_text=""):
                 label_visibility="collapsed"
             )
             
-        # Catch manual user typing and trigger the dirty save flag as well!
+        # --- FIX: Catch manual user typing and trigger mark_dirty() ---
         if st.session_state['assumptions'].get(state_key) != val:
             st.session_state['assumptions'][state_key] = val
-            st.session_state['unsaved_changes'] = True
+            mark_dirty()
             
         return val
 
@@ -2995,7 +2992,7 @@ def render_simulation():
     with tab_assumptions:
         st.markdown("<div class='card' style='margin-bottom: 24px;'><h3 style='margin-top:0; color:#0f172a; font-weight:800; letter-spacing:-0.5px;'>Macroeconomic Assumptions</h3></div>", unsafe_allow_html=True)
         ac1, ac2, ac3 = st.columns(3)
-        mkt = ai_number_input("Market Growth (%)", 'market_growth', f"What is a realistic conservative long-term annual market growth rate for a diversified retirement portfolio in nominal numbers? Return JSON: {{'market_growth': float}}", ac1, help_text="Expected average annual return for your invested assets.")
+        mkt = ai_number_input("Market Growth (%)", 'market_growth', f"What is the historical average long-term annual market growth rate for the S&P 500 (in nominal numbers)? Return JSON: {{'market_growth': float}}", ac1, help_text="Expected average annual return for your invested assets.")
         infl = ai_number_input("General CPI Inflation (%)", 'inflation', f"What is the projected long-term average general US CPI inflation rate? Return JSON: {{'inflation': float}}", ac2, help_text="Expected annual increase in the cost of general goods.")
         inc_g = ai_number_input("Income Growth (%)", 'income_growth', f"What is a realistic annual salary growth/merit increase rate? Return JSON: {{'income_growth': float}}", ac3, help_text="Expected annual increase in your salary or non-investment income.")
 
