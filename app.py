@@ -615,7 +615,14 @@ def ai_number_input(label, state_key, prompt, col, help_text=""):
         with c_btn:
             # use_container_width=True forces the button to stretch perfectly to match the input box height
             if st.button("✨", key=f"ai_btn_{state_key}", help="Ask Fiduciary AI", type="primary", use_container_width=True):
-                with st.spinner(""):
+                
+                # --- FIX 1: AI Spam Protection Gate ---
+                # This ensures the global 3-second cooldown is enforced on every single button
+                if check_ai_rate_limit():
+                    
+                    # --- FIX 2: Layout-Safe Loading Indicator ---
+                    # Toasts pop up in the corner instead of injecting DOM elements into our tight column layout
+                    st.toast(f"Consulting Fiduciary AI for {label}...", icon="🤖")
                     
                     # Nominal vs. Real Guardrail
                     strict_prompt = prompt + "\n\nCRITICAL INSTRUCTION: You MUST return the percentage as a whole number (e.g., return 7.5 for 7.5%). DO NOT return it as a decimal. ALWAYS provide the NOMINAL rate (do NOT subtract inflation), as the system handles inflation-adjusted discounting natively."
@@ -635,17 +642,15 @@ def ai_number_input(label, state_key, prompt, col, help_text=""):
                                 if 0.0 < new_val < 1.0:
                                     new_val = new_val * 100.0
                                 
-                                # --- FIX: The "Unchanged" Gate ---
+                                # The "Unchanged" Gate
                                 current_val = float(st.session_state['assumptions'].get(state_key, 0.0))
                                 
                                 if new_val != current_val:
-                                    # The AI changed the number, so we update the state and flag dirty
                                     st.session_state[state_key] = new_val
                                     st.session_state['assumptions'][state_key] = new_val
                                     mark_dirty() 
                                     st.rerun()
                                 else:
-                                    # The number is exactly the same! Let the user know, but don't trigger a save prompt.
                                     st.toast("✨ AI Fiduciary confirms your current assumption is perfectly aligned.")
                                     
                     except Exception as e:
@@ -659,7 +664,7 @@ def ai_number_input(label, state_key, prompt, col, help_text=""):
                 label_visibility="collapsed"
             )
             
-        # --- FIX: Catch manual user typing and trigger mark_dirty() ---
+        # Catch manual user typing and trigger mark_dirty()
         if st.session_state['assumptions'].get(state_key) != val:
             st.session_state['assumptions'][state_key] = val
             mark_dirty()
