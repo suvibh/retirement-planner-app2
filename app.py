@@ -2995,7 +2995,7 @@ def render_simulation():
     with tab_assumptions:
         st.markdown("<div class='card' style='margin-bottom: 24px;'><h3 style='margin-top:0; color:#0f172a; font-weight:800; letter-spacing:-0.5px;'>Macroeconomic Assumptions</h3></div>", unsafe_allow_html=True)
         ac1, ac2, ac3 = st.columns(3)
-        mkt = ai_number_input("Market Growth (%)", 'market_growth', f"What is a realistic conservative long-term annual market growth rate for a diversified retirement portfolio? Return JSON: {{'market_growth': float}}", ac1, help_text="Expected average annual return for your invested assets.")
+        mkt = ai_number_input("Market Growth (%)", 'market_growth', f"What is a realistic conservative long-term annual market growth rate for a diversified retirement portfolio in nominal numbers? Return JSON: {{'market_growth': float}}", ac1, help_text="Expected average annual return for your invested assets.")
         infl = ai_number_input("General CPI Inflation (%)", 'inflation', f"What is the projected long-term average general US CPI inflation rate? Return JSON: {{'inflation': float}}", ac2, help_text="Expected annual increase in the cost of general goods.")
         inc_g = ai_number_input("Income Growth (%)", 'income_growth', f"What is a realistic annual salary growth/merit increase rate? Return JSON: {{'income_growth': float}}", ac3, help_text="Expected annual increase in your salary or non-investment income.")
 
