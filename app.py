@@ -742,7 +742,7 @@ if 'user_uid' not in st.session_state:
                             st.error(f"⚠️ Failed to send reset link: {error_msg}")
                 else:
                     st.warning("⚠️ Please type your email address in the field above first, then click 'Forgot Password?'.")
-                    
+
         with tab2:
             se, sp = st.text_input("New Email", key="se"), st.text_input("New Password", type="password", key="sp")
             if st.button("Create Account", type="primary", width='stretch'):
@@ -3592,12 +3592,17 @@ def render_ai():
                             - Give exact mathematical instructions on Roth conversions. Example: "You have a $40k gap before hitting the 24% bracket in year X. Convert $40k from your Traditional 401(k) to a Roth IRA to fill this bucket."
                             - Warn them if forced RMDs will push them into a massive tax bracket later in life.
 
-                            ### 4. Healthcare & IRMAA Warning
+                            ### 4. Debt Payoff & Leverage Optimization
+                            Analyze the user's 'Active Liabilities & Rates'. Compare their debt interest rates against their assumed market growth rate.
+                            - Identify toxic, high-interest consumer debt and recommend a ruthless, specific mathematical payoff sequence (Avalanche method).
+                            - For low-interest debt (e.g., mortgages < 5%), calculate the opportunity cost. Explicitly advise them NOT to pay it off early if the expected market return is higher than the debt's interest rate. Take a definitive, mathematical stance on leverage.
+
+                            ### 5. Healthcare & IRMAA Warning
                             Cross-reference their retirement age with Medicare eligibility (age 65).
                             - If they retire before 65, warn them about the "Pre-Medicare Gap" costs.
                             - Check their later years for IRMAA (Medicare high-income surcharges) triggered by RMDs or high living expenses.
 
-                            ### 5. Sequence of Returns Risk & Liquidity
+                            ### 6. Sequence of Returns Risk & Liquidity
                             Look at their liquid cash versus their investment accounts in the first 5 years of retirement. Do they have enough cash to survive a 25% market crash without selling stocks at the bottom? Recommend an exact cash buffer size based on their annual expenses.
                             """
 
