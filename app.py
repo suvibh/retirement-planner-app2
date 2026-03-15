@@ -608,17 +608,21 @@ def ai_number_input(label, state_key, prompt, col, help_text=""):
         st.session_state[state_key] = float(st.session_state.get('assumptions', {}).get(state_key, 0.0))
 
     with col:
-        c_label, c_btn = st.columns([8, 2])
-        with c_label:
-            st.markdown(f"<div style='font-size: 0.85rem; font-weight: 600; margin-bottom: 4px;'>{label}</div>", unsafe_allow_html=True)
+        # --- FIX 1: Perfect UI Alignment ---
+        # Place the label strictly on top
+        st.markdown(f"<div style='font-size: 0.85rem; font-weight: 600; margin-bottom: 2px;'>{label}</div>", unsafe_allow_html=True)
+        
+        # Place the input and the button side-by-side, locked to the bottom
+        c_input, c_btn = st.columns([8, 2], vertical_alignment="bottom")
+        
         with c_btn:
-            # --- FIX 1: Add type="primary" to bring the button styling back! ---
-            if st.button("✨", key=f"ai_btn_{state_key}", help="Ask Fiduciary AI", type="primary"):
+            # use_container_width=True forces the button to stretch perfectly to match the input box height
+            if st.button("✨", key=f"ai_btn_{state_key}", help="Ask Fiduciary AI", type="primary", use_container_width=True):
                 with st.spinner(""):
                     
-                    # --- FIX 2: The LLM Guardrail Injection ---
-                    # We secretly append this strict instruction to every prompt before sending it
-                    strict_prompt = prompt + "\n\nCRITICAL INSTRUCTION: You MUST return the percentage as a whole number (e.g., return 7.5 for 7.5%). DO NOT return it as a decimal (e.g., do not return 0.075)."
+                    # --- FIX 2: Nominal vs. Real Guardrail ---
+                    # We explicitly forbid the AI from pre-subtracting inflation.
+                    strict_prompt = prompt + "\n\nCRITICAL INSTRUCTION: You MUST return the percentage as a whole number (e.g., return 7.5 for 7.5%). DO NOT return it as a decimal. ALWAYS provide the NOMINAL rate (do NOT subtract inflation), as the system handles inflation-adjusted discounting natively."
                     
                     ai_response_text = call_gemini(strict_prompt) 
                     
@@ -631,32 +635,35 @@ def ai_number_input(label, state_key, prompt, col, help_text=""):
                             if state_key in parsed_data:
                                 new_val = float(parsed_data[state_key])
                                 
-                                # --- FIX 3: The Python Safety Net ---
-                                # If the AI disobeys and returns a decimal anyway (e.g., 0.075),
-                                # we catch it and scale it back up to 7.5 before it hits the UI.
-                                # (We only do this if the value is strictly between 0 and 1, 
-                                # assuming typical macro rates aren't sub-1 percent.)
+                                # Decimal Safety Net
                                 if 0.0 < new_val < 1.0:
                                     new_val = new_val * 100.0
                                 
                                 # Force UI Update
                                 st.session_state[state_key] = new_val
                                 st.session_state['assumptions'][state_key] = new_val
+                                
+                                # --- FIX 3: Trigger the Dirty Save Prompt ---
+                                # NOTE: If your app uses a different key like 'has_unsaved_changes', swap it here!
+                                st.session_state['unsaved_changes'] = True
+                                
                                 st.rerun()
                     except Exception as e:
                         st.toast("⚠️ AI couldn't parse the number. Try again.")
 
-        # 2. Render Input
-        val = st.number_input(
-            label, 
-            key=state_key, 
-            help=help_text, 
-            label_visibility="collapsed"
-        )
-        
-        # 3. Sync Manual Edits
-        st.session_state['assumptions'][state_key] = val
-        
+        with c_input:
+            val = st.number_input(
+                label, 
+                key=state_key, 
+                help=help_text, 
+                label_visibility="collapsed"
+            )
+            
+        # Catch manual user typing and trigger the dirty save flag as well!
+        if st.session_state['assumptions'].get(state_key) != val:
+            st.session_state['assumptions'][state_key] = val
+            st.session_state['unsaved_changes'] = True
+            
         return val
 
 def initialize_session_state():
