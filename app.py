@@ -876,11 +876,11 @@ def build_sim_context():
         'mkt': float(asm.get('market_growth', 7.0)), 'infl': float(asm.get('inflation', 3.0)),
         'infl_hc': float(asm.get('inflation_healthcare', 5.5)), 'infl_ed': float(asm.get('inflation_education', 4.5)),
         'inc_g': float(asm.get('income_growth', 3.0)), 'prop_g': float(asm.get('property_growth', 3.0)),
-        'rent_g': float(asm.get('rent_growth', 3.0)), 're_closing_cost': float(asm.get('re_closing_cost', 8.0)) / 100.0,
+        'rent_g': float(asm.get('rent_growth', 3.0)), 're_closing_cost': float(asm.get('re_closing_cost', 8.0)),
         'cur_t': float(asm.get('current_tax_rate', 5.0)), 'ret_t': float(asm.get('retire_tax_rate', 0.0)),
         'stress_test': asm.get('stress_test', False), 'glidepath': asm.get('glidepath', True),
         'medicare_gap': asm.get('medicare_gap', True), 'medicare_cliff': asm.get('medicare_cliff', True),
-        'ltc_shock': asm.get('ltc_shock', False), 'shortfall_rate': float(asm.get('shortfall_rate', 12.0)) / 100.0,
+        'ltc_shock': asm.get('ltc_shock', False), 'shortfall_rate': float(asm.get('shortfall_rate', 12.0)),
         'roth_conversions': asm.get('roth_conversions', False), 'roth_target': asm.get('roth_target', '24%'),
         'active_withdrawal_strategy': asm.get('withdrawal_strategy', 'Standard'),
         'owns_home': owns_home, 'kids_data': st.session_state.get('kids_data', []),
@@ -1453,7 +1453,7 @@ def run_simulation(mkt_sequence, ctx):
             # --- NEW: PROPERTY LIQUIDATION ENGINE ---
             if r['sale_year'] > 0 and year == int(r['sale_year']):
                 gross_sale = r['val']
-                closing_costs = gross_sale * ctx.get('re_closing_cost', 0.08)
+                closing_costs = gross_sale * (ctx.get('re_closing_cost', 8.0) / 100.0)
                 net_proceeds = gross_sale - closing_costs - r['debt']
                 
                 if net_proceeds > 0:
@@ -2058,7 +2058,7 @@ def run_simulation(mkt_sequence, ctx):
         nw_det_res.append(nw_yd)
 
         if unfunded_debt_bal > 0:
-            unfunded_debt_bal *= (1 + ctx['shortfall_rate'])
+            unfunded_debt_bal *= (1 + (ctx['shortfall_rate'] / 100.0))
 
     return sim_res, det_res, nw_det_res, milestones_by_year
 
