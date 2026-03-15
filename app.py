@@ -3007,7 +3007,7 @@ def render_simulation():
             help_text="Your estimated effective state and local tax rate during retirement."
         )
 
-        ac10, _, _ = st.columns(3)
+        ac10, ac11, _ = st.columns(3)
         shortfall_rate = ai_number_input("Shortfall Penalty/Borrowing Rate (%)", 'shortfall_rate', f"What is a realistic personal loan or credit card interest rate for someone forced to borrow during retirement shortfalls? Return JSON: {{'shortfall_rate': float}}", ac10, help_text="The interest rate charged on 'Unfunded Debt' if you run out of money and are forced to borrow to cover living expenses.")
         re_closing_cost = ai_number_input("RE Closing Costs (%)", 're_closing_cost', f"What is the average total cost to sell a home in {curr_city_flow_clean} (including agent commissions, staging, closing fees, transfer taxes) as a percentage of the sale price? Return JSON: {{'re_closing_cost': float}}", ac11, help_text="The percentage of a property's sale price lost to realtor fees, transfer taxes, and closing costs when simulating a sale.")
 
