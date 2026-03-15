@@ -2983,6 +2983,8 @@ def render_simulation():
 
     st.markdown("<div class='card' style='margin-bottom: 16px; padding: 20px;'><h3 style='margin:top:0; margin-bottom: 4px; color:#0f172a; font-weight:800; letter-spacing:-0.5px;'>⚙️ Simulation Command Center</h3><p style='color:#64748b; font-size:0.95rem; margin:0;'>Adjust your baseline parameters and immediately see the impact on your trajectory.</p></div>", unsafe_allow_html=True)
 
+    my_age = relativedelta(datetime.date.today(), st.session_state.get('my_dob', datetime.date(1980, 1, 1))).years
+    spouse_age = relativedelta(datetime.date.today(), st.session_state.get('spouse_dob', datetime.date(1982, 1, 1))).years if st.session_state.get('has_spouse') else 0
     # --- THE MASTER 3-COLUMN GRID ---
     col_time, col_econ, col_strat = st.columns([1, 1, 1], gap="large")
 
