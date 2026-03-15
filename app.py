@@ -3019,10 +3019,10 @@ def render_simulation():
         curr_city_flow = st.session_state.get('curr_city_flow', '')
         curr_city_flow_clean = re.sub(r'[^a-zA-Z0-9, ]', '', str(curr_city_flow))[:100]
         
-        mkt = ai_number_input("Market Growth (%)", 'market_growth', f"What is the historical average long-term annual market growth rate for the S&P 500 (in nominal numbers)? Return JSON: {{'market_growth': float}}", col_econ, help_text="Expected average annual return for your invested assets.")
-        infl = ai_number_input("General Inflation (%)", 'inflation', f"What is the projected long-term average general US CPI inflation rate? Return JSON: {{'inflation': float}}", col_econ, help_text="Expected annual increase in the cost of general goods.")
-        inc_g = ai_number_input("Income Growth (%)", 'income_growth', f"What is a realistic annual salary growth/merit increase rate? Return JSON: {{'income_growth': float}}", col_econ, help_text="Expected annual increase in your salary or non-investment income.")
-        prop_g = ai_number_input("Property Growth (%)", 'property_growth', f"Historical average annual real estate appreciation rate for {curr_city_flow_clean}? Return JSON: {{'property_growth': float}}", col_econ, help_text="Expected annual appreciation of your real estate values.")
+        mkt = ai_number_input("Market Growth (%)", 'market_growth', f"What is the historical average long-term annual market growth rate for the S&P 500 (in nominal numbers)? Return JSON: {{'market_growth': float}}", col_econ, help_text="The nominal average annual return for your investments (e.g., historical S&P 500). Do NOT subtract inflation; the engine handles that mathematically.")
+        infl = ai_number_input("General Inflation (%)", 'inflation', f"What is the projected long-term average general US CPI inflation rate? Return JSON: {{'inflation': float}}", col_econ, help_text="The baseline inflation rate used to inflate your future expenses and discount your final net worth into today's dollars.")
+        inc_g = ai_number_input("Income Growth (%)", 'income_growth', f"What is a realistic annual salary growth/merit increase rate? Return JSON: {{'income_growth': float}}", col_econ, help_text="Expected annual salary/merit increase rate during your active working years.")
+        prop_g = ai_number_input("Property Growth (%)", 'property_growth', f"Historical average annual real estate appreciation rate for {curr_city_flow_clean}? Return JSON: {{'property_growth': float}}", col_econ, help_text=f"Expected real estate appreciation. The AI estimates this based on historical trends specifically tailored to {curr_city_flow_clean if curr_city_flow_clean else 'your local market'}.")
 
     with col_strat:
         st.markdown("<h4 style='color:#8b5cf6; font-size: 1.1rem;'>🏛️ Taxes & Strategy</h4>", unsafe_allow_html=True)
@@ -3030,20 +3030,22 @@ def render_simulation():
         ret_city_flow = st.session_state.get('retire_city_flow', '')
         target_city = ret_city_flow if ret_city_flow.strip() != "" else curr_city_flow_clean
 
-        cur_t = ai_number_input("Current State Tax (%)", 'current_tax_rate', f"User lives in {curr_city_flow_clean} with ${curr_inc_total:,.0f} income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'current_tax_rate': float}}", col_strat)
-        ret_t = ai_number_input("Retire State Tax (%)", 'retire_tax_rate', f"User plans to retire in {target_city}. Suggest effective STATE/LOCAL income tax rate ONLY for retirement income. Return JSON: {{'retire_tax_rate': float}}", col_strat)
+        cur_t = ai_number_input("Current State Tax (%)", 'current_tax_rate', f"User lives in {curr_city_flow_clean} with ${curr_inc_total:,.0f} income. Suggest effective STATE/LOCAL income tax rate ONLY. Return JSON: {{'current_tax_rate': float}}", col_strat, help_text="Your effective state/local tax rate while working. The AI estimates this using your current city and income bracket.")
+        
+        # --- FIX: Explicitly explain the Retirement Tax discount logic in the tooltip ---
+        ret_t = ai_number_input("Retire State Tax (%)", 'retire_tax_rate', f"User plans to retire in {target_city}. Suggest effective STATE/LOCAL income tax rate ONLY for retirement income. Return JSON: {{'retire_tax_rate': float}}", col_strat, help_text="Your effective state tax rate in retirement. The AI often estimates this LOWER than your working rate because Social Security and certain age/pension deductions are tax-exempt in many states.")
         
         st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
-        active_withdrawal_strategy = st.selectbox("Withdrawal Sequence", options=["Standard (Taxable -> 401k -> Roth)", "Roth Preferred (Taxable -> Roth -> 401k)"], index=0 if "Standard" in st.session_state.get('assumptions', {}).get('withdrawal_strategy', 'Standard') else 1, key="sel_wd_strat")
+        active_withdrawal_strategy = st.selectbox("Withdrawal Sequence", options=["Standard (Taxable -> 401k -> Roth)", "Roth Preferred (Taxable -> Roth -> 401k)"], index=0 if "Standard" in st.session_state.get('assumptions', {}).get('withdrawal_strategy', 'Standard') else 1, key="sel_wd_strat", help="Standard drains pre-tax accounts before touching Roth. Roth Preferred drains Roth first to keep taxable income artificially low for healthcare subsidies.")
         update_asm_toggle('withdrawal_strategy', active_withdrawal_strategy.split(' ')[0])
 
         st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
-        roth_conversions = st.toggle("🔄 Roth Optimizer", value=st.session_state.get('assumptions', {}).get('roth_conversions', False), key="tgl_roth_conv")
+        roth_conversions = st.toggle("🔄 Roth Optimizer", value=st.session_state.get('assumptions', {}).get('roth_conversions', False), key="tgl_roth_conv", help="Automatically converts Traditional balances to Roth up to your target tax bracket during low-income gap years.")
         update_asm_toggle('roth_conversions', roth_conversions)
         
         if roth_conversions:
             roth_target_idx = ["12%", "22%", "24%", "32%"].index(st.session_state.get('assumptions', {}).get('roth_target', "24%"))
-            roth_target = st.selectbox("Target Bracket to Fill", options=["12%", "22%", "24%", "32%"], index=roth_target_idx, key="sel_roth_target", label_visibility="collapsed")
+            roth_target = st.selectbox("Target Bracket to Fill", options=["12%", "22%", "24%", "32%"], index=roth_target_idx, key="sel_roth_target", label_visibility="collapsed", help="The highest marginal tax bracket you are willing to 'fill up' with Roth conversions each year.")
             update_asm_toggle('roth_target', roth_target)
 
     # --- THE ADVANCED PARAMETERS EXPANDER ---
@@ -3052,30 +3054,30 @@ def render_simulation():
         adv1, adv2, adv3 = st.columns(3, gap="large")
         
         with adv1:
-            infl_hc = ai_number_input("Healthcare Infl. (%)", 'inflation_healthcare', f"Projected long-term healthcare inflation? Return JSON: {{'inflation_healthcare': float}}", adv1)
-            infl_ed = ai_number_input("Education Infl. (%)", 'inflation_education', f"Projected long-term tuition inflation? Return JSON: {{'inflation_education': float}}", adv1)
-            rent_g = ai_number_input("Rent Growth (%)", 'rent_growth', f"Projected rent increase rate for {curr_city_flow_clean}? Return JSON: {{'rent_growth': float}}", adv1)
+            infl_hc = ai_number_input("Healthcare Infl. (%)", 'inflation_healthcare', f"Projected long-term healthcare inflation? Return JSON: {{'inflation_healthcare': float}}", adv1, help_text="Projected long-term healthcare inflation. Historically runs much higher (5-7%) than general consumer inflation.")
+            infl_ed = ai_number_input("Education Infl. (%)", 'inflation_education', f"Projected long-term tuition inflation? Return JSON: {{'inflation_education': float}}", adv1, help_text="Projected long-term tuition inflation. Used to scale 529 plan drawdowns.")
+            rent_g = ai_number_input("Rent Growth (%)", 'rent_growth', f"Projected rent increase rate for {curr_city_flow_clean}? Return JSON: {{'rent_growth': float}}", adv1, help_text="Projected average annual rent increase rate for investment properties.")
             
         with adv2:
-            shortfall_rate = ai_number_input("Borrowing Rate (%)", 'shortfall_rate', f"Realistic personal loan interest rate for emergency shortfalls? Return JSON: {{'shortfall_rate': float}}", adv2)
-            re_closing_cost = ai_number_input("RE Closing Costs (%)", 're_closing_cost', f"Average total cost to sell a home in {curr_city_flow_clean} as percentage? Return JSON: {{'re_closing_cost': float}}", adv2)
+            shortfall_rate = ai_number_input("Borrowing Rate (%)", 'shortfall_rate', f"Realistic personal loan interest rate for emergency shortfalls? Return JSON: {{'shortfall_rate': float}}", adv2, help_text="The interest rate charged on 'Unfunded Debt' if your liquid cash and portfolios hit zero and you are forced to borrow to survive.")
+            re_closing_cost = ai_number_input("RE Closing Costs (%)", 're_closing_cost', f"Average total cost to sell a home in {curr_city_flow_clean} as percentage? Return JSON: {{'re_closing_cost': float}}", adv2, help_text="Percentage of a property's sale price lost to realtor commissions, staging, and transfer taxes (typically 8-10%) when simulating a liquidation year.")
             
             st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
-            glidepath = st.toggle("📉 Apply Glidepath", value=st.session_state.get('assumptions', {}).get('glidepath', True), help="Reduces investment growth by 3% over 15 years in retirement.", key="tgl_glidepath")
+            glidepath = st.toggle("📉 Apply Glidepath", value=st.session_state.get('assumptions', {}).get('glidepath', True), help="Gradually reduces your investment growth rate by up to 3% in retirement to simulate shifting to safer assets (bonds).", key="tgl_glidepath")
             update_asm_toggle('glidepath', glidepath)
 
         with adv3:
             st.markdown("<div style='height: 22px;'></div>", unsafe_allow_html=True)
-            medicare_gap = st.toggle("🏥 Pre-Medicare Gap", value=st.session_state.get('assumptions', {}).get('medicare_gap', True), help="Adds a $15,000/yr proxy cost if you retire before age 65.", key="tgl_med_gap")
+            medicare_gap = st.toggle("🏥 Pre-Medicare Gap", value=st.session_state.get('assumptions', {}).get('medicare_gap', True), help="Adds a $15,000/yr proxy cost if you retire early and lose employer coverage before Medicare kicks in at 65.", key="tgl_med_gap")
             update_asm_toggle('medicare_gap', medicare_gap)
             
-            medicare_cliff = st.toggle("🏥 Medicare Cliff", value=st.session_state.get('assumptions', {}).get('medicare_cliff', True), help="Drops general healthcare expenses by 25% at age 65.", key="tgl_med_cliff")
+            medicare_cliff = st.toggle("🏥 Medicare Cliff", value=st.session_state.get('assumptions', {}).get('medicare_cliff', True), help="Drops your general healthcare expenses by 25% at age 65 to simulate Medicare taking over primary costs.", key="tgl_med_cliff")
             update_asm_toggle('medicare_cliff', medicare_cliff)
             
-            stress_test = st.toggle("📉 -25% Market Crash", value=st.session_state.get('assumptions', {}).get('stress_test', False), help="Simulates a 25% drop in your exact first year of retirement.", key="tgl_stress_test")
+            stress_test = st.toggle("📉 -25% Market Crash", value=st.session_state.get('assumptions', {}).get('stress_test', False), help="Sequence of Returns Risk: Simulates a severe 25% market drop in your exact first year of retirement.", key="tgl_stress_test")
             update_asm_toggle('stress_test', stress_test)
             
-            ltc_shock = st.toggle("🛏️ LTC Shock", value=st.session_state.get('assumptions', {}).get('ltc_shock', False), help="Adds a $100k+ expense in the final two years of life.", key="tgl_ltc")
+            ltc_shock = st.toggle("🛏️ LTC Shock", value=st.session_state.get('assumptions', {}).get('ltc_shock', False), help="Simulates a massive $100k+ annual expense in the final two years of life for nursing home care.", key="tgl_ltc")
             update_asm_toggle('ltc_shock', ltc_shock)
 
     st.divider()
