@@ -543,7 +543,6 @@ def save_profile():
         st.session_state['user_data'] = user_data
         st.session_state['dirty'] = False
         st.toast("✅ Complete Financial Blueprint Synchronized Successfully!")
-        st.rerun() # The toast will automatically survive this rerun!
         
     except Exception as e:
         # --- FIX: Graceful Error Handling for Network/Permission issues ---
@@ -4066,8 +4065,8 @@ with st.sidebar:
             st.rerun()
     else:
         save_btn_label = "⚠️ Save Changes" if st.session_state.get('dirty', False) else "🚀 Save Profile"
-        if st.button(save_btn_label, type="primary", width='stretch'):
-            save_profile()
+        # FIX: Attached the callback directly so it executes BEFORE the UI draws
+        st.button(save_btn_label, type="primary", width='stretch', key="btn_sidebar_save", on_click=save_profile)
 
     if st.button("Logout", type="secondary", width='stretch'):
         # --- FIX: Delete the secure UID cookie ---
@@ -4116,6 +4115,8 @@ with banner_placeholder.container():
     elif st.session_state.get('dirty', False):
         warn_col1, warn_col2 = st.columns([5, 1])
         warn_col1.warning("⚠️ **Unsaved Changes Detected:** You have modified your financial blueprint. Don't forget to save your profile to the cloud before closing the app!")
-        if warn_col2.button("💾 Save Now", type="primary", key="btn_global_save", width='stretch'):
-            save_profile()
+        
+        # FIX: Attached the callback directly and removed the 'if' block
+        warn_col2.button("💾 Save Now", type="primary", key="btn_global_save", width='stretch', on_click=save_profile)
+        
         st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
