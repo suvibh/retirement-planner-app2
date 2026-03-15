@@ -1346,8 +1346,28 @@ def run_simulation(mkt_sequence, ctx):
                     milestones_by_year[year].append({"desc": desc, "amt": benefit, "type": "system"})
                     ss_started_spouse = True
 
+        # --- RESTORED TAXATION & CASH FLOW BLOCK ---
         if active_ss > 0:
             yd["Income: Social Security"] = active_ss
+
+            ss_provisional_income = pre_tax_ord + (active_ss * 0.5)
+            if active_mfj:
+                if ss_provisional_income <= SS_MFJ_TIER1_BASE:
+                    taxable_ss = 0
+                elif ss_provisional_income <= SS_MFJ_TIER2_BASE:
+                    taxable_ss = min(0.5 * active_ss, 0.5 * (ss_provisional_income - SS_MFJ_TIER1_BASE))
+                else:
+                    taxable_ss = min(0.85 * active_ss, 0.85 * (ss_provisional_income - SS_MFJ_TIER2_BASE) + min(0.5 * active_ss, 6000))
+            else:
+                if ss_provisional_income <= SS_SINGLE_TIER1_BASE:
+                    taxable_ss = 0
+                elif ss_provisional_income <= SS_SINGLE_TIER2_BASE:
+                    taxable_ss = min(0.5 * active_ss, 0.5 * (ss_provisional_income - SS_SINGLE_TIER1_BASE))
+                else:
+                    taxable_ss = min(0.85 * active_ss, 0.85 * (ss_provisional_income - SS_SINGLE_TIER2_BASE) + min(0.5 * active_ss, 4500))
+            
+            pre_tax_ord += taxable_ss
+            annual_inc += active_ss
             annual_ss += active_ss
 
         cur_biz_val, re_equity, total_exp, biz_income_total = 0, 0, 0, 0
