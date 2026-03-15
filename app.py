@@ -603,25 +603,26 @@ def call_gemini(prompt, retries=3, response_format="text"):
     return None
 
 def ai_number_input(label, state_key, prompt, col, help_text=""):
-    # 1. Initialize the widget's UI state from the master assumptions dictionary 
-    # so it doesn't render blank on the first load.
+    # 1. Initialize State
     if state_key not in st.session_state:
         st.session_state[state_key] = float(st.session_state.get('assumptions', {}).get(state_key, 0.0))
 
     with col:
-        # Create a tiny inner column layout to place the AI button next to the label
         c_label, c_btn = st.columns([8, 2])
         with c_label:
             st.markdown(f"<div style='font-size: 0.85rem; font-weight: 600; margin-bottom: 4px;'>{label}</div>", unsafe_allow_html=True)
         with c_btn:
-            if st.button("✨", key=f"ai_btn_{state_key}", help="Ask Fiduciary AI"):
+            # --- FIX 1: Add type="primary" to bring the button styling back! ---
+            if st.button("✨", key=f"ai_btn_{state_key}", help="Ask Fiduciary AI", type="primary"):
                 with st.spinner(""):
-                    # NOTE: Ensure this matches your actual LLM calling function name!
-                    # For example, if you use call_gemini() and json.loads(), put that here.
-                    ai_response_text = call_gemini(prompt) 
+                    
+                    # --- FIX 2: The LLM Guardrail Injection ---
+                    # We secretly append this strict instruction to every prompt before sending it
+                    strict_prompt = prompt + "\n\nCRITICAL INSTRUCTION: You MUST return the percentage as a whole number (e.g., return 7.5 for 7.5%). DO NOT return it as a decimal (e.g., do not return 0.075)."
+                    
+                    ai_response_text = call_gemini(strict_prompt) 
                     
                     try:
-                        # Extract the JSON block from the response
                         import json, re
                         json_match = re.search(r'\{.*\}', ai_response_text, re.DOTALL)
                         if json_match:
@@ -630,19 +631,22 @@ def ai_number_input(label, state_key, prompt, col, help_text=""):
                             if state_key in parsed_data:
                                 new_val = float(parsed_data[state_key])
                                 
-                                # --- THE TWO CRITICAL FIXES ---
-                                # A. Force the widget's UI state to update
+                                # --- FIX 3: The Python Safety Net ---
+                                # If the AI disobeys and returns a decimal anyway (e.g., 0.075),
+                                # we catch it and scale it back up to 7.5 before it hits the UI.
+                                # (We only do this if the value is strictly between 0 and 1, 
+                                # assuming typical macro rates aren't sub-1 percent.)
+                                if 0.0 < new_val < 1.0:
+                                    new_val = new_val * 100.0
+                                
+                                # Force UI Update
                                 st.session_state[state_key] = new_val
-                                
-                                # B. Keep the master dictionary in sync
                                 st.session_state['assumptions'][state_key] = new_val
-                                
-                                # C. Force the screen to refresh instantly
                                 st.rerun()
                     except Exception as e:
-                        st.toast(f"⚠️ AI couldn't parse the number. Try again.")
+                        st.toast("⚠️ AI couldn't parse the number. Try again.")
 
-        # 2. Render the actual input box tied strictly to the state_key
+        # 2. Render Input
         val = st.number_input(
             label, 
             key=state_key, 
@@ -650,7 +654,7 @@ def ai_number_input(label, state_key, prompt, col, help_text=""):
             label_visibility="collapsed"
         )
         
-        # 3. If the user types a number manually, sync it back to the master dictionary
+        # 3. Sync Manual Edits
         st.session_state['assumptions'][state_key] = val
         
         return val
