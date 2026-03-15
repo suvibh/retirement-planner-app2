@@ -605,6 +605,11 @@ def ai_number_input(label, state_key, prompt, col, help_text=""):
     if state_key not in st.session_state:
         st.session_state[state_key] = float(st.session_state.get('assumptions', {}).get(state_key, 0.0))
 
+    # --- FIX 1: The "Stop Sign" Blocker ---
+    # Tap into the global ai_loading state to gray out the button
+    ai_disabled = st.session_state.get('ai_loading', False)
+    trigger_key = f"trigger_ai_{state_key}"
+
     with col:
         # Place the label strictly on top
         st.markdown(f"<div style='font-size: 0.85rem; font-weight: 600; margin-bottom: 2px;'>{label}</div>", unsafe_allow_html=True)
@@ -613,18 +618,23 @@ def ai_number_input(label, state_key, prompt, col, help_text=""):
         c_input, c_btn = st.columns([8, 2], vertical_alignment="bottom")
         
         with c_btn:
-            # use_container_width=True forces the button to stretch perfectly to match the input box height
-            if st.button("✨", key=f"ai_btn_{state_key}", help="Ask Fiduciary AI", type="primary", use_container_width=True):
+            # Add disabled=ai_disabled so it locks up visually
+            if st.button("✨", key=f"ai_btn_{state_key}", help="Ask Fiduciary AI", type="primary", use_container_width=True, disabled=ai_disabled):
                 
-                # --- FIX 1: AI Spam Protection Gate ---
-                # This ensures the global 3-second cooldown is enforced on every single button
+                # --- FIX 2: The 2-Step Trigger Pattern ---
+                # We lock the UI state and force a redraw FIRST, so the button physically 
+                # grays out before we ever attempt to talk to Gemini.
+                st.session_state[trigger_key] = True
+                st.session_state['ai_loading'] = True
+                st.rerun()
+
+        # --- FIX 3: Safely execute the AI logic during the locked rerun ---
+        if st.session_state.get(trigger_key):
+            rate_limit_hit = False
+            try:
                 if check_ai_rate_limit():
-                    
-                    # --- FIX 2: Layout-Safe Loading Indicator ---
-                    # Toasts pop up in the corner instead of injecting DOM elements into our tight column layout
                     st.toast(f"Consulting Fiduciary AI for {label}...", icon="🤖")
                     
-                    # Nominal vs. Real Guardrail
                     strict_prompt = prompt + "\n\nCRITICAL INSTRUCTION: You MUST return the percentage as a whole number (e.g., return 7.5 for 7.5%). DO NOT return it as a decimal. ALWAYS provide the NOMINAL rate (do NOT subtract inflation), as the system handles inflation-adjusted discounting natively."
                     
                     ai_response_text = call_gemini(strict_prompt) 
@@ -638,23 +648,35 @@ def ai_number_input(label, state_key, prompt, col, help_text=""):
                             if state_key in parsed_data:
                                 new_val = float(parsed_data[state_key])
                                 
-                                # Decimal Safety Net
                                 if 0.0 < new_val < 1.0:
                                     new_val = new_val * 100.0
                                 
-                                # The "Unchanged" Gate
                                 current_val = float(st.session_state['assumptions'].get(state_key, 0.0))
                                 
                                 if new_val != current_val:
                                     st.session_state[state_key] = new_val
                                     st.session_state['assumptions'][state_key] = new_val
                                     mark_dirty() 
-                                    st.rerun()
                                 else:
                                     st.toast("✨ AI Fiduciary confirms your current assumption is perfectly aligned.")
                                     
                     except Exception as e:
                         st.toast("⚠️ AI couldn't parse the number. Try again.")
+                else:
+                    # We hit the 3-second spam wall!
+                    rate_limit_hit = True
+                    
+            finally:
+                # Unlock the UI
+                st.session_state[trigger_key] = False
+                st.session_state['ai_loading'] = False
+                
+                # --- FIX 4: Clear the Sticking Warning ---
+                # If the rate limit was hit, we purposely SKIP the rerun. 
+                # This leaves the UI frozen with the warning visible for exactly one interaction.
+                # The moment they click anywhere else, the UI redraws clean!
+                if not rate_limit_hit:
+                    st.rerun()
 
         with c_input:
             val = st.number_input(
